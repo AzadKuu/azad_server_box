@@ -3,7 +3,7 @@ title: Architecture Overview
 description: High-level application architecture
 ---
 
-Server Box separates presentation, business logic, data access, and external integrations.
+Server Box follows a layered architecture with clear separation of concerns.
 
 ## Architecture Layers
 
@@ -23,7 +23,7 @@ Server Box separates presentation, business logic, data access, and external int
 ┌─────────────────────────────────────────────────┐
 │           Data Access Layer                     │
 │         lib/data/store/, lib/data/model/        │
-│  - SQLite Stores, Data Models                   │
+│  - Hive Stores, Data Models                     │
 └─────────────────────────────────────────────────┘
                       ↓
 ┌─────────────────────────────────────────────────┐
@@ -40,20 +40,20 @@ Server Box separates presentation, business logic, data access, and external int
 A server is reached either over SSH or through a monitor agent's HTTP API. The
 two are mutually exclusive: a monitor server carries no SSH credential.
 
-`ServerCapabilities` describes what each connection can do. Features that need
-a shell can use that interface without knowing which transport provides it:
+What each one can do is asked through `ServerCapabilities`, so a feature that
+needs a shell never has to know which transport provides one:
 
 | | SSH | Monitor agent |
 |---|---|---|
 | Status, charts | yes | yes |
-| Stored history | no, sampled while the app is open | yes, the agent has been sampling all along |
+| Stored history | no — sampled while the app is open | yes — the agent has been sampling all along |
 | Commands (processes, systemd, containers, power) | yes | with the agent's `full_access` grant |
 | Terminal | yes | with `full_access` |
 | File browsing | yes, over SFTP | with the agent's file API, confined to its configured roots |
 | SFTP transfers, port forwarding | yes | no |
 
-SFTP and port forwarding are not available through a monitor agent because the
-agent has no endpoint that relays a connection to an address chosen by the app.
+SFTP and port forwarding are absent on a monitor server because the agent has
+no endpoint that relays a connection to an address the app names.
 
 ## Application Foundation
 
@@ -80,7 +80,7 @@ void main() {
 
 ### Home Page
 
-`HomePage` is the navigation hub:
+`HomePage` serves as navigation hub:
 - **Tabbed Interface**: Server, SSH, File, Snippet
 - **State Management**: Per-tab state
 - **Navigation**: Feature access
@@ -92,19 +92,22 @@ void main() {
 **Why Riverpod?**
 - Compile-time safety
 - Easy testing
-- No `BuildContext` dependency
+- No Build context dependency
 - Works across platforms
 
 **Provider Types Used:**
-- `NotifierProvider`: Mutable state with methods
+- `StateProvider`: Simple mutable state
 - `AsyncNotifierProvider`: Loading/error/data states
 - `StreamProvider`: Real-time data streams
 - Future providers: One-time async operations
 
-### Data Persistence: SQLite
+### Data Persistence: Hive CE
 
-The app stores data in one encrypted SQLite database, `store.db`. Key-value
-storage is used for settings and history; related records use entity tables.
+**Why Hive CE?**
+- No native code dependencies
+- Fast key-value storage
+- Type-safe with code generation
+- Follow the existing model pattern; some tracked models still use explicit field annotations
 
 **Stores:**
 - `SettingStore`: App preferences
@@ -118,8 +121,8 @@ storage is used for settings and history; related records use entity tables.
 **Benefits:**
 - Compile-time immutability
 - Union types for state
-- JSON serialization when configured
-- `copyWith` methods
+- Built-in JSON serialization
+- CopyWith extensions
 
 ## Cross-Platform Strategy
 
@@ -188,12 +191,12 @@ Custom build system for:
 ### Build Process
 
 ```
-fl_build (build) → Platform output
+make.dart (version) → fl_build (build) → Platform output
 ```
 
-1. **Build**: derive the build number from the Git history, compile for the
-   target platform
-2. **Post-build**: Package and sign
+1. **Pre-build**: Calculate version from Git
+2. **Build**: Compile for target platform
+3. **Post-build**: Package and sign
 
 ## Data Flow Example
 
@@ -215,15 +218,13 @@ Through a monitor agent:
 ```
 1. Timer triggers →
 2. Provider calls the agent's /api/v1/metrics →
-3. `MonitorMetrics.fromJson` decodes the JSON and `applyMonitorMetrics` maps it to `ServerStatus` →
+3. The agent has already parsed it — with the same Rust crate →
 4. State updated →
 5. UI rebuilds with new data
 ```
 
-The SSH path parses command output through the FFI-backed `sbm_parser`; the
-monitor path consumes the agent's JSON contract and maps it locally. They feed
-the same `ServerStatus` shape, but they are not the same parser or guaranteed to
-have identical field semantics.
+Both ends parse with `sbm_parser`, which is why the two paths produce the same
+`ServerStatus`.
 
 ### User Action Flow
 
@@ -239,8 +240,8 @@ have identical field semantics.
 
 ### Data Protection
 
-- **Passwords / SSH Keys**: Stored in the encrypted SQLite database; the
-  encryption key itself is kept in platform secure storage (Keychain/Keystore)
+- **Passwords / SSH Keys**: Stored in AES-encrypted Hive boxes; the encryption
+  key itself is kept in the platform secure storage (Keychain/Keystore)
 - **Host Fingerprints**: Stored securely
 - **Session Data**: Not persisted
 
@@ -248,4 +249,4 @@ have identical field semantics.
 
 - **Host Key Verification**: MITM detection
 - **Encryption**: Standard SSH encryption
-- **No Plain Text**: Sensitive data is not stored in plain text
+- **No Plain Text**: Sensitive data never stored plain

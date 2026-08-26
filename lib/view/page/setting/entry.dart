@@ -1,8 +1,6 @@
-import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math' as math;
-import 'dart:ui' show ImageFilter;
 
 import 'package:dynamic_color/dynamic_color.dart';
 import 'package:file_picker/file_picker.dart';
@@ -11,43 +9,33 @@ import 'package:flutter/material.dart';
 import 'package:flutter_highlight/theme_map.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:icons_plus/icons_plus.dart';
-import 'package:server_box/core/chan.dart';
-import 'package:server_box/core/extension/context/inset.dart';
 import 'package:server_box/core/extension/context/locale.dart';
-import 'package:server_box/core/utils/linux_seed.dart';
 import 'package:server_box/core/utils/local_exec.dart';
-import 'package:server_box/core/utils/logo_url.dart';
 import 'package:server_box/core/utils/rootfs.dart';
-import 'package:server_box/core/utils/rootfs_manifest_source.dart';
 import 'package:server_box/core/utils/server_dedup.dart';
 import 'package:server_box/core/utils/ssh_config.dart';
 import 'package:server_box/data/model/ai/ask_ai_models.dart';
-import 'package:server_box/data/model/app/linux_distro.dart';
-import 'package:server_box/data/model/app/linux_distros.dart';
 import 'package:server_box/data/model/app/net_view.dart';
-import 'package:server_box/data/model/app/rootfs_manifest.dart';
 import 'package:server_box/data/model/server/server_private_info.dart';
 import 'package:server_box/data/provider/server/all.dart';
 import 'package:server_box/data/res/build_data.dart';
-import 'package:server_box/data/res/default.dart';
 import 'package:server_box/data/res/github_id.dart';
 import 'package:server_box/data/res/store.dart';
 import 'package:server_box/data/res/url.dart';
 import 'package:server_box/data/store/setting.dart';
 import 'package:server_box/generated/l10n/l10n.dart';
 import 'package:server_box/view/page/backup.dart';
-import 'package:server_box/view/page/bmc_credential/list.dart';
 import 'package:server_box/view/page/private_key/list.dart';
 import 'package:server_box/view/page/server/connection_stats.dart';
 import 'package:server_box/view/page/setting/entries/home_tabs.dart';
 import 'package:server_box/view/page/setting/platform/ios.dart';
 import 'package:server_box/view/page/setting/platform/platform_pub.dart';
 import 'package:server_box/view/page/setting/seq/known_hosts.dart';
-import 'package:server_box/view/page/setting/seq/srv_orders.dart';
+import 'package:server_box/view/page/setting/seq/srv_detail_seq.dart';
+import 'package:server_box/view/page/setting/seq/srv_func_seq.dart';
+import 'package:server_box/view/page/setting/seq/srv_seq.dart';
 import 'package:server_box/view/page/setting/seq/virt_key.dart';
-import 'package:server_box/view/widget/dist_icon.dart';
 import 'package:server_box/view/widget/dmg_notice.dart';
-import 'package:server_box/view/widget/rootfs_install.dart';
 
 part 'about.dart';
 part 'menu.dart';
@@ -56,7 +44,6 @@ part 'entries/app.dart';
 part 'entries/container.dart';
 part 'entries/editor.dart';
 part 'entries/full_screen.dart';
-part 'entries/linux.dart';
 part 'entries/server.dart';
 part 'entries/sftp.dart';
 part 'entries/ssh.dart';
@@ -80,16 +67,6 @@ const _kMenuBreakpoint = 800.0;
 
 /// How wide the menu is when it is beside the content.
 const _kMenuWidth = 232.0;
-
-/// How wide the content beside that menu is allowed to get.
-///
-/// Left to fill a desktop window, a settings row put its label against one
-/// edge and its control against the other, a hand's width apart, and stopped
-/// reading as one thing. Two [PageColumns] columns' worth stops that without
-/// making the pane a narrow strip in the middle of a wide window — and it is
-/// also what lets the pages here that are a grid rather than a list keep two
-/// columns.
-const _kContentMaxWidth = 900.0;
 
 class _SettingsPageState extends ConsumerState<SettingsPage> {
   /// Which branches are open in the wide menu. Nothing to start with, so it
@@ -146,7 +123,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
         children: [
           SettingsNode.leaf(
             id: 'app.setting',
-            title: libL10n.general,
+            title: libL10n.setting,
             icon: Icons.settings_outlined,
             page: () => const AppSettingsPage(section: SettingsSection.app),
           ),
@@ -156,22 +133,6 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
             icon: Icons.auto_awesome_outlined,
             page: () => const AppSettingsPage(section: SettingsSection.ai),
           ),
-          // A tab of its own rather than a row leading out of the general
-          // page: pushed from there it drew a second title bar under the one
-          // this page already has, naming the same thing twice.
-          SettingsNode.leaf(
-            id: 'app.homeTabs',
-            title: l10n.homeTabs,
-            icon: Icons.tab_outlined,
-            page: () => const HomeTabsConfigPage(embedded: true),
-          ),
-          if (isIOS)
-            SettingsNode.leaf(
-              id: 'app.ios',
-              title: 'iOS',
-              icon: MingCute.apple_fill,
-              page: () => const IosSettingsPage(embedded: true),
-            ),
 
           /// Fullscreen Mode is designed for old mobile phone which can be
           /// used as a status screen.
@@ -192,18 +153,27 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
         children: [
           SettingsNode.leaf(
             id: 'server.setting',
-            title: libL10n.general,
+            title: libL10n.setting,
             icon: Icons.settings_outlined,
             page: () => const AppSettingsPage(section: SettingsSection.server),
           ),
-          // One row for all three orderings. Apart they read alike — the row
-          // could not say which list it opened — and side by side as tabs each
-          // is named by what the other two are not.
           SettingsNode.leaf(
             id: 'server.order',
-            title: libL10n.sequence,
+            title: l10n.serverOrder,
             icon: Icons.sort,
-            page: () => const ServerOrdersPage(embedded: true),
+            page: () => const ServerOrderPage(embedded: true),
+          ),
+          SettingsNode.leaf(
+            id: 'server.detail',
+            title: l10n.serverDetailOrder,
+            icon: Icons.dashboard_customize_outlined,
+            page: () => const ServerDetailOrderPage(embedded: true),
+          ),
+          SettingsNode.leaf(
+            id: 'server.func',
+            title: libL10n.sequence,
+            icon: Icons.reorder,
+            page: () => const ServerFuncBtnsOrderPage(embedded: true),
           ),
         ],
       ),
@@ -214,26 +184,10 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
         children: [
           SettingsNode.leaf(
             id: 'terminal.setting',
-            title: libL10n.general,
+            title: libL10n.setting,
             icon: Icons.settings_outlined,
             page: () => const AppSettingsPage(section: SettingsSection.ssh),
           ),
-          // Under the terminal because that is where a Linux system is
-          // reached from, and absent when this build carries none — the same
-          // question the terminal's own tab asks before it offers to install
-          // one. Named for Linux rather than for the distribution: which one
-          // is installed is allowed to change, and none of what is on that
-          // page is about which.
-          if (Rootfs.isAvailable)
-            SettingsNode.leaf(
-              id: 'terminal.linux',
-              // Not localized, and not searched for either: the id above is
-              // what the settings search matches on, and "Linux" is the same
-              // word in every locale this ships in.
-              title: 'Linux (Beta)',
-              icon: Icons.layers_outlined,
-              page: () => const AppSettingsPage(section: SettingsSection.linux),
-            ),
           SettingsNode.leaf(
             id: 'terminal.knownHosts',
             title: l10n.sshKnownHostKeys,
@@ -255,7 +209,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
         children: [
           SettingsNode.leaf(
             id: 'file.sftp',
-            title: 'SFTP',
+            title: l10n.sftp,
             icon: Icons.cloud_outlined,
             page: () => const AppSettingsPage(section: SettingsSection.sftp),
           ),
@@ -274,36 +228,17 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
         icon: Icons.inbox_outlined,
         page: () => const AppSettingsPage(section: SettingsSection.container),
       ),
-      SettingsNode.branch(
+      SettingsNode.leaf(
         id: 'backup',
         title: libL10n.backup,
         icon: Icons.backup_outlined,
-        children: [
-          SettingsNode.leaf(
-            id: 'backup.sync',
-            title: libL10n.sync,
-            icon: Icons.cloud_sync_outlined,
-            page: () => const BackupPage(section: BackupSection.sync),
-          ),
-          SettingsNode.leaf(
-            id: 'backup.import',
-            title: libL10n.import,
-            icon: Icons.file_download_outlined,
-            page: () => const BackupPage(section: BackupSection.import),
-          ),
-        ],
+        page: () => const BackupPage(),
       ),
       SettingsNode.leaf(
         id: 'privateKey',
         title: l10n.privateKey,
         icon: Icons.key_outlined,
         page: () => const PrivateKeysListPage(),
-      ),
-      SettingsNode.leaf(
-        id: 'bmcCredential',
-        title: l10n.bmcAccounts,
-        icon: Icons.developer_board,
-        page: () => const BmcCredentialsListPage(),
       ),
       SettingsNode.leaf(
         id: 'about',
@@ -314,10 +249,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     ];
   }
 
-  void _onSelect(SettingsNode node) {
-    _dropPushedPages();
-    setState(() => _selectedId = node.id);
-  }
+  void _onSelect(SettingsNode node) => setState(() => _selectedId = node.id);
 
   void _onToggle(SettingsNode node) {
     setState(() {
@@ -325,42 +257,16 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     });
   }
 
-  /// The navigator holding the right-hand side, so a selection can reach it.
-  final _contentNav = GlobalKey<NavigatorState>();
-
-  /// Discards anything pushed on top of the levels [_path] describes.
-  ///
-  /// The content navigator is driven declaratively — the pages come from the
-  /// selection — but a page inside it may push a route by hand: the raw
-  /// settings editor does, from `entries/app.dart`. A pushed route sits above
-  /// every declarative page, so changing the selection rebuilt the pages
-  /// underneath one and left it on screen. Tapping the menu looked like it did
-  /// nothing at all, and the editor stayed put whichever section was picked.
-  ///
-  /// `route.settings is Page` is what tells the two apart: the declarative ones
-  /// each come from a `MaterialPage`, and a hand-pushed one does not.
-  void _dropPushedPages() {
-    final nav = _contentNav.currentState;
-    if (nav == null) return;
-    nav.popUntil((route) => route.settings is Page);
-  }
-
   /// A tab is a tab: it shows something. Tapping a branch goes into it *and*
   /// selects what is first inside, rather than leaving a row of tabs with none
   /// of them on. The same applies to a row of the list.
   void _onTab(SettingsNode node) {
-    _dropPushedPages();
     setState(() {
       if (node.isLeaf && _path.isNotEmpty) {
         _selectedId = node.id;
         return;
       }
       _path.add(node);
-      // Unfolded in the wide menu too. The two navigations share [_selectedId]
-      // but not their shape, and only the menu's own toggle used to write here
-      // — so a branch entered while narrow was still folded if the window then
-      // grew, leaving the page on screen with no row anywhere pointing at it.
-      _expanded.add(node.id);
       final leaf = node.firstLeaf;
       if (leaf != null) _selectedId = leaf.id;
     });
@@ -370,11 +276,6 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
   /// just left, and that branch is a tab here, lit to say so.
   void _onTabBack() {
     if (_path.isEmpty) return;
-    // The back button lives in the `Scaffold`'s app bar, outside the content
-    // navigator — so with the raw editor pushed on top it is still visible and
-    // still tappable, and rebuilding the pages underneath would leave the
-    // editor on screen describing a level that is no longer showing.
-    _dropPushedPages();
     setState(_path.removeLast);
   }
 
@@ -490,25 +391,11 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
             ? Row(
                 children: [
                   SizedBox(width: _kMenuWidth, child: menu),
-                  // Not Material's default: that one is drawn for a light
-                  // background and reads as a bright seam on a dark one, which
-                  // is why every other seam in the app goes through [Hairline]
-                  // — including the one `AdaptivePanes` draws, which this line
-                  // sits at the same corners as.
-                  VerticalDivider(
-                    width: Hairline.thickness,
-                    thickness: Hairline.thickness,
-                    color: Hairline.color(context),
-                  ),
+                  const VerticalDivider(width: 1, thickness: 1),
                   Expanded(child: content),
                 ],
               )
-            // A `Builder` so the insets read below are the ones this body
-            // actually has: the state's own context is above the `Scaffold`,
-            // where `padding` is still the whole window's — the status bar the
-            // app bar already covers, and the home indicator the `SafeArea`
-            // just above here already cleared.
-            : Builder(builder: (context) => _buildNarrow(context, nodes, content)),
+            : _buildNarrow(nodes, content),
       ),
     );
   }
@@ -524,35 +411,6 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     required List<SettingsNode> nodes,
     required SettingsNode selected,
   }) {
-    // A route sliding in has to be opaque, or what it is covering shows
-    // through it for the length of the transition. The pages under here are
-    // `embedded: true` and drop their own `Scaffold`, so without this nothing
-    // gives them a background at all — the one behind belongs to the
-    // `Scaffold` this whole page is in, and both routes were letting it, and
-    // each other, through.
-    //
-    // The `Scaffold`'s colour and not `colorScheme.surface`: that is the slot
-    // `toAmoled` overrides, and the surface one it leaves alone.
-    // The cap goes on what is *in* the page, never on the page. A route
-    // sliding in is as wide as the pane; a navigator inside a narrower box
-    // slides the whole transition inside that box, so the page appeared to
-    // come out of a panel in the middle rather than in from the edge.
-    //
-    // The `Material` stays full width for the same reason — it is the
-    // background the transition is drawn against.
-    Widget opaque(Widget child) => Material(
-      color: Theme.of(context).scaffoldBackgroundColor,
-      // Told to expand inside the cap: a `Center` hands down loose
-      // constraints, under which a page's list takes the height of its
-      // content rather than the height of the pane.
-      child: Center(
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: _kContentMaxWidth),
-          child: SizedBox.expand(child: child),
-        ),
-      ),
-    );
-
     Widget pagesOf(String id, List<SettingsNode> level) {
       return _SettingsPages(
         key: ValueKey('pages_$id'),
@@ -563,25 +421,22 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     }
 
     return Navigator(
-      key: _contentNav,
       pages: [
         if (wide)
           MaterialPage<void>(
             key: ValueKey(_groupOf(nodes, selected.id)?.firstOrNull?.id ?? 'root'),
-            child: opaque(
-              pagesOf(selected.id, _groupOf(nodes, selected.id) ?? const []),
-            ),
+            child: pagesOf(selected.id, _groupOf(nodes, selected.id) ?? const []),
           )
         else ...[
           // What settings there are, which is where a narrow window starts.
           MaterialPage<void>(
             key: const ValueKey('root'),
-            child: opaque(_SettingsList(nodes: nodes, onTap: _onTab)),
+            child: _SettingsList(nodes: nodes, onTap: _onTab),
           ),
           for (final entered in _path)
             MaterialPage<void>(
               key: ValueKey(entered.id),
-              child: opaque(pagesOf(entered.id, _levelOf(entered))),
+              child: pagesOf(entered.id, _levelOf(entered)),
             ),
         ],
       ],
@@ -598,19 +453,10 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
 
   /// The content with the tabs floating over its foot.
   ///
-  /// The content fills the body and the bar sits over it, so what is on the page
-  /// carries on under the bar instead of stopping at a bare strip above it. The
-  /// room a list needs to bring its last row into the clear arrives as
-  /// [MediaQuery] padding, which `context.padBottom` puts on the scrollable —
-  /// padding a list can scroll through, rather than a strip taken out of the
-  /// page's box.
-  ///
-  /// [context] has to be one from inside the body — see where this is called.
-  Widget _buildNarrow(
-    BuildContext context,
-    List<SettingsNode> nodes,
-    Widget content,
-  ) {
+  /// The content is told to keep clear of them through the [MediaQuery] its own
+  /// `SafeArea` reads, so a list scrolls to its end above the bar rather than
+  /// under it.
+  Widget _buildNarrow(List<SettingsNode> nodes, Widget content) {
     final mediaQuery = MediaQuery.of(context);
     // Nothing over the list — a bar of tabs there would be the same names
     // twice — and nothing over a leaf, which has no level under it to show.
@@ -619,12 +465,6 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     final space = level == null ? 0.0 : _kTabsHeight + _kTabsMargin * 2;
 
     return Stack(
-      // Nothing here should reach past the floor of this box — the page is
-      // pushed into the home tab's navigator, and the `Scaffold` paints its
-      // bottom bar after the body, so anything that does is covered rather than
-      // shown. `none` only keeps the clip from being what cuts it: the bar
-      // carries its own margin, so it stops short of the floor on its own.
-      clipBehavior: Clip.none,
       children: [
         MediaQuery(
           data: mediaQuery.copyWith(
@@ -632,18 +472,14 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
               bottom: mediaQuery.padding.bottom + space,
             ),
           ),
-          child: content,
+          child: SafeArea(top: false, child: content),
         ),
         // Edge to edge, and the bar centres itself within that: it is as wide
         // as the level it is showing, and only scrolls when that is too wide.
-        //
-        // Flush with the floor, because the gap the bar stands in is padding
-        // inside it now. Lifting it from here as well would move it up by that
-        // much again, and put the shadow back outside the clip it just left.
         Positioned(
           left: 0,
           right: 0,
-          bottom: 0,
+          bottom: _kTabsMargin,
           child: AnimatedSwitcher(
             duration: Durations.medium2,
             // Springs up past its place and settles, as displacement does
@@ -665,7 +501,9 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                     key: ValueKey(level.id),
                     nodes: _levelOf(level),
                     selectedId: _selectedId,
+                    canGoBack: true,
                     onTap: _onTab,
+                    onBack: _onTabBack,
                   ),
           ),
         ),
@@ -678,17 +516,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
 ///
 /// One page rather than one per group, so that the state — and the four text
 /// controllers on it — survives moving between them.
-enum SettingsSection {
-  app,
-  ai,
-  server,
-  ssh,
-  linux,
-  sftp,
-  container,
-  editor,
-  fullScreen,
-}
+enum SettingsSection { app, ai, server, ssh, sftp, container, editor, fullScreen }
 
 final class AppSettingsPage extends ConsumerStatefulWidget {
   final SettingsSection section;
@@ -709,33 +537,11 @@ final class _AppSettingsPageState extends ConsumerState<AppSettingsPage> {
     text: _setting.sshBlurRadius.fetch().toString(),
   );
   late final _textScalerCtrl = TextEditingController(
-    // `.fetch()`, as the three above: without it the field opened showing
-    // `Instance of 'SqlitePropDefault<double>'` and handed that to be parsed.
-    text: _setting.textFactor.fetch().toString(),
+    text: _setting.textFactor.toString(),
   );
   late final _serverLogoCtrl = TextEditingController(
     text: _setting.serverLogoUrl.fetch(),
   );
-  late final _serverMarkCtrl = TextEditingController(
-    text: _setting.serverMarkUrl.fetch(),
-  );
-
-  @override
-  void initState() {
-    super.initState();
-    // Which releases are installable is fetched rather than compiled in, and
-    // this page is where someone is about to act on the answer: the version
-    // beside "add", the update button on a profile. Launch already tries once;
-    // this catches the case where it failed or the release moved since.
-    //
-    // Not awaited and not shown. What is in force already works, and a refresh
-    // that changes nothing — the ordinary case — should look like nothing.
-    if (widget.section == SettingsSection.linux && Rootfs.isAvailable) {
-      RootfsManifestSource.refresh().then((changed) {
-        if (changed && mounted) setState(() {});
-      });
-    }
-  }
 
   @override
   void dispose() {
@@ -743,7 +549,6 @@ final class _AppSettingsPageState extends ConsumerState<AppSettingsPage> {
     _sshBlurCtrl.dispose();
     _textScalerCtrl.dispose();
     _serverLogoCtrl.dispose();
-    _serverMarkCtrl.dispose();
     super.dispose();
   }
 
@@ -756,7 +561,6 @@ final class _AppSettingsPageState extends ConsumerState<AppSettingsPage> {
       SettingsSection.ai => _buildAskAiConfig(),
       SettingsSection.server => _buildServer(),
       SettingsSection.ssh => _buildSSH(),
-      SettingsSection.linux => _buildLinux(),
       SettingsSection.sftp => _buildSFTP(),
       SettingsSection.container => _buildContainer(),
       SettingsSection.editor => _buildEditor(),
@@ -764,18 +568,9 @@ final class _AppSettingsPageState extends ConsumerState<AppSettingsPage> {
     };
 
     return ListView(
-      padding: context.padBottom(MultiList.kOuterPadding),
+      padding: MultiList.kOuterPadding,
       children: [group],
     );
-  }
-
-  /// Redraws after something a listenable does not cover.
-  ///
-  /// The Linux page reads `Rootfs.profiles`, which is built by scanning a
-  /// directory rather than from a store key, so nothing notifies when an
-  /// install or a removal changes it.
-  void refresh() {
-    if (mounted) setState(() {});
   }
 
   Future<void> showTextSettingDialog({

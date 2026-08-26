@@ -2,7 +2,6 @@ import 'dart:async';
 
 import 'package:fl_lib/fl_lib.dart';
 import 'package:flutter/foundation.dart';
-import 'package:server_box/core/service/scoped_token.dart';
 import 'package:server_box/data/model/server/monitor_http_credential.dart';
 import 'package:server_box/data/model/server/server_private_info.dart';
 import 'package:server_box/data/provider/server/monitor_http.dart';
@@ -13,15 +12,9 @@ import 'package:watch_connectivity/watch_connectivity.dart';
 ///
 /// The watch is a separate process on a separate device that reaches monitor
 /// agents by itself; all it needs from here is *which* servers to show and how
-/// to authenticate.
-///
-/// Which servers is not a list anyone maintains: it is every server with a
-/// `monitor` agent, minus [SettingStore.watchExcludedServerIds]. Adding a
-/// server in the app puts it on the watch, and the exclusion list exists for
-/// the one thing that genuinely needs a decision — syncing a server mints a
-/// credential and puts it on a second device, and that is worth being able to
-/// refuse. The list is backed up and synced like everything else; the WCSession
-/// application context is only the transport.
+/// to authenticate. That configuration lives in [SettingStore.watchServerIds]
+/// (backed up and synced like everything else) — the WCSession application
+/// context is only the transport.
 ///
 /// Both WatchConnectivity paths are used, on purpose and in this order:
 ///
@@ -78,6 +71,7 @@ final class WatchSync {
   Future<void> init() async {
     if (!isIOS) return;
     await _setupOnce();
+    await _importLegacyUrls();
     await push();
   }
 
@@ -130,35 +124,14 @@ final class WatchSync {
     }
   }
 
-  /// Strictly increasing, and read where a snapshot is taken.
-  ///
-  /// Seeded from the clock so that it keeps rising across a restart, where a
-  /// counter starting again at zero would look older than everything the watch
-  /// had already applied. Bumped by hand when the clock has not moved, so two
-  /// snapshots taken in the same millisecond are still ordered.
-  @visibleForTesting
-  static int nextRevision() {
-    final now = DateTime.now().millisecondsSinceEpoch;
-    _revision = now > _revision ? now : _revision + 1;
-    return _revision;
-  }
-
-  static int _revision = 0;
-
   /// What the watch app is told to display.
   Future<Map<String, dynamic>> buildPayload() async {
-    // Taken with the snapshot rather than with the result. Issuing tokens is a
-    // network round trip per server, so two builds overlap easily — and stamped
-    // at the end, the slower one finished last carrying the *newer* number
-    // while holding the *older* selection, which is exactly backwards.
-    final revision = nextRevision();
-    final selectedIds = syncedServerIds();
+    final selectedIds = Stores.setting.watchServerIds.fetch();
     final existingTokens = await _existingTokens();
-    final tokens = reusableScopedTokens(
-      serverIds: selectedIds,
+    final tokens = reusableTokens(
+      selectedIds: selectedIds,
       lookup: Stores.server.fetchOneRaw,
-      existing: existingTokens,
-      now: DateTime.now(),
+      existingTokens: existingTokens,
     );
     for (final id in selectedIds) {
       final spi = Stores.server.fetchOneRaw(id);
@@ -166,34 +139,13 @@ final class WatchSync {
       if (spi == null || monitor == null) continue;
       if (tokens.containsKey(id)) continue;
       final existing = existingTokens[id];
-      final endpoint = normalizeAgentEndpoint(monitor.addr);
-      // Only when the *address* moved. An expiry that crept up is renewed by
-      // issuing again — the agent's `ON CONFLICT DO UPDATE` replaces the row
-      // in place — and revoking first would leave the watch with nothing for
-      // as long as the second request takes, or forever if it fails.
-      //
-      // A backstop, not the real revocation: `revokeScopedTokensLeftBehind`
-      // runs at the edit, while the old *login* is still known, and this only
-      // has the new one to try the old address with. So a failure here is
-      // expected and must not take the payload with it — it used to throw out
-      // of the whole build, and since the store event that started it had
-      // already been consumed, nothing was delivered and nothing retried. The
-      // watch kept whatever it had until the next unrelated edit.
-      if (existing != null && existing.endpoint != endpoint) {
-        try {
-          await _revokeServer(spi, endpoint: existing.endpoint);
-        } catch (e, s) {
-          Loggers.app.info('Backstop revoke at ${existing.endpoint}', e, s);
-        }
+      if (existing != null &&
+          existing.endpoint != _normalizedEndpoint(monitor.addr)) {
+        await _revokeServer(spi, endpoint: existing.endpoint);
       }
       final client = MonitorHttpClient(monitor);
       try {
-        final issued = await client.issueWatchToken(watchClientId(spi.id));
-        tokens[id] = ScopedToken(
-          token: issued.token,
-          endpoint: endpoint,
-          expiresAt: issued.expiresAt,
-        );
+        tokens[id] = await client.issueWatchToken('watch:${spi.id}');
       } catch (e, s) {
         Loggers.app.warning('Failed to issue read-only watch token for $id', e, s);
       } finally {
@@ -204,48 +156,31 @@ final class WatchSync {
       selectedIds: selectedIds,
       lookup: Stores.server.fetchOneRaw,
       tokens: tokens,
-      stamp: revision,
+      // TODO: drop with `SettingStore.watchLegacyUrls`.
+      legacyUrls: Stores.setting.watchLegacyUrls.fetch(),
     );
   }
 
-  /// Every server the watch is meant to show, in a stable order.
-  ///
-  /// Everything with a `monitor` agent, minus what the user held back. There
-  /// is no opt-in step: a server added in the app is on the watch by the next
-  /// push, which is what makes this automatic rather than a second list to
-  /// maintain.
-  ///
-  /// Ordered by name because the watch pages through this list and the order
-  /// has to be one someone can predict — store order is the order servers
-  /// happened to be added, which on a watch face reads as no order at all.
-  static List<String> syncedServerIds() {
-    final excluded = Stores.setting.watchExcludedServerIds.fetch().toSet();
-    final servers =
-        Stores.server
-            .fetch()
-            .where((e) => e.monitor != null && !excluded.contains(e.id))
-            .toList()
-          ..sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
-    return servers.map((e) => e.id).toList();
+  @visibleForTesting
+  static Map<String, String> reusableTokens({
+    required List<String> selectedIds,
+    required Spi? Function(String id) lookup,
+    required Map<String, ({String endpoint, String token})> existingTokens,
+  }) {
+    final reusable = <String, String>{};
+    for (final id in selectedIds) {
+      final monitor = lookup(id)?.monitor;
+      final existing = existingTokens[id];
+      if (monitor != null &&
+          existing != null &&
+          existing.endpoint == _normalizedEndpoint(monitor.addr)) {
+        reusable[id] = existing.token;
+      }
+    }
+    return reusable;
   }
 
-  /// The agent-side `client_id` a watch token is scoped to.
-  ///
-  /// Distinct from the widgets' — see `WidgetSync.widgetClientId` — so that
-  /// revoking one device does not take the other's credential with it. The
-  /// agent keys `watch_tokens` by `(subject, client_id)`, which is what makes
-  /// the two independent. Both appear in `scopedClientIdsFor`, which is what
-  /// revokes them together when a server leaves its agent behind.
-  static String watchClientId(String serverId) => 'watch:$serverId';
-
-  /// The tokens the watch is currently holding, read back out of the context
-  /// this app last delivered.
-  ///
-  /// The context is the only place they are kept: a scoped token is derived
-  /// state — it can always be minted again — so storing it beside the server
-  /// record would be one more copy of a credential to protect, back up and
-  /// forget to revoke.
-  Future<Map<String, ScopedToken>> _existingTokens() async {
+  Future<Map<String, ({String endpoint, String token})>> _existingTokens() async {
     try {
       final raw = await _wc?.applicationContext;
       final servers = raw?['servers'];
@@ -255,17 +190,9 @@ final class WatchSync {
           if (entry['id'] is String &&
               entry['addr'] is String &&
               entry['token'] is String)
-            entry['id'] as String: ScopedToken(
+            entry['id'] as String: (
+              endpoint: _normalizedEndpoint(entry['addr'] as String),
               token: entry['token'] as String,
-              endpoint: normalizeAgentEndpoint(entry['addr'] as String),
-              // Absent on a context written before this app kept the
-              // deadline, which `ScopedToken` reads as due for renewal —
-              // so an install carrying one of those gets a known expiry on
-              // its next push rather than a silent 401 up to 90 days later.
-              expiresAt: switch (entry['expiresAt']) {
-                final num v => v.toInt(),
-                _ => 0,
-              },
             ),
       };
     } catch (e, s) {
@@ -274,75 +201,37 @@ final class WatchSync {
     }
   }
 
-  /// Holds [next] back from the watch, and syncs everything else.
-  ///
-  /// A server moving *into* the exclusion list has its credential revoked
-  /// right away rather than left to lapse. Holding a server back has to mean
-  /// the watch can no longer read it — a token that stays valid for another 90
-  /// days would make this a change to what is displayed and nothing more.
-  Future<void> updateExclusions(List<String> next) async {
-    final previously = Stores.setting.watchExcludedServerIds.fetch().toSet();
-    final nowExcluded = next.toSet();
+  Future<void> updateSelection(List<String> next) async {
+    final previous = Stores.setting.watchServerIds.fetch();
+    final nextIds = next.toSet();
     final existingTokens = await _existingTokens();
-    for (final id in nowExcluded.where((id) => !previously.contains(id))) {
+    for (final id in previous.where((id) => !nextIds.contains(id))) {
       final spi = Stores.server.fetchOneRaw(id);
-      if (spi == null) continue;
-      // Best effort, per server. `_revokeServer` rethrows, and one agent that
-      // is merely offline used to take the whole call with it — the choice was
-      // never stored and the watch was never told, so a user holding three
-      // servers back kept all three because one of them was unreachable.
-      try {
+      if (spi != null) {
         await _revokeServer(spi, endpoint: existingTokens[id]?.endpoint);
-      } catch (e, s) {
-        Loggers.app.warning('Could not revoke watch token for $id', e, s);
       }
     }
-    Stores.setting.watchExcludedServerIds.put(next);
+    Stores.setting.watchServerIds.put(next);
     await push();
   }
 
-  /// Hands this server's credential back, ahead of the record being deleted.
-  ///
-  /// Deliberately does **not** push. The caller runs this while the server is
-  /// still in the store — it has to, since revoking needs the credential — and
-  /// a push here would rebuild the list from a store that still contains it,
-  /// mint a *replacement* token for a server about to be deleted, and deliver
-  /// it to the watch. Publishing is the caller's job, after the delete.
-  Future<void> revokeServer(Spi spi) async {
+  Future<void> removeServer(Spi spi) async {
     final existingTokens = await _existingTokens();
-    try {
-      await _revokeServer(spi, endpoint: existingTokens[spi.id]?.endpoint);
-    } catch (e, s) {
-      // The local server must remain removable while its monitor is offline.
-      // The token may outlive it remotely, but retaining local credentials is
-      // worse and there is no retry target once the user has deleted it.
-      Loggers.app.warning('Could not revoke watch token for ${spi.id}', e, s);
-    }
-    // A deleted server must not leave its id sitting in the exclusion list.
-    // Ids are generated, so a stale one is only clutter today — but it becomes
-    // a trap the moment one is reused by a restore, which would arrive already
-    // held back for a reason nobody can see.
-    final excluded = Stores.setting.watchExcludedServerIds.fetch();
-    if (excluded.contains(spi.id)) {
-      Stores.setting.watchExcludedServerIds.put(
-        excluded.where((id) => id != spi.id).toList(),
-      );
-    }
+    await _revokeServer(spi, endpoint: existingTokens[spi.id]?.endpoint);
+    final selected = Stores.setting.watchServerIds.fetch();
+    if (!selected.contains(spi.id)) return;
+    Stores.setting.watchServerIds.put(
+      selected.where((id) => id != spi.id).toList(),
+    );
+    await push();
   }
 
-  /// Hands every credential back, because there is no watch to use them.
-  ///
-  /// Per server and best effort: one unreachable agent must not stop the rest
-  /// being revoked, and must not abort the `_pushOnce` that called this.
   Future<void> _revokeSelectedServers() async {
     final existingTokens = await _existingTokens();
-    for (final id in syncedServerIds()) {
+    for (final id in Stores.setting.watchServerIds.fetch()) {
       final spi = Stores.server.fetchOneRaw(id);
-      if (spi == null) continue;
-      try {
+      if (spi != null) {
         await _revokeServer(spi, endpoint: existingTokens[id]?.endpoint);
-      } catch (e, s) {
-        Loggers.app.warning('Could not revoke watch token for $id', e, s);
       }
     }
   }
@@ -358,7 +247,6 @@ final class WatchSync {
             user: monitor.user,
             pwd: monitor.pwd,
             ignoreCert: monitor.ignoreCert,
-            allowInsecure: monitor.allowInsecure,
           );
     final client = MonitorHttpClient(credential);
     try {
@@ -371,21 +259,21 @@ final class WatchSync {
     }
   }
 
+  static String _normalizedEndpoint(String value) =>
+      value.trim().replaceFirst(RegExp(r'/+$'), '');
+
   /// The payload as a pure function of the selection, so the shape the watch
-  /// depends on can be tested without a store behind it.
+  /// depends on can be tested without a Hive box behind it.
   ///
-  /// `servers` carries scoped read-only tokens, and is the only shape the
-  /// watch is offered. The pre-v2 `urls` list is gone: it named the agent's
-  /// Go-compat endpoint, which the agent no longer serves, so emitting it
-  /// would only give an un-updated watch something that fails slightly later.
+  /// `servers` carries scoped read-only tokens, so it only ever contains
+  /// servers the user explicitly picked for the watch. `urls` is the pre-v2 shape and
+  /// is still emitted so a watch app that has not updated yet keeps working.
   @visibleForTesting
-  /// [stamp] orders this against the other payloads in flight, and is passed in
-  /// rather than read here so that this stays a pure function.
   static Map<String, dynamic> payloadFrom({
     required List<String> selectedIds,
     required Spi? Function(String id) lookup,
-    required Map<String, ScopedToken> tokens,
-    required int stamp,
+    required Map<String, String> tokens,
+    required List<String> legacyUrls,
   }) {
     final servers = <Map<String, dynamic>>[];
     for (final id in selectedIds) {
@@ -401,32 +289,43 @@ final class WatchSync {
         'id': spi.id,
         'name': spi.name,
         'addr': monitor.addr.trim(),
-        'token': token.token,
-        // Read back by `_existingTokens` on the next push to decide whether
-        // this one is close enough to expiry to replace. The watch app itself
-        // ignores the key — it finds out a token has expired by being told
-        // 401, which it cannot do anything about; renewing is this side's job.
-        'expiresAt': token.expiresAt,
+        'token': token,
         'ignoreCert': monitor.ignoreCert,
-        // The watch refuses to send the token over plaintext without it, the
-        // way this app and the home widget do. Not a storage decision made
-        // here: the answer travels so the check can be made where the request
-        // is.
-        'allowInsecure': monitor.allowInsecure,
       });
     }
 
     return {
       'v': _payloadVersion,
-      // When this was built, so the watch can tell a stale delivery from a
-      // fresh one. WatchConnectivity orders nothing between a queued userInfo,
-      // the application context and a reply to `requestData`, so a payload that
-      // had been sitting in the queue could land last and undo a newer
-      // selection. A watch that predates this ignores the key, and a payload
-      // without it is applied as before.
-      'ts': stamp,
       'servers': servers,
+      // TODO: drop with `SettingStore.watchLegacyUrls`.
+      'urls': legacyUrls,
     };
+  }
+
+  /// Seeds [SettingStore.watchLegacyUrls] from the application context this app
+  /// sent in an older build, which until now was the only place that list
+  /// existed.
+  ///
+  /// TODO: drop with `SettingStore.watchLegacyUrls`.
+  Future<void> _importLegacyUrls() async {
+    final imported = Stores.setting.watchLegacyUrlsImported;
+    if (imported.fetch()) return;
+
+    try {
+      final ctx = await _wc?.applicationContext;
+      final urls = (ctx?['urls'] as List?)
+          ?.whereType<String>()
+          .where((e) => e.trim().isNotEmpty)
+          .toList();
+      if (urls != null && urls.isNotEmpty) {
+        Stores.setting.watchLegacyUrls.put(urls);
+      }
+      imported.put(true);
+    } catch (e, s) {
+      // Leave the flag unset so the next launch retries; an empty import is
+      // indistinguishable from a failed one otherwise.
+      Loggers.app.warning('Failed to import legacy watch URLs', e, s);
+    }
   }
 
   /// The watch asking for the current configuration, e.g. right after being

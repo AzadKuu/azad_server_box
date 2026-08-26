@@ -26,11 +26,17 @@ class AppLocalizationsId extends AppLocalizations {
 
   @override
   String get askAiEndpointTip =>
-      'Domain atau URL lengkap. Path dilengkapi dari protokol yang dipilih.';
+      'Masukkan URL dasar layanan atau endpoint lengkap Chat Completions maupun Responses. ServerBox melengkapi jalurnya sesuai protokol yang dipilih.';
 
   @override
   String get askAiProtocolTip =>
-      'Auto mencoba Responses, lalu Chat Completions.';
+      'Otomatis memakai Responses untuk endpoint resmi OpenAI dan Chat Completions untuk penyedia yang kompatibel.';
+
+  @override
+  String get askAiProtocolChatCompletions => 'Chat Completions';
+
+  @override
+  String get askAiProtocolResponses => 'Responses';
 
   @override
   String get askAiCommandInserted => 'Perintah dimasukkan ke terminal';
@@ -50,15 +56,25 @@ class AppLocalizationsId extends AppLocalizations {
   String get askAiNoResponse => 'Tidak ada respons';
 
   @override
+  String get askAiAgentTitle => 'Agent SSH';
+
+  @override
   String get askAiAgentWelcome => 'Apa yang akan kita lakukan di server ini?';
+
+  @override
+  String get askAiAgentWelcomeTip =>
+      'Minta diagnosis atau sebuah tugas. Agent mengusulkan satu perintah setiap kali dan menunggu tinjauan Anda sebelum mengubah apa pun.';
 
   @override
   String get askAiAgentPromptHint =>
       'Minta Agent memeriksa atau memperbaiki sesuatu...';
 
   @override
+  String get askAiAgentSend => 'Kirim ke Agent';
+
+  @override
   String get askAiAnalyzeSelectionPrompt =>
-      'Analisis keluaran terminal yang dipilih dan jelaskan apa yang terjadi';
+      'Analisis isi terminal yang dipilih, jelaskan apa yang terjadi, dan usulkan langkah berikutnya yang paling aman jika perlu tindakan.';
 
   @override
   String get askAiTerminalContext => 'Konteks terminal';
@@ -71,7 +87,7 @@ class AppLocalizationsId extends AppLocalizations {
 
   @override
   String get askAiReviewBeforeContinuing =>
-      'Tinjau atau tolak saran saat ini dulu';
+      'Tinjau atau tolak dulu perintah yang diusulkan';
 
   @override
   String get askAiApproveRun => 'Setujui & jalankan';
@@ -102,7 +118,7 @@ class AppLocalizationsId extends AppLocalizations {
 
   @override
   String get askAiHighRiskConfirmBody =>
-      'Perintah ini bisa membuat perubahan yang sulit dibatalkan. Periksa baik-baik.';
+      'Perintah ini dapat menghapus data, menghentikan layanan, atau sulit dibatalkan. Tinjau dengan cermat sebelum menjalankannya.';
 
   @override
   String get askAiNoCommandOutput => 'Perintah selesai tanpa keluaran.';
@@ -120,18 +136,18 @@ class AppLocalizationsId extends AppLocalizations {
 
   @override
   String get askAiAutoRunSafeCommandsTip =>
-      'Hanya jalan jika model dan pemeriksaan lokal sama-sama menyebutnya hanya-baca';
+      'Hanya dijalankan otomatis bila model dan pemeriksaan keamanan lokal sama-sama menilai perintah itu hanya-baca. Perintah yang mengubah sistem tetap perlu ditinjau.';
 
   @override
   String get askAiSendOnEnter => 'Enter mengirim';
 
   @override
   String get askAiSendOnEnterTip =>
-      'Enter mengirim, Shift+Enter baris baru. Mati: Enter baris baru, Cmd/Ctrl+Enter mengirim.';
+      'Enter mengirim pesan, Shift+Enter membuat baris baru. Jika dimatikan, keduanya bertukar: Enter membuat baris baru dan Cmd/Ctrl+Enter mengirim.';
 
   @override
   String get askAiApiKeyOptional =>
-      'Kosongkan untuk lokal atau tanpa autentikasi';
+      'Opsional untuk endpoint lokal atau tanpa autentikasi';
 
   @override
   String get askAiHistory => 'Riwayat percakapan';
@@ -140,13 +156,14 @@ class AppLocalizationsId extends AppLocalizations {
   String get askAiNewConversation => 'Percakapan baru';
 
   @override
-  String get askAiNoHistory => 'Belum ada percakapan tersimpan';
+  String get askAiNoHistory =>
+      'Tidak ada percakapan tersimpan untuk server ini';
 
   @override
   String get askAiNoHistoryMessages => 'Belum ada pesan';
 
   @override
-  String get askAiUntitledConversation => 'Tanpa judul';
+  String get askAiUntitledConversation => 'Percakapan baru';
 
   @override
   String get askAiRenameConversation => 'Ganti nama percakapan';
@@ -156,24 +173,28 @@ class AppLocalizationsId extends AppLocalizations {
 
   @override
   String get askAiDeleteConversationTip =>
-      'Menghapusnya dari perangkat ini. Tidak bisa dibatalkan.';
+      'Percakapan akan dihapus dari perangkat ini dan tidak bisa dikembalikan.';
 
   @override
   String get askAiClearHistoryTitle => 'Hapus riwayat Agent untuk server ini?';
 
   @override
   String get askAiClearHistoryTip =>
-      'Semua percakapan Agent tersimpan untuk server ini akan dihapus.';
+      'Semua percakapan Agent yang tersimpan untuk server ini akan dihapus dari perangkat ini.';
 
   @override
-  String get askAiRestoredReview => 'Perintah ini dari riwayat. Tinjau lagi';
+  String get askAiRestoredReview =>
+      'Dipulihkan dari riwayat. Tinjau lagi sebelum menjalankan; perintah ini tidak akan pernah berjalan sendiri.';
+
+  @override
+  String get agentTitle => 'Agent';
 
   @override
   String get agentWelcome => 'Apa yang akan kita lakukan di server Anda?';
 
   @override
   String get agentWelcomeTip =>
-      'Biarkan Agent mendiagnosis masalah atau menjalankan tugas';
+      'Minta diagnosis atau tugas operasional. Agent memakai kondisi ServerBox terkini dan mengusulkan satu tindakan yang ditinjau setiap kali.';
 
   @override
   String get agentPromptHint =>
@@ -200,6 +221,9 @@ class AppLocalizationsId extends AppLocalizations {
   String get agentToolWriteFile => 'Tulis berkas';
 
   @override
+  String get agentToolServerBox => 'ServerBox';
+
+  @override
   String get agentToolFailed => 'Eksekusi alat gagal.';
 
   @override
@@ -224,7 +248,7 @@ class AppLocalizationsId extends AppLocalizations {
 
   @override
   String get agentSshConnectTip =>
-      'Agent ingin koneksi SSH. Masukkan kata sandi di sini';
+      'Agent ingin membuka koneksi SSH. Ketik kata sandi di sini, jangan di percakapan, karena di sana kata sandi akan tersimpan dan dikirim ke model.';
 
   @override
   String get agentAdHocSessions => 'Koneksi sementara';
@@ -234,13 +258,17 @@ class AppLocalizationsId extends AppLocalizations {
 
   @override
   String get agentSaveServerTip =>
-      'Host ini dan kata sandi yang dimasukkan disimpan di perangkat ini';
+      'Host ini dan kata sandi yang dimasukkan akan disimpan di perangkat ini.';
 
   @override
   String get agentMonitorOptional => 'Agen monitor (opsional)';
 
   @override
-  String get authFailTip => 'Autentikasi gagal. Periksa datanya';
+  String get atLeastOneTab => 'Setidaknya satu tab harus dipilih';
+
+  @override
+  String get authFailTip =>
+      'Otentikasi gagal, silakan periksa apakah kata sandi/kunci/host/pengguna, dll, salah.';
 
   @override
   String get autoBackupConflict =>
@@ -281,75 +309,12 @@ class AppLocalizationsId extends AppLocalizations {
   String get backupPasswordWrong => 'Kata sandi cadangan salah';
 
   @override
-  String get connectAll => 'Hubungkan semua';
-
-  @override
-  String get disconnectAll => 'Putuskan semua';
-
-  @override
-  String get distIcon => 'Tanda distribusi';
-
-  @override
-  String get distIconConsent =>
-      'Hanya untuk menunjukkan distribusi yang mungkin dijalankan sebuah server.';
-
-  @override
-  String get distIconIntroLegal =>
-      'Sebuah tanda hanya menyatakan apa yang dibaca perangkat ini dari sistem jarak jauh, yang bisa saja keliru atau usang, dan tidak menandakan turunan, hasil bangun ulang, maupun versi tertentu. Bila tidak dapat dikenali, ikon biasa yang digambar.\n\nSetiap tanda adalah merek dagang pemiliknya masing-masing dan di sini hanya dipakai untuk merujuk pada sistem yang ditandainya.';
-
-  @override
-  String get distIconTip =>
-      'Tampilkan tanda kecil di samping setiap server untuk sistem yang tampaknya dijalankannya';
-
-  @override
-  String get distNameMap => 'Pemetaan nama';
-
-  @override
-  String get distNameMapTip =>
-      'Hanya untuk distribusi yang nama berkasnya berbeda di tempat Anda menaruh tanda-tanda itu. Kuncinya adalah nama yang dipakai aplikasi ini; nilainya adalah nama yang akan diambil. Biarkan kosong selama tidak ada tanda yang hilang.';
-
-  @override
-  String get logoUrl => 'URL logo';
-
-  @override
-  String get logoUrlTip =>
-      'Gambar besar di bagian atas halaman sebuah server, dengan warna aslinya.';
-
-  @override
-  String get markUrl => 'URL tanda';
-
-  @override
-  String get markUrlTip =>
-      'Tanda kecil di samping nama server pada daftar. Kosong berarti tidak ada.\n\nBukan gambar yang sama dengan logo';
-
-  @override
-  String get navTabMenuTip =>
-      'Tekan lama sebuah tab — atau klik kanan — untuk menghubungkan atau memutuskan semuanya sekaligus.';
-
-  @override
-  String nTags(Object count) {
-    return '$count tag';
-  }
-
-  @override
   String get remoteBackupPasswordRequired =>
-      'Cadangan jarak jauh memerlukan kata sandi cadangan yang tidak kosong';
+      'Remote backups require a non-empty backup password';
 
   @override
   String get monitorHttpsRequired =>
-      'Agen monitor jarak jauh butuh HTTPS, kecuali HTTP diizinkan untuknya.';
-
-  @override
-  String get monitorAllowInsecureHttp => 'Izinkan HTTP';
-
-  @override
-  String get monitorAllowInsecureHttpTip =>
-      'Hanya di jaringan privat tepercaya yang mengenkripsi transportnya sendiri, misalnya Tailscale';
-
-  @override
-  String monitorHttpTip(String url) {
-    return 'Membaca status server ini dari HTTP API agen **monitor**, bukan menjalankan perintah lewat SSH.\n\nAgen harus dipasang di server terlebih dahulu; tren, aplikasi jam tangan, dan widget layar utama bergantung padanya.\n\n[Cara memasang agen monitor]($url)';
-  }
+      'Remote monitor agents require HTTPS; HTTP is allowed only on loopback.';
 
   @override
   String get backupTip =>
@@ -392,10 +357,6 @@ class AppLocalizationsId extends AppLocalizations {
   @override
   String get bgRunTip =>
       'Sakelar ini hanya berarti aplikasi akan mencoba berjalan di latar belakang, apakah aplikasi dapat berjalan di latar belakang tergantung pada apakah izin diaktifkan atau tidak. Untuk Android asli, nonaktifkan \"Pengoptimalan Baterai\" di aplikasi ini, dan untuk miui, ubah kebijakan penghematan daya ke \"Tidak Terbatas\".';
-
-  @override
-  String get bgRunNeedsNotification =>
-      'Berjalan di latar belakang butuh notifikasi permanen, dan aplikasi ini tidak punya izin notifikasi. Ketuk untuk memberikannya.';
 
   @override
   String get clearAllStatsContent =>
@@ -487,14 +448,6 @@ class AppLocalizationsId extends AppLocalizations {
   String get discoverySettings => 'Pengaturan Penemuan';
 
   @override
-  String get distro => 'Distribusi';
-
-  @override
-  String distroSwitchTip(Object from, Object to) {
-    return 'Ganti $from dengan $to. Semua yang terpasang di dalam $from akan dihapus, dan $to diunduh serta diekstrak sebagai gantinya.';
-  }
-
-  @override
   String get diskHealth => 'Kesehatan disk';
 
   @override
@@ -532,7 +485,7 @@ class AppLocalizationsId extends AppLocalizations {
       'Opsi ini hanya mengaktifkan fitur, apakah itu benar-benar dapat diaktifkan tergantung pada lebar perangkat';
 
   @override
-  String get editVirtKeys => 'Kunci virtual';
+  String get editVirtKeys => 'Edit kunci virtual';
 
   @override
   String get editorHighlightTip =>
@@ -567,10 +520,11 @@ class AppLocalizationsId extends AppLocalizations {
   String get fileDirGone => 'Folder ini sudah tidak ada';
 
   @override
-  String get fileDirGoneTip => 'Sudah dihapus atau diganti nama';
+  String get fileDirGoneTip =>
+      'Folder ini dihapus atau diganti nama. Gunakan bilah di bawah untuk kembali, ke beranda, atau menuju tempat lain.';
 
   @override
-  String get fullScreen => 'Layar penuh';
+  String get fullScreen => 'Mode Layar Penuh';
 
   @override
   String get fullScreenJitter => 'Jitter layar penuh';
@@ -581,6 +535,9 @@ class AppLocalizationsId extends AppLocalizations {
   @override
   String get fullScreenTip =>
       'Apakah mode layar penuh diaktifkan ketika perangkat diputar ke modus lanskap? Opsi ini hanya berlaku untuk tab server.';
+
+  @override
+  String get githubGist => 'GitHub Gist';
 
   @override
   String get githubGistIdOptional => 'ID Gist (opsional)';
@@ -602,6 +559,9 @@ class AppLocalizationsId extends AppLocalizations {
       'Sesuaikan tab mana yang muncul di halaman beranda dan urutannya';
 
   @override
+  String get homeWidgetUrlConfig => 'Konfigurasi URL Widget Rumah';
+
+  @override
   String get ignoreCert => 'Abaikan sertifikat';
 
   @override
@@ -609,69 +569,29 @@ class AppLocalizationsId extends AppLocalizations {
 
   @override
   String get macDmgBody =>
-      'App Store mengharuskan aplikasi ini berjalan dalam sandbox, dan sandbox tidak bisa membuka terminal. Versi DMG bisa.\n\nVersi App Store mungkin berhenti diperbarui.';
+      'App Store mewajibkan aplikasi ini berjalan dalam sandbox, dan proses dalam sandbox tidak bisa membuka pseudo-terminal. Karena itu versi App Store tidak punya terminal di Mac ini dan tidak bisa menjalankan snippet atau perintah agent di sini. Versi DMG adalah aplikasi yang sama, ditandatangani tanpa sandbox, dan memilikinya.\n\nVersi App Store tetap berfungsi dan tetap diperbarui. Nanti pembaruannya bisa berhenti.\n\nKedua versi menyimpan datanya di tempat berbeda. Versi DMG menyalinnya saat pertama dijalankan, jadi server, kunci, dan riwayat ikut pindah. Jika gagal, akan diberitahukan, dan Anda bisa pindah lewat berkas cadangan (Cadangan, di pengaturan).';
 
   @override
   String get macDmgImportDenied =>
-      'macOS tidak mengizinkan membaca data versi sebelumnya';
+      'macOS tidak mengizinkan pembacaan data versi yang terpasang sebelumnya. Berikan Akses Disk Penuh lalu buka ulang aplikasi, atau ekspor cadangan di sana dan pulihkan di sini.';
 
   @override
-  String get macDmgImported => 'Data versi sebelumnya diimpor';
+  String get macDmgImported =>
+      'Data versi yang terpasang sebelumnya telah diimpor.';
 
   @override
-  String get macDmgImportFailed => 'Tidak bisa membaca data versi sebelumnya';
+  String get macDmgImportFailed =>
+      'Tidak bisa membaca data versi yang terpasang sebelumnya. Ekspor cadangan di sana, lalu pulihkan di sini.';
 
   @override
   String get macDmgTip =>
-      'Terminal lokal dan menjalankan snippet secara lokal (versi DMG)';
+      'Terminal di Mac ini dan menjalankan snippet di sini hanya ada pada versi DMG.';
 
   @override
   String get macDmgTitle => 'Versi DMG';
 
   @override
   String get showHiddenFiles => 'Tampilkan berkas tersembunyi';
-
-  @override
-  String get sshKeyAlgorithm => 'Algoritme';
-
-  @override
-  String get sshKeyComment => 'Komentar';
-
-  @override
-  String get sshKeyGenerate => 'Buat pasangan kunci';
-
-  @override
-  String get sshKeyGenerating => 'Membuat…';
-
-  @override
-  String sshKeyLockedFmt(String name) {
-    return 'Kunci privat [$name] belum dibuka.';
-  }
-
-  @override
-  String get sshKeyPassphraseTip =>
-      'Opsional. Kunci dengan frasa sandi disimpan terenkripsi, dan frasa itu diminta saat koneksi pertama memakai kunci ini.';
-
-  @override
-  String get sshKeyPassphraseWrong => 'Frasa sandi salah.';
-
-  @override
-  String get sshKeyPublicKey => 'Kunci publik';
-
-  @override
-  String get sshKeyPublicKeyTip =>
-      'Tambahkan baris ini ke ~/.ssh/authorized_keys di server.';
-
-  @override
-  String get sshKeyRecommended => 'Disarankan';
-
-  @override
-  String sshKeyUnlockTip(String name) {
-    return 'Masukkan frasa sandi untuk kunci privat [$name].';
-  }
-
-  @override
-  String get ungrouped => 'Tanpa grup';
 
   @override
   String get unused => 'Tidak terpakai';
@@ -692,7 +612,8 @@ class AppLocalizationsId extends AppLocalizations {
   String get unusedTaggedImages => 'Bertag tidak digunakan';
 
   @override
-  String get pruneDanglingImagesTip => 'Hanya menghapus image menggantung.';
+  String get pruneDanglingImagesTip =>
+      'Hanya hapus gambar menggantung (lapisan tanpa tag).';
 
   @override
   String get pruneUnusedImagesTip =>
@@ -743,16 +664,6 @@ class AppLocalizationsId extends AppLocalizations {
       'Jump server dan ProxyCommand tidak bisa dipakai bersamaan.';
 
   @override
-  String get noConnectionMethod => 'Atur SSH, agen monitor, atau keduanya';
-
-  @override
-  String get preferredTransport => 'Coba lebih dulu';
-
-  @override
-  String get preferredTransportTip =>
-      'Dari mana status dibaca, dan koneksi mana yang dibuka perintah lebih dulu. Yang lain tetap tersedia.';
-
-  @override
   String get keepForeground => 'Simpan Aplikasi Foreground!';
 
   @override
@@ -779,13 +690,6 @@ class AppLocalizationsId extends AppLocalizations {
       'Saat diaktifkan, input akan melalui IME biasa, yang dapat menghindari prompt keyboard aman di terminal pada beberapa sistem.';
 
   @override
-  String get linuxShellTip =>
-      'Shell yang dipakai terminal. Kosong mengembalikan /bin/sh.';
-
-  @override
-  String get linuxNetTip => 'Server DNS. Kosong mengembalikan bawaan';
-
-  @override
   String madeWithLove(Object myGithub) {
     return 'Dibuat dengan ❤️ oleh $myGithub';
   }
@@ -800,9 +704,6 @@ class AppLocalizationsId extends AppLocalizations {
   String mismatchSystem(Object system) {
     return 'Sistem tidak cocok: $system';
   }
-
-  @override
-  String get mirror => 'Mirror';
 
   @override
   String get needRestart => 'Perlu memulai ulang aplikasi';
@@ -825,6 +726,10 @@ class AppLocalizationsId extends AppLocalizations {
 
   @override
   String get noPromptAgain => 'Jangan tanya lagi';
+
+  @override
+  String get onlyOneLine =>
+      'Hanya tampilkan sebagai satu baris (dapat digulir)';
 
   @override
   String get openLastPath => 'Buka jalur terakhir';
@@ -852,100 +757,8 @@ class AppLocalizationsId extends AppLocalizations {
   }
 
   @override
-  String get bmcPowerOnAction => 'Nyalakan';
-
-  @override
-  String get bmcShutdown => 'Matikan';
-
-  @override
-  String get bmcForceOff => 'Paksa mati';
-
-  @override
-  String get restart => 'Mulai ulang';
-
-  @override
-  String get bmcPowerCycle => 'Siklus daya';
-
-  @override
-  String bmcPowerConfirm(String server, String resetType) {
-    return 'Kirim ini ke $server? Layanan akan diminta \"$resetType\"';
-  }
-
-  @override
-  String get bmcPowerDone => 'Status daya berubah';
-
-  @override
-  String get bmcPowerAccepted =>
-      'Diterima, tetapi status daya belum berubah. Operasi halus bergantung pada OS';
-
-  @override
-  String get bmcPowerUnsupported =>
-      'Layanan ini tidak mengizinkan apa pun untuk tindakan itu';
-
-  @override
-  String get bmcUnauthorized => 'BMC menolak akun ini';
-
-  @override
-  String get bmcAccountMissing => 'Tidak ada akun yang diatur untuk BMC ini';
-
-  @override
-  String get bmcPowerOn => 'Menyala';
-
-  @override
-  String get bmcPowerOff => 'Mati';
-
-  @override
-  String get bmcCertRejected =>
-      'Sertifikat ditolak — tinjau di pengaturan server';
-
-  @override
-  String get bmcNotAService => 'Tidak ada layanan Redfish di alamat ini';
-
-  @override
-  String get bmcNoSystem => 'Layanan tidak melaporkan sistem apa pun';
-
-  @override
-  String get bmcSensorsTruncated => 'Hanya sensor pertama yang ditampilkan';
-
-  @override
-  String get bmcMultipleSystems => 'Hanya sistem pertama yang ditampilkan';
-
-  @override
-  String get bmcTip =>
-      'BMC adalah komputer terpisah di motherboard, tetap terjangkau saat sistem operasi host tidak. Dikonfigurasi di sini, ia melaporkan status daya dan sensor perangkat keras saat server mati atau macet. Perlu Redfish, yang ada pada sebagian besar perangkat keras enterprise sejak sekitar 2016.';
-
-  @override
-  String get bmcCert => 'Sertifikat';
-
-  @override
-  String get bmcCertPinned => 'Ditinjau dan disematkan';
-
-  @override
-  String get bmcCertUnreviewed =>
-      'Belum ditinjau — ketuk untuk melihat sertifikat';
-
-  @override
-  String get bmcCertReview =>
-      'Sertifikat yang ditandatangani sendiri. Bandingkan sebelum menerima. Setelah itu hanya yang ini dipercaya.';
-
-  @override
-  String get bmcCertChanged => 'Sertifikat tidak cocok. Periksa.';
-
-  @override
-  String get bmcCertExpired => 'Kedaluwarsa.';
-
-  @override
-  String bmcCertWas(String fingerprint) {
-    return 'Diterima sebelumnya: $fingerprint';
-  }
-
-  @override
-  String get bmcAddrInvalid =>
-      'Alamat BMC harus berupa URL, mis. https://10.0.0.9';
-
-  @override
   String get proxyCommandSandboxed =>
-      'Build ini berjalan dalam sandbox: perintah mendapat home kosong, bukan milikmu, jadi apa pun yang membaca ~/.ssh gagal. Versi DMG tidak.';
+      'Build ini berjalan dalam sandbox: perintah melihat direktori home kosong alih-alih milik Anda, sehingga apa pun yang membaca ~/.ssh (ssh -W, cloudflared) gagal — sering kali sebagai batas waktu yang menyebut host yang salah. Perintah yang hanya memakai jaringan tetap berfungsi. Versi DMG tidak punya sandbox.';
 
   @override
   String privateKeyFileUnreadable(String path, String reason) {
@@ -1053,26 +866,16 @@ class AppLocalizationsId extends AppLocalizations {
   String get remotePath => 'Jalur jarak jauh';
 
   @override
-  String rootfsUpdateTip(
-    Object distro,
-    Object installed,
-    Object latest,
-    Object pm,
-  ) {
-    return '$distro $installed terpasang, ada $latest. Pembaruan mengganti seluruh kontainer: data $pm hilang';
-  }
-
-  @override
-  String linuxSystemInUse(Object name) {
-    return 'Tutup terminal di $name sebelum menghapusnya';
+  String rootfsUpdateTip(Object installed, Object latest) {
+    return 'Alpine $installed terpasang dan $latest tersedia. Memperbarui akan mengunduhnya lagi dan mengganti kontainer: semua yang dipasang di dalamnya dengan apk akan hilang. Jika dilewati, yang sekarang tetap berfungsi.';
   }
 
   @override
   String get rootfsSubtitle => 'Lingkungan pengguna Linux di perangkat ini';
 
   @override
-  String rootfsInstallTip(Object distro, Object version, Object size) {
-    return 'Mengunduh $distro $version (sekitar $size MB) dan mengekstraknya di perangkat ini.';
+  String rootfsInstallTip(Object version) {
+    return 'Unduh Alpine Linux $version (sekitar 3 MB) dan ekstrak di perangkat ini. Ini memberi aplikasi ini shell dengan manajer paket, dan dapat dihapus kapan saja.';
   }
 
   @override
@@ -1083,7 +886,7 @@ class AppLocalizationsId extends AppLocalizations {
 
   @override
   String get serverFilesUnavailableTip =>
-      'Perlu SSH ke server ini, atau server_box_monitor terpasang dengan API file aktif.';
+      'Dapat dijangkau melalui SSH server ini, atau melalui agen monitor dengan API berkasnya diaktifkan.';
 
   @override
   String get back => 'Kembali';
@@ -1093,6 +896,9 @@ class AppLocalizationsId extends AppLocalizations {
 
   @override
   String get homeDir => 'Beranda';
+
+  @override
+  String get selectItem => 'Pilih';
 
   @override
   String selected(Object count) {
@@ -1116,14 +922,14 @@ class AppLocalizationsId extends AppLocalizations {
 
   @override
   String get shareServerRiskTip =>
-      'Kode QR ini memuat pengaturan koneksi dalam teks biasa. Siapa pun yang memindai atau memotretnya bisa terhubung.';
+      'Kode QR ini berisi pengaturan koneksi server dalam teks biasa, termasuk kata sandi. Siapa pun yang memindai atau memotretnya dapat terhubung ke server ini.';
 
   @override
   String get sftpDlPrepare => 'Bersiap untuk terhubung ...';
 
   @override
   String get sftpEditorTip =>
-      'Kosong memakai editor bawaan. Misalnya `vim` (disarankan membaca `EDITOR`).';
+      'Jika kosong, gunakan editor file bawaan aplikasi. Jika ada nilai, gunakan editor server jarak jauh, misalnya `vim` (disarankan untuk mendeteksi secara otomatis sesuai `EDITOR`).';
 
   @override
   String get sftpRmrDirSummary => 'Gunakan `rm -r` untuk menghapus dir di SFTP';
@@ -1132,22 +938,17 @@ class AppLocalizationsId extends AppLocalizations {
   String get sftpSSHConnected => 'Sftp terhubung';
 
   @override
+  String get sftp => 'SFTP';
+
+  @override
   String get sftpShowFoldersFirst => 'Folder ditampilkan lebih dulu';
-
-  @override
-  String get sftpUnavailableUseScp =>
-      'Jika host ini tidak punya subsistem SFTP, seperti banyak perangkat tertanam, ubah transfer berkasnya menjadi SCP di pengaturan server.';
-
-  @override
-  String get sshFileTransportTip =>
-      'SFTP cocok untuk perangkat masa kini. Pilih SCP untuk host lama atau tertanam yang server SSH-nya tidak punya subsistem SFTP: ia butuh perintah `scp` dan shell yang juga punya utilitas berkas umum (`find`, `stat`, `mv`, `chmod`).';
 
   @override
   String get specifyDev => 'Tentukan perangkat';
 
   @override
   String get specifyDevTip =>
-      'Trafik jaringan menghitung semua perangkat; sebutkan satu di sini';
+      'Misalnya, statistik lalu lintas jaringan secara default adalah untuk semua perangkat. Anda dapat menentukan perangkat tertentu di sini.';
 
   @override
   String get tempIsCelsiusTip =>
@@ -1208,14 +1009,24 @@ class AppLocalizationsId extends AppLocalizations {
   }
 
   @override
+  String sshHostKeyFingerprintMd5Base64(Object fingerprint) {
+    return 'Sidik jari (MD5 Base64): $fingerprint';
+  }
+
+  @override
+  String sshHostKeyFingerprintMd5Hex(Object fingerprint) {
+    return 'Sidik jari (SHA256): $fingerprint';
+  }
+
+  @override
   String get sshHostKeyType => 'Jenis kunci host SSH';
 
   @override
-  String get sshKnownHostKeys => 'Host dikenal';
+  String get sshKnownHostKeys => 'Kunci host yang dikenal';
 
   @override
   String get sshKnownHostKeysTip =>
-      'Kunci host yang sudah diterima aplikasi ini';
+      'Kunci host yang telah diterima aplikasi ini. Hapus satu agar ditanyakan lagi saat koneksi berikutnya.';
 
   @override
   String sshHostKeyNewDesc(Object serverName) {
@@ -1274,6 +1085,9 @@ class AppLocalizationsId extends AppLocalizations {
       'Sertakan tema, tata letak, editor, terminal, dan preferensi perangkat lain dalam sinkronisasi otomatis.';
 
   @override
+  String get system => 'Sistem';
+
+  @override
   String get termFontSizeTip =>
       'Pengaturan ini akan memengaruhi ukuran terminal (lebar dan tinggi). Anda dapat melakukan zoom pada halaman terminal untuk menyesuaikan ukuran font sesi saat ini.';
 
@@ -1320,49 +1134,6 @@ class AppLocalizationsId extends AppLocalizations {
   String get virtKeyHelpSFTP => 'Buka direktori saat ini di SFTP.';
 
   @override
-  String get virtKeyHelpSnippet =>
-      'Pilih sebuah snippet dan jalankan di terminal ini.';
-
-  @override
-  String get virtKeyHelpTmux => 'Berpindah antar sesi dan jendela tmux.';
-
-  @override
-  String get virtKeyIntroActions => 'Pintasan';
-
-  @override
-  String get virtKeyIntroActionsTip =>
-      'Tombol-tombol ini tidak mengetik, melainkan membuka sesuatu. Tahan salah satunya untuk membaca fungsinya.';
-
-  @override
-  String get virtKeyIntroCustomizeTip =>
-      'Di pengaturan terminal kamu bisa mengubah urutannya, atau menyembunyikan yang tidak pernah dipakai.';
-
-  @override
-  String get virtKeyIntroModifiers => 'Tombol pengubah';
-
-  @override
-  String get virtKeyIntroModifiersTip =>
-      'Ketuk satu untuk mengaktifkannya, lalu ketuk huruf di papan ketik. Berlaku untuk satu tombol itu saja.';
-
-  @override
-  String get virtKeyIntroNav => 'Navigasi';
-
-  @override
-  String get virtKeyIntroNavTip =>
-      'Tombol-tombol ini menggerakkan kursor. Tahan tombol panah untuk mengulanginya.';
-
-  @override
-  String get virtKeyIntroSelect =>
-      'Selama terminal masih bisa digulir, seret ke samping untuk memilih teks.';
-
-  @override
-  String get virtKeyRows => 'Baris yang tampil sekaligus';
-
-  @override
-  String get virtKeyRowsTip =>
-      'Sisanya berada di halaman tersendiri, digeser ke samping.';
-
-  @override
   String get waitConnection => 'Harap tunggu koneksi akan dibuat.';
 
   @override
@@ -1400,7 +1171,7 @@ class AppLocalizationsId extends AppLocalizations {
       'Emulasi Podman Docker terdeteksi. Silakan beralih ke Podman di pengaturan.';
 
   @override
-  String get betaTip =>
+  String get portForwardBeta =>
       'Fitur ini masih dalam uji beta. Fungsinya belum dijamin.';
 
   @override
@@ -1526,6 +1297,9 @@ class AppLocalizationsId extends AppLocalizations {
       'Operasi kontainer lain sedang berlangsung';
 
   @override
+  String get systemd => 'Systemd';
+
+  @override
   String processCount(int count) {
     return '$count proses';
   }
@@ -1555,18 +1329,17 @@ class AppLocalizationsId extends AppLocalizations {
 
   @override
   String get watchServersTip =>
-      'Jam mengambil sendiri dari monitor, jadi hanya server yang punya monitor bisa dipilih.';
+      'Jam tangan membaca server ini langsung dari agen monitor-nya, jadi hanya server yang sudah dikonfigurasi monitor yang bisa dipilih.';
 
   @override
   String get watchNoMonitorServer =>
       'Tidak ada server dengan agen monitor terkonfigurasi';
 
   @override
-  String get legacyStatusGoneTitle => 'URL status tidak berfungsi lagi';
+  String get watchLegacyUrls => 'URL status lama';
 
   @override
-  String get legacyStatusGoneBody =>
-      'Aplikasi jam tangan dan widget layar utama membaca alamat `/status` yang diketik manual. Endpoint itu sudah dihapus: ia hanya bisa melaporkan nilai saat ini sebagai teks, itulah sebabnya keduanya tidak pernah bisa menampilkan grafik.\n\nSekarang keduanya membaca API monitor yang terautentikasi, sehingga bisa menggambar tren dan tetap selaras dengan aplikasi sendiri. Atur server sekali di aplikasi, dan setiap jam tangan dan widget akan mengambilnya.';
+  String get accessoryWidgetServer => 'Server widget layar kunci';
 
   @override
   String get systemdMissing => 'Tidak ada systemd di server ini';
@@ -1619,51 +1392,14 @@ class AppLocalizationsId extends AppLocalizations {
 
   @override
   String get agentLocalExecTip =>
-      'Membiarkan Agent bekerja di mesin yang menjalankan ServerBox. Perintah hanya-baca pun ditinjau';
+      'Memungkinkan Agent bekerja di mesin tempat ServerBox berjalan, bukan hanya di server. Tidak ada yang berjalan tanpa pengawasan di sini: setiap perintah perlu ditinjau.';
 
   @override
   String get agentLocalExecRootfsTip =>
-      'Membiarkan Agent bekerja lokal, terbatas pada kontainer Linux yang dipasang ServerBox';
+      'Memungkinkan Agent bekerja di perangkat ini, di dalam kontainer Alpine Linux yang dipasang ServerBox. Ia tidak dapat melihat sistem berkas perangkat itu sendiri, data aplikasi, atau berkas Anda. Setiap perintah tetap perlu ditinjau.';
 
   @override
   String macDmgImportedPartly(String path) {
     return 'Data dari versi yang terpasang sebelumnya telah diimpor. Berkas unduhan tetap berada di $path.';
   }
-
-  @override
-  String get bmcAccount => 'Akun';
-
-  @override
-  String get bmcAccountUnset =>
-      'Belum dipilih — ketuk untuk memilih atau membuat';
-
-  @override
-  String bmcAccountShared(int count) {
-    return 'Dipakai oleh $count server';
-  }
-
-  @override
-  String get bmcAccounts => 'Akun BMC';
-
-  @override
-  String get bmcAccountSharedTip =>
-      'Mengubahnya mengubah yang dipakai semuanya.';
-
-  @override
-  String bmcAccountInUse(int count) {
-    return '$count server memakainya. Alamatnya tetap, akunnya hilang.';
-  }
-
-  @override
-  String get bmcStaleWrite => 'BMC berubah saat proses tulis. Coba lagi.';
-
-  @override
-  String get send => 'Kirim';
-
-  @override
-  String get privacyBlur => 'Privasi latar belakang';
-
-  @override
-  String get privacyBlurTip =>
-      'Sembunyikan konten aplikasi di pengalih aplikasi';
 }

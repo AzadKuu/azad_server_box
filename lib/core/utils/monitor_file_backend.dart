@@ -18,24 +18,25 @@ import 'package:server_box/data/provider/server/monitor_http.dart';
 /// about what a path means is how they stop agreeing, and the one that matters
 /// is the end holding the filesystem.
 class MonitorFileBackend implements FileBackend {
-  /// Acquires a shared session for [monitor].
+  /// Opens a session of its own for [monitor].
   ///
-  /// File backends with the same credential share login, roots discovery, and
-  /// Dio's connection pool. The reference-counted session is still separate
-  /// from status polling, whose lifetime belongs to `ServerNotifier`.
-  MonitorFileBackend(MonitorHttpCredential monitor, {bool permissions = false})
-    : _permissions = permissions,
-      _shared = _SharedMonitorClient.acquire(monitor);
+  /// Owns it, unlike [SftpFileBackend], which wraps a connection somebody else
+  /// holds. There is nothing to share with: the polling client's session
+  /// belongs to the `ServerNotifier` and outlives any browser, and coupling a
+  /// browse that stalls to the card that says the machine is up would be worse
+  /// than one extra login.
+  MonitorFileBackend(MonitorHttpCredential monitor)
+    : _client = MonitorHttpClient(monitor);
 
-  final _SharedMonitorClient _shared;
-  final bool _permissions;
-  bool _closed = false;
-
-  MonitorHttpClient get _client => _shared.client;
+  final MonitorHttpClient _client;
 
   @override
-  FileBackendTraits get traits => FileBackendTraits(
-    permissions: _permissions,
+  FileBackendTraits get traits => const FileBackendTraits(
+    // Reported per entry and settable, on the platforms that have them. The
+    // agent answers 501 where they do not, which is a failure the browser
+    // shows rather than a menu entry it hides — the trait is one answer for
+    // the whole backend and the agent may be serving any platform.
+    permissions: true,
     symlinks: true,
     // Nowhere to escalate to. The agent runs as one account and offers no way
     // to ask for another; what it will not do, it will not do.
@@ -92,19 +93,11 @@ class MonitorFileBackend implements FileBackend {
   }
 
   @override
-  Future<void> write(
-    String path,
-    Stream<List<int>> data, {
-    int? size,
-    // Never called: the staging happens inside the agent, under a name this
-    // side is not told and could not delete anyway.
-    void Function(String staging)? onStaging,
-    Stream<List<int>> Function()? replayData,
-  }) =>
+  Future<void> write(String path, Stream<List<int>> data, {int? size}) =>
       // Atomic on the agent's side: it stages beside the destination and
       // renames, which is the same contract the other two backends keep and
       // the reason this one does not have to stage anything itself.
-      _client.fsWrite(path, data, size: size, replayData: replayData);
+      _client.fsWrite(path, data, size: size);
 
   /// Closes the HTTP session, and with it the connection pool behind it.
   ///
@@ -112,11 +105,7 @@ class MonitorFileBackend implements FileBackend {
   /// a `Dio` left open holds sockets, and one per file browser and one per
   /// transfer adds up on a device that keeps the app running.
   @override
-  Future<void> close() async {
-    if (_closed) return;
-    _closed = true;
-    _shared.release();
-  }
+  Future<void> close() async => _client.dispose();
 
   static FileEntry _entryOf(Map<String, dynamic> json) {
     final modified = json['modified'];
@@ -137,32 +126,5 @@ class MonitorFileBackend implements FileBackend {
       mode: (json['mode'] as num?)?.toInt(),
       linkTarget: json['link_target'] as String?,
     );
-  }
-}
-
-final class _SharedMonitorClient {
-  _SharedMonitorClient(this.monitor) : client = MonitorHttpClient(monitor);
-
-  static final _clients = <MonitorHttpCredential, _SharedMonitorClient>{};
-
-  final MonitorHttpCredential monitor;
-  final MonitorHttpClient client;
-  int _references = 0;
-
-  static _SharedMonitorClient acquire(MonitorHttpCredential monitor) {
-    final shared = _clients.putIfAbsent(
-      monitor,
-      () => _SharedMonitorClient(monitor),
-    );
-    shared._references++;
-    return shared;
-  }
-
-  void release() {
-    if (_references == 0) return;
-    _references--;
-    if (_references != 0) return;
-    if (identical(_clients[monitor], this)) _clients.remove(monitor);
-    client.dispose();
   }
 }

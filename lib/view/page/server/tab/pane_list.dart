@@ -23,12 +23,8 @@ extension _PaneList on _ServerPageState {
         tooltip: libL10n.add,
         child: const Icon(Icons.add),
       ),
-      // With nothing selected there is no detail pane, so `AdaptivePanes`
-      // hands this the whole width: what a wide window shows when the tab is
-      // empty is this, not a rail beside something. So the same mark as the
-      // narrow layout, rather than a rail's worth of text.
       body: filtered.isEmpty
-          ? const EmptyPane(icon: BoxIcons.bx_server)
+          ? Center(child: Text(libL10n.empty, textAlign: TextAlign.center))
           : ListView.builder(
               controller: _scrollController,
               // Room at the bottom for the add button to float over.
@@ -54,11 +50,6 @@ extension _PaneList on _ServerPageState {
   }) {
     final tile = SideBarTile(
       title: srv.spi.name,
-      // The distribution, in the column the rail keeps for a mark. A list of
-      // servers reads faster without the *same* icon down the side of it — the
-      // reason `icon` is left null here — but this one differs per row and is
-      // the thing being scanned for.
-      leading: distIcon(srv.spi.id, size: 17),
       selected: selected,
       // The same mark the terminal rail uses for a running shell: this one is
       // connected and has something to show.

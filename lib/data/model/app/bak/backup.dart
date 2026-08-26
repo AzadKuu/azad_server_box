@@ -3,16 +3,10 @@ import 'dart:convert';
 import 'package:fl_lib/fl_lib.dart';
 import 'package:json_annotation/json_annotation.dart';
 import 'package:logging/logging.dart';
-import 'package:server_box/core/utils/ssh_key_unlock.dart';
 import 'package:server_box/data/model/server/private_key_info.dart';
 import 'package:server_box/data/model/server/server_private_info.dart';
 import 'package:server_box/data/model/server/snippet.dart';
 import 'package:server_box/data/res/store.dart';
-import 'package:server_box/data/store/migrations/m008_settings_fixups.dart';
-import 'package:server_box/data/store/migrations/m009_grouped_settings.dart';
-import 'package:server_box/data/store/migrations/m011_virt_key_rows.dart';
-import 'package:server_box/data/store/migrations/m013_virt_key_names.dart';
-import 'package:server_box/data/store/setting.dart';
 
 part 'backup.g.dart';
 
@@ -72,48 +66,18 @@ class Backup implements Mergeable {
     // for the entire file, so there is nothing to compare a single record
     // against. Ordered by what references what — a server names a private key,
     // and a snippet names a server.
-    // Every stored key is about to be replaced by whatever the file holds, so
-    // nothing opened this run describes what is in the database any more. A
-    // stale entry here is not a stale display — it is a connection that goes on
-    // authenticating with the key the restore just removed.
-    PrivateKeyUnlock.forgetAll();
-
-    final settings_ = settings;
-
     SqliteStore.transact(() {
       Stores.key.replaceAll(keys);
       Stores.server.replaceAll(spis);
       Stores.snippet.replaceAll(snippets);
       Stores.container.restoreLegacyMap(container);
-      _restoreInto(Stores.history, history);
+      _restoreInto(Stores.history, history, force: force);
 
+      final settings_ = settings;
       if (settings_ != null) {
-        _restoreInto(
-          Stores.setting,
-          settings_,
-          deviceLocal: SettingStore.deviceLocalKeys,
-        );
+        _restoreInto(Stores.setting, settings_, force: force);
       }
     });
-
-    // Outside the transaction, and for the reason the v2 path does it too: a
-    // restore is neither a launch nor a version bump, so nothing else will
-    // look at what just landed. This format predates the grouped settings
-    // entirely, so its settings map is always the old per-field keys — and,
-    // being older still, the pre-`virtKeyRows` switch and the `int`
-    // `sshConnectionMode` as well.
-    //
-    // Only when the file brought settings, for the reason [BackupV2.merge]
-    // records: these convert what arrived, and a file carrying none leaves the
-    // local settings alone.
-    //
-    // In version order, which is the order the migrator would have run them in.
-    if (settings_ != null && settings_.isNotEmpty) {
-      await const SettingsFixupsMigration().apply();
-      await const GroupedSettingsMigration().apply();
-      await const VirtKeyRowsMigration().apply();
-      await const VirtKeyNamesMigration().apply();
-    }
 
     Provider.reload();
     RNodes.app.notify();
@@ -127,16 +91,9 @@ class Backup implements Mergeable {
 
 /// Writes one section of a backup into the key-value store it came from.
 ///
-/// The store is also made to *stop* holding whatever the backup does not,
-/// which is what makes a delete on one device reach another. Unconditionally,
-/// including on a forced restore: `Mergeable.mergeStore` — the v2 path — takes
-/// a local-only key out when `force` is set, and skipping it here left a
-/// forced restore of an older file holding preferences that file does not
-/// have, which is not the state the user asked to go back to.
-///
-/// [deviceLocal] names keys this device answers for itself; they are neither
-/// written from the backup nor deleted for being absent from one. See
-/// [SettingStore.deviceLocalKeys].
+/// [force] replaces what is there; otherwise the store is also made to *stop*
+/// holding whatever the backup does not, which is what makes a delete on one
+/// device reach another.
 ///
 /// Nothing here stamps `lastUpdateTs`, which is what writing straight to the
 /// Hive box used to achieve. A restore is not an edit: marking every restored
@@ -150,14 +107,14 @@ class Backup implements Mergeable {
 void _restoreInto(
   SqliteStore store,
   Map<String, Object?> incoming, {
-  Set<String> deviceLocal = const {},
+  required bool force,
 }) {
-  for (final key in store.keys().difference(incoming.keys.toSet())) {
-    if (deviceLocal.contains(key)) continue;
-    store.remove(key, updateLastUpdateTsOnRemove: false);
+  if (!force) {
+    for (final key in store.keys().difference(incoming.keys.toSet())) {
+      store.remove(key, updateLastUpdateTsOnRemove: false);
+    }
   }
   for (final entry in incoming.entries) {
-    if (deviceLocal.contains(entry.key)) continue;
     final value = entry.value;
     if (value == null) {
       store.remove(entry.key, updateLastUpdateTsOnRemove: false);

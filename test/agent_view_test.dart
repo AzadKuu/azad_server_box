@@ -28,7 +28,7 @@ class _FixedSession extends AgentSession {
   final AgentSessionState _state;
 
   @override
-  AgentSessionState build(String scope) => _state;
+  AgentSessionState build() => _state;
 }
 
 void main() {
@@ -95,7 +95,7 @@ void main() {
       tester,
       locale: locale,
       overrides: [
-        globalAgentSessionProvider.overrideWith(() => _FixedSession(state)),
+        agentSessionProvider.overrideWith(() => _FixedSession(state)),
       ],
       child: const AgentConversationView(compact: true, showHeader: false),
     );
@@ -141,7 +141,7 @@ void main() {
         tester,
         locale: const Locale('en'),
         overrides: [
-          globalAgentSessionProvider.overrideWith(() => _FixedSession(state)),
+          agentSessionProvider.overrideWith(() => _FixedSession(state)),
         ],
         child: const AgentConversationView(compact: true, showHeader: false),
       );
@@ -189,7 +189,7 @@ void main() {
         locale: const Locale('en'),
         surface: Size(width, 900),
         overrides: [
-          globalAgentSessionProvider.overrideWith(
+          agentSessionProvider.overrideWith(
             () => _FixedSession(
               AgentSessionState(
                 protocol: AskAiProtocol.chatCompletions,

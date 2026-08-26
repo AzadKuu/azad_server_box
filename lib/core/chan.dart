@@ -1,5 +1,6 @@
 import 'package:fl_lib/fl_lib.dart';
 import 'package:flutter/services.dart';
+import 'package:server_box/data/model/server/server_private_info.dart';
 import 'package:server_box/data/res/misc.dart';
 import 'package:server_box/data/res/store.dart';
 
@@ -21,22 +22,15 @@ abstract final class MethodChans {
     }
   }
 
-  /// Puts the Android process in the foreground, so the system stops treating
-  /// it as cached and freezing it (#662, #1287).
-  ///
-  /// Ungated. It used to return here unless `fgService` was true — a setting
-  /// whose switch was commented out of the Android settings page and then
-  /// deleted with it, so it was false for every install and both of these did
-  /// nothing at all. What kept the service alive instead was [updateSessions],
-  /// which starts it as a side effect; the moment the session list went empty
-  /// that side effect went the other way and the process lost its foreground
-  /// status with nothing able to give it back. Whether the service is wanted
-  /// is `TermSessionManager`'s decision, and it is the only caller.
+  /// Issue #662
   static void startService() {
+    if (Stores.setting.fgService.fetch() != true) return;
     _channel.invokeMethod('startService');
   }
 
+  /// Issue #662
   static void stopService() {
+    if (Stores.setting.fgService.fetch() != true) return;
     _channel.invokeMethod('stopService');
   }
 
@@ -50,107 +44,31 @@ abstract final class MethodChans {
     }
   }
 
-  /// Hand the home-screen widgets the current monitor server list and a
-  /// read-only credential for each.
+  /// Point the iOS lock-screen accessory widget at a server's Go-compat
+  /// `/status` URL, or clear it with `null`.
   ///
-  /// The native side splits the payload: the list goes to a container the
-  /// widget process reads directly (the iOS App Group, Android's shared
-  /// preferences), and every `token` is moved into the platform credential
-  /// store instead — see `WidgetSync` for why. It is a full replacement, so a
-  /// server absent from [payload] has its stored token dropped as well.
-  static Future<void> publishWidgetServers(String payload) async {
-    if (!isIOS && !isAndroid) return;
-    await _channel.invokeMethod('publishWidgetServers', payload);
-  }
-
-  /// Which servers the native side currently holds a widget token for, and
-  /// until when — as JSON, `[{"id","endpoint","expiresAt"}]`.
-  ///
-  /// Never the token itself. The renewal decision needs the endpoint it
-  /// belongs to and its deadline, and carrying the credential back across the
-  /// channel to answer that would undo the point of storing it natively.
-  ///
-  /// Answers from the *platform*, not from a copy kept here, because those two
-  /// come apart exactly where it matters: a reinstall empties the Keychain
-  /// while a restored backup refills this app's own database, and a renewal
-  /// decision made from the latter would skip every server whose credential no
-  /// longer exists.
-  static Future<String?> widgetTokenState() async {
-    if (!isIOS && !isAndroid) return null;
-    return await _channel.invokeMethod<String>('widgetTokenState');
-  }
-
-  /// Last pair pushed by [setIslandBrandColors], so that rebuilding the theme —
-  /// which happens on every `MaterialApp` build — does not cross the channel
-  /// each time.
-  static (int, int)? _islandBrandColors;
-
-  /// Colors for the app name drawn behind the Dynamic Island, as ARGB.
-  ///
-  /// Follows the theme rather than being fixed, so the badge in a screenshot
-  /// matches the app the screenshot is of.
-  static Future<void> setIslandBrandColors(int bg, int fg) async {
+  /// The widget reads this out of the App Group container, which no Dart code
+  /// ever wrote — so every install has been showing "url is nil" on the
+  /// accessory families since they were added.
+  static Future<void> setAccessoryWidgetUrl(String? url) async {
     if (!isIOS) return;
-    if (_islandBrandColors == (bg, fg)) return;
-    _islandBrandColors = (bg, fg);
     try {
-      await _channel.invokeMethod('setIslandBrandColors', {'bg': bg, 'fg': fg});
+      await _channel.invokeMethod('setAccessoryWidgetUrl', url);
     } catch (e, s) {
-      _islandBrandColors = null;
-      Loggers.app.warning('Failed to set island brand colors', e, s);
+      Loggers.app.warning('Failed to set accessory widget url', e, s);
     }
   }
 
-  /// Tell the native side whether to cover the app once it leaves the
-  /// foreground, hiding its content from the app switcher.
+  /// Re-derive the accessory widget's URL from the chosen server.
   ///
-  /// What "cover" means differs by platform, and deliberately so. iOS lays a
-  /// real blur over the Flutter window. Android sets `FLAG_SECURE` instead:
-  /// Flutter draws into a `SurfaceView` that `RenderEffect` cannot reach, and
-  /// anything that has to render a frame races the system's recents capture,
-  /// which the flag does not.
-  ///
-  /// Pushed on change *and* at launch: the native side answers this from its
-  /// own persisted copy, which a reinstall or a restored backup leaves saying
-  /// something different from the (synced) settings store.
-  ///
-  /// Answers whether the native side took it, rather than throwing, so that the
-  /// launch-time push can ignore a failure while the switch does not. Storing a
-  /// preference the platform never received would leave the user told they are
-  /// covered when they are not.
-  static Future<bool> setPrivacyBlur(bool enabled) async {
-    if (!isIOS && !isAndroid) return true;
-    try {
-      await _channel.invokeMethod('setPrivacyBlur', enabled);
-      return true;
-    } catch (e, s) {
-      Loggers.app.warning('Failed to set privacy blur', e, s);
-      return false;
-    }
-  }
-
-  /// Hold the cover in place after the app comes forward, until Flutter has
-  /// decided whether a biometric lock is coming.
-  ///
-  /// Without it the cover comes off the moment the app is frontmost, and the
-  /// real UI is on screen for however many frames it takes Flutter to hear
-  /// about the lifecycle change at all.
-  ///
-  /// Cleared just before the lock screen is pushed — on iOS the cover is a view
-  /// over the whole Flutter window, so it would otherwise hide that screen
-  /// rather than protect it.
-  static bool? _privacyBlurLocked;
-
-  static Future<void> setPrivacyBlurLocked(bool locked) async {
-    if (!isIOS && !isAndroid) return;
-    if (_privacyBlurLocked == locked) return;
-    _privacyBlurLocked = locked;
-    try {
-      await _channel.invokeMethod('setPrivacyBlurLocked', locked);
-    } catch (e, s) {
-      _privacyBlurLocked = null;
-      Loggers.app.warning('Failed to set privacy blur lock', e, s);
-    }
+  /// Run at launch as well as on change: the App Group container goes away
+  /// with the app, while the choice lives in the (backed up, synced) settings
+  /// store, so a reinstall has to re-publish it.
+  static Future<void> syncAccessoryWidgetUrl() async {
+    if (!isIOS) return;
+    final id = Stores.setting.accessoryWidgetServerId.fetch();
+    final spi = id.isEmpty ? null : Stores.server.fetchOneRaw(id);
+    await setAccessoryWidgetUrl(spi?.monitorStatusUrl);
   }
 
   /// Update Android foreground service notifications for SSH sessions
@@ -162,37 +80,6 @@ abstract final class MethodChans {
       await _channel.invokeMethod('updateSessions', payload);
     } catch (e, s) {
       Loggers.app.warning('Failed to update Android sessions', e, s);
-    }
-  }
-
-  /// Whether Android will let this app post notifications.
-  ///
-  /// Read by the settings page rather than acted on: without the permission
-  /// there is no foreground service, and without that the system freezes the
-  /// process as soon as it is backgrounded — so `bgRun` is a switch that cannot
-  /// keep its promise, and saying nothing about it leaves the user with a
-  /// connection that drops for no reason they can see (#1287).
-  ///
-  /// True off Android, where the question does not arise.
-  static Future<bool> notificationsAllowed() async {
-    if (!isAndroid) return true;
-    try {
-      return await _channel.invokeMethod('notificationsAllowed') == true;
-    } catch (e, s) {
-      Loggers.app.warning('Failed to read the notification permission', e, s);
-      // Assumed granted: a failure here is this app's, and reporting it as the
-      // user's problem would send them to a settings page to fix nothing.
-      return true;
-    }
-  }
-
-  /// Opens this app's notification settings, for the case above.
-  static Future<void> openNotificationSettings() async {
-    if (!isAndroid) return;
-    try {
-      await _channel.invokeMethod('openNotificationSettings');
-    } catch (e, s) {
-      Loggers.app.warning('Failed to open the notification settings', e, s);
     }
   }
 
@@ -237,11 +124,9 @@ abstract final class MethodChans {
   /// Currently handles:
   /// - `disconnectSession` with argument map {id: string}
   /// - `stopAllConnections` with no arguments
-  /// - `notificationPermissionGranted` with no arguments
   static void registerHandler(
     Future<void> Function(String id) onDisconnect, [
     VoidCallback? onStopAll,
-    VoidCallback? onNotificationPermissionGranted,
   ]) {
     _channel.setMethodCallHandler((call) async {
       switch (call.method) {
@@ -254,14 +139,6 @@ abstract final class MethodChans {
           return;
         case 'stopAllConnections':
           onStopAll?.call();
-          return;
-        // Android asks for the permission asynchronously, so the call that
-        // triggered the prompt has already been refused by the time the user
-        // answers it. This is the only edge that says the answer was yes, and
-        // without acting on it the foreground service stays stopped until
-        // something else happens to sync — see [startService].
-        case 'notificationPermissionGranted':
-          onNotificationPermissionGranted?.call();
           return;
         default:
           return;

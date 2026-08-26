@@ -33,8 +33,14 @@ void main() {
     });
 
     test('two ends are the same place only when both halves match', () {
-      expect(const LocalFileRef('/a/b') == const LocalFileRef('/a/b'), isTrue);
-      expect(const LocalFileRef('/a/b') == const LocalFileRef('/a/c'), isFalse);
+      expect(
+        const LocalFileRef('/a/b') == const LocalFileRef('/a/b'),
+        isTrue,
+      );
+      expect(
+        const LocalFileRef('/a/b') == const LocalFileRef('/a/c'),
+        isFalse,
+      );
     });
   });
 
@@ -45,7 +51,7 @@ void main() {
       tempDir = await Directory.systemTemp.createTemp('server-box-transfer-');
       await openTestDb();
       getIt.registerSingleton<SettingStore>(SettingStore.forTest());
-      // Building an `SshFileRef` reads keys and jump servers out of these,
+      // Building an `SftpFileRef` reads keys and jump servers out of these,
       // which is the work these tests are checking happens on this side.
       getIt.registerSingleton<ServerStore>(ServerStore.forTest());
       getIt.registerSingleton<PrivateKeyStore>(PrivateKeyStore.forTest());
@@ -53,7 +59,7 @@ void main() {
 
     tearDown(() async {
       await getIt.reset();
-      await SqliteDb.close();
+    await SqliteDb.close();
       await tempDir.delete(recursive: true);
     });
 
@@ -84,54 +90,18 @@ void main() {
       );
 
       expect(
-        FileTransfer(
-          from: monitor,
-          to: const LocalFileRef('/a/x'),
-        ).needsIsolate,
+        FileTransfer(from: monitor, to: const LocalFileRef('/a/x')).needsIsolate,
         isFalse,
       );
       expect(
-        FileTransfer(
-          from: const LocalFileRef('/a/x'),
-          to: monitor,
-        ).needsIsolate,
+        FileTransfer(from: const LocalFileRef('/a/x'), to: monitor).needsIsolate,
         isFalse,
       );
-    });
-
-    test('remote references include the configured endpoint in identity', () {
-      final oldSsh = SshFileRef.forServer(
-        spiFixture(name: 'srv', id: 'same', ip: '10.0.0.1'),
-        '/tmp/x',
-      );
-      final newSsh = SshFileRef.forServer(
-        spiFixture(name: 'srv', id: 'same', ip: '10.0.0.2'),
-        '/tmp/x',
-      );
-      final oldMonitor = MonitorFileRef.forServer(
-        const Spi(
-          name: 'agent',
-          id: 'same',
-          monitorHttp: MonitorHttpCredential(addr: 'https://10.0.0.1:3770'),
-        ),
-        '/tmp/x',
-      );
-      final newMonitor = MonitorFileRef.forServer(
-        const Spi(
-          name: 'agent',
-          id: 'same',
-          monitorHttp: MonitorHttpCredential(addr: 'https://10.0.0.2:3770'),
-        ),
-        '/tmp/x',
-      );
-
-      expect(oldSsh, isNot(newSsh));
-      expect(oldMonitor, isNot(newMonitor));
     });
 
     test('anything with SSH at either end needs one', () {
       final spi = spiFixture(name: 'srv', id: 'srv', ip: '10.0.0.1');
-      final remote = SshFileRef.forServer(spi, '/tmp/x');
+      final remote = SftpFileRef.forServer(spi, '/tmp/x');
 
       expect(
         FileTransfer(from: const LocalFileRef('/a/x'), to: remote).needsIsolate,
@@ -144,10 +114,7 @@ void main() {
       expect(
         FileTransfer(
           from: remote,
-          to: SshFileRef.forServer(
-            spiFixture(name: 'other', id: 'other', ip: '10.0.0.2'),
-            '/tmp/y',
-          ),
+          to: SftpFileRef.forServer(spiFixture(name: 'other', id: 'other', ip: '10.0.0.2'), '/tmp/y'),
         ).needsIsolate,
         isTrue,
       );
@@ -159,7 +126,7 @@ void main() {
       final destPath = '${tempDir.path}/nested/dest.bin';
       await Directory('${tempDir.path}/nested').create();
 
-      final done = Completer<bool>();
+      final done = Completer<void>();
       final status = FileTransferStatus(
         job: FileTransfer(
           from: LocalFileRef(source.path),
@@ -186,7 +153,7 @@ void main() {
       File('${tempDir.path}/src/one.txt').writeAsStringSync('hello');
       File('${tempDir.path}/src/deep/two.txt').writeAsStringSync('world');
 
-      final done = Completer<bool>();
+      final done = Completer<void>();
       final status = FileTransferStatus(
         job: FileTransfer(
           from: LocalFileRef('${tempDir.path}/src'),
@@ -209,7 +176,7 @@ void main() {
 
     test('a folder never takes the single-file fast path', () {
       final job = FileTransfer(
-        from: SshFileRef.forServer(
+        from: SftpFileRef.forServer(
           spiFixture(name: 'srv', id: 'srv', ip: '10.0.0.1'),
           '/var/log',
         ),
@@ -227,12 +194,10 @@ void main() {
       // asked. Without that, cancelling removed the row and left it running.
       await Directory('${tempDir.path}/src').create();
       for (var i = 0; i < 40; i++) {
-        File(
-          '${tempDir.path}/src/f$i.bin',
-        ).writeAsBytesSync(List<int>.filled(64 * 1024, 7));
+        File('${tempDir.path}/src/f$i.bin')
+            .writeAsBytesSync(List<int>.filled(64 * 1024, 7));
       }
 
-      final done = Completer<bool>();
       final status = FileTransferStatus(
         job: FileTransfer(
           from: LocalFileRef('${tempDir.path}/src'),
@@ -240,7 +205,6 @@ void main() {
           isDir: true,
         ),
         notifyListeners: () {},
-        completer: done,
       );
 
       // Once it is moving, pull the plug.
@@ -260,20 +224,10 @@ void main() {
       );
       // And it is not reported as a failure: the user asked for this.
       expect(status.error, isNull);
-      // Which is exactly why the completer has to say so itself. A cancelled
-      // transfer carries no error and, once cancelled, no row either — so a
-      // caller reading only those two read this as a success, renamed a
-      // staging file that was never finished over its destination, and opened
-      // an editor on a download that never arrived.
-      expect(
-        await done.future.timeout(const Duration(seconds: 5)),
-        isFalse,
-        reason: 'the completer answers whether it finished',
-      );
       // Nothing half-written left under a final name.
-      final left = Directory(
-        '${tempDir.path}/dst',
-      ).listSync().where((e) => e.path.contains('sb-part'));
+      final left = Directory('${tempDir.path}/dst')
+          .listSync()
+          .where((e) => e.path.contains('sb-part'));
       expect(left, isEmpty);
     });
 
@@ -285,8 +239,8 @@ void main() {
       File('${tempDir.path}/a').writeAsStringSync('a');
       File('${tempDir.path}/b').writeAsStringSync('b');
 
-      final firstDone = Completer<bool>();
-      final secondDone = Completer<bool>();
+      final firstDone = Completer<void>();
+      final secondDone = Completer<void>();
       final first = FileTransferStatus(
         job: FileTransfer(
           from: LocalFileRef('${tempDir.path}/a'),
@@ -365,7 +319,10 @@ void main() {
 
     test('an older agent grants nothing it was never asked about', () {
       // `/capabilities` without a `files` field at all.
-      final granted = MonitorRemoteAccess.fromJson(const {'terminal': true});
+      final granted = MonitorRemoteAccess.fromJson(const {
+        'tunnel': true,
+        'terminal': true,
+      });
 
       expect(granted.files, isFalse);
     });

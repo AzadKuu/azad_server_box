@@ -1,9 +1,11 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:fl_lib/fl_lib.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:server_box/core/extension/context/locale.dart';
+import 'package:server_box/core/utils/ohos_ime.dart';
 import 'package:server_box/data/model/app/tab.dart';
 import 'package:server_box/data/model/server/monitor_remote_access.dart';
 import 'package:server_box/data/model/server/server_private_info.dart';
@@ -14,6 +16,7 @@ import 'package:server_box/data/provider/server/single.dart';
 import 'package:server_box/data/res/terminal.dart';
 import 'package:server_box/data/ssh/terminal_session.dart';
 import 'package:server_box/data/ssh/terminal_source.dart';
+import 'package:xterm/core.dart';
 import 'package:xterm/ui.dart' hide TerminalThemes;
 
 /// Runs [snippet] on [spi] in a terminal, without leaving the page.
@@ -206,8 +209,9 @@ class _SnippetRunView extends StatefulWidget {
   State<_SnippetRunView> createState() => _SnippetRunViewState();
 }
 
-class _SnippetRunViewState extends State<_SnippetRunView> {
-  late final _controller = TerminalController();
+class _SnippetRunViewState extends State<_SnippetRunView>
+    with TickerProviderStateMixin {
+  late final _controller = TerminalController(vsync: this);
   final _focusNode = FocusNode();
 
   TerminalSession get _sess => widget.session;
@@ -222,6 +226,11 @@ class _SnippetRunViewState extends State<_SnippetRunView> {
   @override
   void initState() {
     super.initState();
+    if (Platform.operatingSystem == 'ohos') {
+      OhosIme.setBackspaceHandler(
+        () => _sess.terminal.keyInput(TerminalKey.backspace),
+      );
+    }
     _sess.onForegroundDone = _onDone;
     unawaited(_run());
   }
@@ -237,6 +246,9 @@ class _SnippetRunViewState extends State<_SnippetRunView> {
     }
     _controller.dispose();
     _focusNode.dispose();
+    if (Platform.operatingSystem == 'ohos') {
+      OhosIme.setBackspaceHandler(null);
+    }
     super.dispose();
   }
 

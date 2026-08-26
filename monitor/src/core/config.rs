@@ -4,7 +4,7 @@ use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::env;
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
@@ -87,32 +87,6 @@ pub struct ServerConfig {
 pub struct TlsConfig {
     pub cert_path: String,
     pub key_path: String,
-}
-
-#[derive(Default)]
-struct EnvOverrides {
-    database_url: Option<String>,
-    host: Option<String>,
-    port: Option<String>,
-    tls_cert: Option<String>,
-    tls_key: Option<String>,
-    jwt_secret: Option<String>,
-    cors_origins: Option<String>,
-}
-
-impl EnvOverrides {
-    fn read() -> Self {
-        let value = |name| env::var(name).ok().filter(|s| !s.is_empty());
-        Self {
-            database_url: value("DATABASE_URL"),
-            host: value("SBM_HOST"),
-            port: value("SBM_PORT"),
-            tls_cert: value("SBM_TLS_CERT"),
-            tls_key: value("SBM_TLS_KEY"),
-            jwt_secret: value("JWT_SECRET"),
-            cors_origins: value("SBM_CORS_ORIGINS"),
-        }
-    }
 }
 
 /// Stated once, here, rather than at each of the places that used to build a
@@ -271,26 +245,10 @@ pub struct DataRetentionConfig {
     pub metrics_days: u32,
     pub alerts_days: u32,
     pub cleanup_interval_hours: u32,
-    /// Hard cap on live SQLite pages; oldest time-series rows are dropped
-    /// until the live data fits (0 disables the cap)
+    /// Hard cap on the SQLite file size; oldest time-series rows are dropped
+    /// until the database fits (0 disables the cap)
     #[serde(default = "default_max_db_size_mb")]
     pub max_db_size_mb: u64,
-}
-
-impl DataRetentionConfig {
-    /// A zero duration makes Tokio's interval tick continuously, turning
-    /// retention into a database-consuming busy loop.
-    pub fn validate(&self) -> std::result::Result<(), String> {
-        if self.metrics_days < 1 {
-            Err("data_retention.metrics_days must be at least 1".to_string())
-        } else if self.alerts_days < 1 {
-            Err("data_retention.alerts_days must be at least 1".to_string())
-        } else if self.cleanup_interval_hours < 1 {
-            Err("data_retention.cleanup_interval_hours must be at least 1".to_string())
-        } else {
-            Ok(())
-        }
-    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -339,18 +297,16 @@ impl Config {
             
             // Convert from Go format if needed
             config.normalize()?;
-            config.apply_env_overrides()?;
-            config.validate()?;
+            config.apply_env_overrides();
             return Ok(config);
-        } else if let Some(json_path) = legacy_json_path() {
-            let content = fs::read_to_string(&json_path)
-                .with_context(|| format!("Failed to read {}", json_path.display()))?;
+        } else if Path::new("config.json").exists() {
+            let content =
+                fs::read_to_string("config.json").context("Failed to read config.json")?;
             let mut config: Self = serde_json::from_str(&content).context("Failed to parse config.json")?;
 
             // Convert from Go format if needed
             config.normalize()?;
-            config.apply_env_overrides()?;
-            config.validate()?;
+            config.apply_env_overrides();
 
             // One-way migration to config.toml so subsequent starts take the
             // config.toml branch above instead of re-parsing JSON every time.
@@ -362,16 +318,12 @@ impl Config {
                 toml::to_string_pretty(&config).context("Failed to serialize migrated config")?;
             config_file::write_atomic(Path::new("config.toml"), toml_content.as_bytes())
                 .context("Failed to write migrated config.toml")?;
-            let migrated_path = json_path.with_extension("json.migrated");
-            match fs::rename(&json_path, &migrated_path) {
+            match fs::rename("config.json", "config.json.migrated") {
                 Ok(()) => tracing::info!(
-                    "Migrated {} to config.toml (old file kept as {})",
-                    json_path.display(),
-                    migrated_path.display(),
+                    "Migrated config.json to config.toml (old file kept as config.json.migrated)"
                 ),
                 Err(e) => tracing::warn!(
-                    "Migrated {} to config.toml but couldn't rename it: {e}",
-                    json_path.display(),
+                    "Migrated config.json to config.toml but couldn't rename the old file: {e}"
                 ),
             }
 
@@ -380,8 +332,7 @@ impl Config {
 
         // Create default config
         let mut config = Self::default();
-        config.apply_env_overrides()?;
-        config.validate()?;
+        config.apply_env_overrides();
 
         // Save default config as TOML
         let content =
@@ -390,20 +341,6 @@ impl Config {
             .context("Failed to write default config.toml")?;
 
         Ok(config)
-    }
-
-    /// Validates values that would otherwise be accepted by serde but make a
-    /// runtime task unsafe or unusable.
-    pub fn validate(&self) -> Result<()> {
-        if let Some(monitoring) = self.monitoring.as_ref() {
-            if monitoring.interval_seconds == 0 {
-                anyhow::bail!("monitoring.interval_seconds must be >= 1");
-            }
-            if let Some(retention) = monitoring.data_retention.as_ref() {
-                retention.validate().map_err(anyhow::Error::msg)?;
-            }
-        }
-        Ok(())
     }
 
     /// Folds the Go agent's flat keys into the sections this agent uses, then
@@ -462,12 +399,20 @@ impl Config {
                 extended: ExtendedConfig::default(),
             };
 
-            let push = self
-                .legacy
-                .pushes
-                .as_ref()
-                .map(|pushes| pushes.iter().map(normalize_go_push).collect())
-                .unwrap_or_default();
+            let push = self.legacy.pushes.as_ref().map(|go_pushes| {
+                go_pushes.iter().map(|gp| PushConfig {
+                    name: gp.name.clone(),
+                    push_type: gp.push_type.clone(),
+                    config: match gp.iface {
+                        serde_json::Value::Object(ref obj) => {
+                            obj.iter().map(|(k, v)| {
+                                (k.clone(), toml::Value::try_from(v.clone()).unwrap_or(toml::Value::String(v.to_string())))
+                            }).collect()
+                        }
+                        _ => toml::Table::new(),
+                    },
+                }).collect()
+            }).unwrap_or_default();
 
             self.server = Some(server);
             self.monitoring = Some(monitoring);
@@ -482,18 +427,6 @@ impl Config {
         // file, and leaving them in memory would give every reader two places
         // to look for the same answer.
         self.legacy = LegacyGoConfig::default();
-
-        // Older releases accepted zero here as "keep the shortest possible
-        // history". Preserve their ability to start while keeping validation
-        // strict for every other invalid duration.
-        if let Some(retention) = self
-            .monitoring
-            .as_mut()
-            .and_then(|monitoring| monitoring.data_retention.as_mut())
-        {
-            retention.metrics_days = retention.metrics_days.max(1);
-            retention.alerts_days = retention.alerts_days.max(1);
-        }
 
         Ok(())
     }
@@ -517,52 +450,20 @@ impl Config {
         self.database_url.clone().unwrap_or_else(|| "sqlite:serverbox_monitor.db".to_string())
     }
 
-    /// Environment variable overrides (take precedence over config files);
-    /// empty values count as unset.
-    fn apply_env_overrides(&mut self) -> Result<()> {
-        self.apply_overrides(EnvOverrides::read())
-    }
-
-    fn apply_overrides(&mut self, overrides: EnvOverrides) -> Result<()> {
-        if let Some(database_url) = overrides.database_url {
-            self.database_url = Some(database_url);
-        }
-        if let Some(secret) = overrides.jwt_secret {
+    /// Environment variable overrides (take precedence over config files); empty values count as unset
+    fn apply_env_overrides(&mut self) {
+        if let Some(secret) = env::var("JWT_SECRET").ok().filter(|s| !s.is_empty()) {
             self.jwt_secret = Some(secret);
         }
-
-        let mut server = self.get_server();
-        let mut server_changed = false;
-        if let Some(host) = overrides.host {
-            server.host = host;
-            server_changed = true;
-        }
-        if let Some(port) = overrides.port {
-            server.port = port
-                .parse()
-                .with_context(|| format!("Invalid SBM_PORT value {port:?}"))?;
-            server_changed = true;
-        }
-        match (overrides.tls_cert, overrides.tls_key) {
-            (Some(cert_path), Some(key_path)) => {
-                server.tls = Some(TlsConfig { cert_path, key_path });
-                server_changed = true;
-            }
-            (None, None) => {}
-            _ => anyhow::bail!("SBM_TLS_CERT and SBM_TLS_KEY must be provided together"),
-        }
-        if let Some(origins) = overrides.cors_origins {
+        if let Some(origins) = env::var("SBM_CORS_ORIGINS").ok().filter(|s| !s.is_empty()) {
+            let mut server = self.get_server();
             server.cors_allowed_origins = origins
                 .split(',')
                 .map(|o| o.trim().trim_end_matches('/').to_string())
                 .filter(|o| !o.is_empty())
                 .collect();
-            server_changed = true;
-        }
-        if server_changed {
             self.server = Some(server);
         }
-        Ok(())
     }
 
     /// JWT secret resolution; must be called once at serve startup:
@@ -589,18 +490,6 @@ impl Config {
 
         let path = self.jwt_secret_path();
         if path.exists() {
-            #[cfg(unix)]
-            {
-                use std::os::unix::fs::PermissionsExt;
-
-                let permissions = fs::metadata(&path)
-                    .with_context(|| format!("Failed to inspect {}", path.display()))?
-                    .permissions();
-                if permissions.mode() & 0o077 != 0 {
-                    fs::set_permissions(&path, fs::Permissions::from_mode(0o600))
-                        .with_context(|| format!("Failed to chmod {}", path.display()))?;
-                }
-            }
             let secret = fs::read_to_string(&path)
                 .with_context(|| format!("Failed to read {}", path.display()))?
                 .trim()
@@ -743,76 +632,6 @@ impl Config {
     }
 }
 
-/// Finds the JSON source from a pre-Rust monitor installation. The current
-/// directory wins for the short-lived Rust JSON format; Go wrote exclusively
-/// to `$HOME/.config/server_box/config.json`, while the current installer runs
-/// from a different application directory.
-fn legacy_json_path() -> Option<PathBuf> {
-    let local = PathBuf::from("config.json");
-    if local.is_file() {
-        return Some(local);
-    }
-
-    let go = env::var_os("HOME")
-        .map(PathBuf::from)?
-        .join(".config")
-        .join("server_box")
-        .join("config.json");
-    go.is_file().then_some(go)
-}
-
-/// Maps Go's per-channel JSON shape to the current flattened TOML table.
-/// Keep the fields the old implementations actually consumed rather than
-/// dropping them on import: an upgrade gets one chance to carry notification
-/// credentials and templates forward.
-fn normalize_go_push(push: &GoPush) -> PushConfig {
-    let mut config = match &push.iface {
-        serde_json::Value::Object(object) => object
-            .iter()
-            .map(|(key, value)| {
-                (
-                    key.clone(),
-                    toml::Value::try_from(value.clone())
-                        .unwrap_or_else(|_| toml::Value::String(value.to_string())),
-                )
-            })
-            .collect(),
-        _ => toml::Table::new(),
-    };
-    let push_type = match push.push_type.as_str() {
-        "server_chan" => "serverchan".to_string(),
-        other => other.to_string(),
-    };
-    // The current ServerChan/Bark encodings differ from the Go agent's. Keep
-    // this marker in the migrated file so each channel can preserve its old
-    // request shape instead of accepting the credentials then notifying a
-    // different endpoint format.
-    config.insert("legacy_go_format".to_string(), toml::Value::Boolean(true));
-
-    if push_type == "serverchan"
-        && let Some(key) = config.remove("sckey")
-    {
-        config.insert("sc_key".to_string(), key);
-    }
-    // Go's `code` was the expected HTTP status for these three channels.
-    // `code` means the same thing for iOS in the current format, so leave it
-    // there for that channel.
-    if matches!(push_type.as_str(), "webhook" | "serverchan" | "bark")
-        && let Some(code) = config.remove("code").filter(|code| code.as_integer() != Some(0))
-    {
-        config.insert("expected_http_status".to_string(), code);
-    }
-    if push_type == "ios" && config.get("code").and_then(|code| code.as_integer()) == Some(0) {
-        config.remove("code");
-    }
-
-    PushConfig {
-        name: push.name.clone(),
-        push_type,
-        config,
-    }
-}
-
 /// Parse Go-style durations, e.g. "10s", "1m", "1h"
 fn parse_go_duration(s: &str) -> Option<std::time::Duration> {
     let s = s.trim();
@@ -820,8 +639,8 @@ fn parse_go_duration(s: &str) -> Option<std::time::Duration> {
     let num: u64 = num.parse().ok()?;
     let secs = match unit {
         "s" => num,
-        "m" => num.checked_mul(60)?,
-        "h" => num.checked_mul(3600)?,
+        "m" => num * 60,
+        "h" => num * 3600,
         _ => return None,
     };
     Some(std::time::Duration::from_secs(secs))
@@ -923,96 +742,5 @@ impl Default for Config {
             ]),
             legacy: LegacyGoConfig::default(),
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn oversized_go_durations_are_rejected_without_overflowing() {
-        assert_eq!(parse_go_duration("18446744073709551615h"), None);
-        assert_eq!(parse_go_duration("18446744073709551615m"), None);
-    }
-
-    #[test]
-    fn environment_overrides_file_database_and_server_settings() {
-        let mut config = Config {
-            database_url: Some("sqlite:file.db".to_string()),
-            server: Some(ServerConfig {
-                host: "file-host".to_string(),
-                port: 3770,
-                tls: None,
-                name: None,
-                cors_allowed_origins: Vec::new(),
-                card_order: Vec::new(),
-            }),
-            ..Default::default()
-        };
-
-        config
-            .apply_overrides(EnvOverrides {
-                database_url: Some("sqlite:env.db".to_string()),
-                host: Some("127.0.0.1".to_string()),
-                port: Some("4770".to_string()),
-                tls_cert: Some("cert.pem".to_string()),
-                tls_key: Some("key.pem".to_string()),
-                ..Default::default()
-            })
-            .unwrap();
-
-        assert_eq!(config.get_database_url(), "sqlite:env.db");
-        let server = config.get_server();
-        assert_eq!(server.host, "127.0.0.1");
-        assert_eq!(server.port, 4770);
-        let tls = server.tls.unwrap();
-        assert_eq!(tls.cert_path, "cert.pem");
-        assert_eq!(tls.key_path, "key.pem");
-    }
-
-    #[test]
-    fn legacy_zero_retention_days_are_normalized() {
-        let mut config = Config::default();
-        let retention = config
-            .monitoring
-            .as_mut()
-            .and_then(|monitoring| monitoring.data_retention.as_mut())
-            .unwrap();
-        retention.metrics_days = 0;
-        retention.alerts_days = 0;
-
-        config.normalize().unwrap();
-
-        let retention = config
-            .monitoring
-            .as_ref()
-            .and_then(|monitoring| monitoring.data_retention.as_ref())
-            .unwrap();
-        assert_eq!(retention.metrics_days, 1);
-        assert_eq!(retention.alerts_days, 1);
-        config.validate().unwrap();
-    }
-
-    #[cfg(unix)]
-    #[test]
-    fn an_existing_jwt_secret_is_restricted_before_use() {
-        use std::os::unix::fs::PermissionsExt;
-
-        let dir = tempfile::tempdir().unwrap();
-        let db = dir.path().join("monitor.db");
-        let secret_path = dir.path().join("jwt.secret");
-        fs::write(&secret_path, "a".repeat(96)).unwrap();
-        fs::set_permissions(&secret_path, fs::Permissions::from_mode(0o644)).unwrap();
-
-        let mut config = Config {
-            database_url: Some(format!("sqlite:{}", db.display())),
-            jwt_secret: None,
-            ..Default::default()
-        };
-        config.resolve_jwt_secret().unwrap();
-
-        let mode = fs::metadata(secret_path).unwrap().permissions().mode();
-        assert_eq!(mode & 0o777, 0o600);
     }
 }

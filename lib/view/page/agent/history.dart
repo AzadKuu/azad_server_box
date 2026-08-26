@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:server_box/core/extension/context/locale.dart';
 import 'package:server_box/data/model/ai/agent_conversation.dart';
+import 'package:server_box/data/model/app/menu/base.dart';
 import 'package:server_box/data/provider/ai/agent_session.dart';
 import 'package:server_box/view/page/agent/view.dart';
 
@@ -52,7 +53,7 @@ class AgentHistoryPanel extends ConsumerStatefulWidget {
 }
 
 class _AgentHistoryPanelState extends ConsumerState<AgentHistoryPanel> {
-  AgentSession get _notifier => ref.read(globalAgentSessionProvider.notifier);
+  AgentSession get _notifier => ref.read(agentSessionProvider.notifier);
 
   // ------------------------------------------------------------------ actions
 
@@ -134,7 +135,7 @@ class _AgentHistoryPanelState extends ConsumerState<AgentHistoryPanel> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final session = ref.watch(globalAgentSessionProvider);
+    final session = ref.watch(agentSessionProvider);
     final conversations = session.conversations;
     final activeId = session.conversation?.id;
     // The same rail as the terminal and file tabs: a right-aligned row of
@@ -145,14 +146,8 @@ class _AgentHistoryPanelState extends ConsumerState<AgentHistoryPanel> {
     // The timestamp went with the second line, which is [SideBarTile]'s own
     // trade-off: at two lines a row a rail stops being something you can take
     // in at a glance, and the conversation beside it says when it was.
-    // Transparent rather than `colorScheme.surface`: in a column this rail
-    // shows the `Scaffold`'s background like the terminal and file rails do,
-    // and in a sheet it shows the sheet's. Both are slots `toAmoled`
-    // overrides and `colorScheme.surface` is not, so painting that here left
-    // the rail Material grey under an AMOLED theme while the page beside it
-    // went black.
     return Material(
-      type: MaterialType.transparency,
+      color: theme.colorScheme.surface,
       child: ListView(
         padding: const EdgeInsets.only(bottom: 12),
         children: [
@@ -219,34 +214,39 @@ class _AgentHistoryPanelState extends ConsumerState<AgentHistoryPanel> {
                 // being worked in clears the timeline the execution is about
                 // to append its output to — and the execution keeps going,
                 // since nothing but the stop button ends one.
-                menuEnabled: !session.isWorking,
-                onMenu: (at) => _showRowMenu(conversation, at),
+                trailing: PopupMenu<_HistoryAction>(
+                  enabled: !session.isWorking,
+                  items: [
+                    PopMenu.build(
+                      _HistoryAction.rename,
+                      Icons.drive_file_rename_outline,
+                      context.l10n.askAiRenameConversation,
+                      iconSize: _kMenuIconSize,
+                    ),
+                    PopMenu.build(
+                      _HistoryAction.delete,
+                      Icons.delete_outline,
+                      libL10n.delete,
+                      iconSize: _kMenuIconSize,
+                    ),
+                  ],
+                  onSelected: (action) async {
+                    if (action == _HistoryAction.rename) {
+                      await _rename(conversation);
+                    } else {
+                      await _delete(conversation);
+                    }
+                  },
+                ),
               ),
         ],
       ),
     );
   }
-
-  void _showRowMenu(AgentConversation conversation, Offset? at) {
-    showContextMenu(
-      context,
-      [
-        ContextMenuAction(
-          text: context.l10n.askAiRenameConversation,
-          icon: Icons.drive_file_rename_outline,
-          onTap: () => _rename(conversation),
-        ),
-        ContextMenuAction(
-          text: libL10n.delete,
-          icon: Icons.delete_outline,
-          destructive: true,
-          onTap: () => _delete(conversation),
-        ),
-      ],
-      title: conversation.title.isEmpty
-          ? context.l10n.askAiUntitledConversation
-          : conversation.title,
-      at: at,
-    );
-  }
 }
+
+/// Smaller than a menu's default 24: this menu opens from a rail barely wider
+/// than the words in it, and an icon that size takes the room the label needs.
+const _kMenuIconSize = 18.0;
+
+enum _HistoryAction { rename, delete }

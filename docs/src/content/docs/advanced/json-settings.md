@@ -3,7 +3,7 @@ title: Hidden Settings (JSON)
 description: Access advanced settings via JSON editor
 ---
 
-Some settings are not exposed in the UI but can be edited in the JSON editor.
+Some settings are hidden from the UI but accessible via JSON editor.
 
 ## Access
 
@@ -19,8 +19,7 @@ Connection timeout in seconds.
 {"timeOut": 10}
 ```
 
-**Type:** integer | **Default:** 5. The setting is stored as JSON; keep the value
-reasonable because connection code uses it as a timeout in seconds.
+**Type:** integer | **Default:** 5 | **Range:** 1-60
 
 ### recordHistory
 
@@ -40,8 +39,7 @@ Text scaling factor.
 {"textFactor": 1.2}
 ```
 
-**Type:** number | **Default:** 1.0. The setting is stored as JSON; extreme
-values may make the interface unusable.
+**Type:** double | **Default:** 1.0 | **Range:** 0.8-1.5
 
 ## Finding More Settings
 
@@ -55,13 +53,13 @@ late final settingName = propertyDefault('settingKey', defaultValue);
 ## ⚠️ Important
 
 **Before editing:**
-- **Create a backup**. Invalid settings can prevent the app from starting.
-- **Edit carefully**. The JSON must remain valid.
-- **Change one setting at a time**. Test each change.
+- **Create backup** - Wrong settings can cause app to not open
+- **Edit carefully** - JSON must be valid
+- **Change one at a time** - Test each setting
 
 ## Recovery
 
-If the app does not start after an edit:
+If app won't open after editing:
 1. Clear app data (last resort)
 2. Reinstall app
 3. Restore from backup

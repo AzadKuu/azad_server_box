@@ -6,7 +6,6 @@ import 'package:fl_lib/fl_lib.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:icons_plus/icons_plus.dart';
-import 'package:redfish/redfish.dart';
 import 'package:server_box/core/extension/context/locale.dart';
 import 'package:server_box/core/route.dart';
 import 'package:server_box/core/utils/jump_chain.dart';
@@ -14,8 +13,6 @@ import 'package:server_box/core/utils/server_dedup.dart';
 import 'package:server_box/core/utils/ssh_config.dart';
 import 'package:server_box/core/utils/sudo_password.dart';
 import 'package:server_box/data/model/app/scripts/cmd_types.dart';
-import 'package:server_box/data/model/server/bmc_cfg.dart';
-import 'package:server_box/data/model/server/bmc_credential.dart';
 import 'package:server_box/data/model/server/custom.dart';
 import 'package:server_box/data/model/server/discovery_result.dart';
 import 'package:server_box/data/model/server/monitor_http_credential.dart';
@@ -23,15 +20,12 @@ import 'package:server_box/data/model/server/server_private_info.dart';
 import 'package:server_box/data/model/server/ssh_credential.dart';
 import 'package:server_box/data/model/server/system.dart';
 import 'package:server_box/data/model/server/wol_cfg.dart';
-import 'package:server_box/data/provider/bmc_credential.dart';
 import 'package:server_box/data/provider/private_key.dart';
 import 'package:server_box/data/provider/server/all.dart';
 import 'package:server_box/data/res/store.dart';
-import 'package:server_box/data/res/url.dart';
-import 'package:server_box/data/store/entity_store.dart';
-import 'package:server_box/view/page/bmc_credential/edit.dart';
 import 'package:server_box/view/page/private_key/edit.dart';
 import 'package:server_box/view/page/server/custom_cmds.dart';
+import 'package:server_box/view/widget/page_columns.dart';
 import 'package:server_box/view/widget/ssh_discovery/dialog.dart';
 
 part 'actions.dart';
@@ -69,22 +63,6 @@ class _ServerEditPageState extends ConsumerState<ServerEditPage>
   final _monitorPwdCtrl = TextEditingController();
   final _preferTempDevCtrl = TextEditingController();
   final _logoUrlCtrl = TextEditingController();
-  final _bmcAddrCtrl = TextEditingController();
-
-  /// Which `BmcCredential` this server logs in with, by id.
-  ///
-  /// An id rather than a user and a password, because a rack shares one
-  /// account and this page is where twenty servers would otherwise each get
-  /// their own copy of it.
-  final _bmcCredId = ValueNotifier<String?>(null);
-
-  /// The certificate fingerprint the user has reviewed, or null.
-  ///
-  /// Not a text field: nobody types a fingerprint. It is set by the review
-  /// step, which reads what the BMC actually presents — see `cert_pin.dart`
-  /// for why that has to be a separate step from enforcing it.
-  final _bmcCert = ValueNotifier<String?>(null);
-
   final _wolMacCtrl = TextEditingController();
   final _wolIpCtrl = TextEditingController();
   final _wolPwdCtrl = TextEditingController();
@@ -115,34 +93,13 @@ class _ServerEditPageState extends ConsumerState<ServerEditPage>
   final _jumpServers = <String>[].vn;
   final _pveIgnoreCert = ValueNotifier(false);
   final _monitorIgnoreCert = ValueNotifier(false);
-  final _monitorAllowInsecure = ValueNotifier(false);
 
   /// Connection method for this server: SSH+shell (false) or monitor's HTTP
   /// API (true) — mutually exclusive, see the switch at the top of the form.
-  /// The two ways in, each switched on independently.
-  ///
-  /// They used to be one boolean, because a server could carry exactly one.
-  /// Both at once is now a configuration someone can ask for — an agent for
-  /// status without a shell open, sshd for the things the agent has no
-  /// endpoint for — so what is left of the old exclusivity is
-  /// [_preferMonitorHttp], which orders them rather than excluding either.
-  final _useSsh = ValueNotifier(true);
   final _useMonitorHttp = ValueNotifier(false);
-
-  /// Which one is tried first. Only shown, and only stored, when both are on.
-  final _preferMonitorHttp = ValueNotifier(false);
-
-  /// Which protocol this server's files move over — see [SshFileTransport].
-  ///
-  /// A field of the SSH credential rather than a preference, so it lives here
-  /// beside `ProxyCommand` and the fallback address: all three are "how this
-  /// one host has to be talked to", and none of them is a question the app can
-  /// answer by itself.
-  final _fileTransport = ValueNotifier(SshFileTransport.sftp);
 
   final _tempIsCelsius = ValueNotifier(false);
   final _env = <String, String>{}.vn;
-
   /// Custom commands an older version of the app stored here, carried through
   /// a save unchanged so that editing anything else on this page does not
   /// discard them before the first connection moves them to the server.
@@ -176,9 +133,6 @@ class _ServerEditPageState extends ConsumerState<ServerEditPage>
     _passwordController.dispose();
     _preferTempDevCtrl.dispose();
     _logoUrlCtrl.dispose();
-    _bmcAddrCtrl.dispose();
-    _bmcCredId.dispose();
-    _bmcCert.dispose();
     _wolMacCtrl.dispose();
     _wolIpCtrl.dispose();
     _wolPwdCtrl.dispose();
@@ -203,11 +157,7 @@ class _ServerEditPageState extends ConsumerState<ServerEditPage>
     _jumpServers.dispose();
     _pveIgnoreCert.dispose();
     _monitorIgnoreCert.dispose();
-    _monitorAllowInsecure.dispose();
-    _useSsh.dispose();
     _useMonitorHttp.dispose();
-    _preferMonitorHttp.dispose();
-    _fileTransport.dispose();
     _tempIsCelsius.dispose();
     _env.dispose();
     _unmigratedCmds.dispose();
@@ -251,41 +201,21 @@ class _ServerEditPageState extends ConsumerState<ServerEditPage>
   Widget _buildForm() {
     final children = [
       _buildConnMethodSwitch(),
-      // The name is in the same group of cards as the SSH fields rather than
-      // a card of its own above them. Cards within a group sit against each
-      // other; a card that is its own [PageColumns] child gets the grid's
-      // spacing on top of that, which read as a gap belonging to nothing.
-      //
-      // It also means this entry always has something in it. An entry that
-      // renders to an empty box still gets spacing on both sides of it, so
-      // the placeholder this used to be left a wider gap behind than the
-      // fields it stood in for.
-      _useSsh.listenVal(
-        (useSsh) => Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Input(
-              autoFocus: true,
-              controller: _nameController,
-              type: TextInputType.text,
-              node: _nameFocus,
-              // The host field is the next one in this card, and it is only
-              // in the card when SSH is on. Requesting a node attached to
-              // nothing left the keyboard up over a field that had just lost
-              // focus, with no way to tell what it was typing into.
-              onSubmitted: (_) => useSsh
-                  ? _focusScope.requestFocus(_ipFocus)
-                  : _focusScope.unfocus(),
-              hint: libL10n.example,
-              label: libL10n.name,
-              icon: BoxIcons.bx_rename,
-              obscureText: false,
-              autoCorrect: true,
-              suggestion: true,
-            ),
-            if (useSsh) _buildSshConnFields(),
-          ],
-        ),
+      Input(
+        autoFocus: true,
+        controller: _nameController,
+        type: TextInputType.text,
+        node: _nameFocus,
+        onSubmitted: (_) => _focusScope.requestFocus(_ipFocus),
+        hint: libL10n.example,
+        label: libL10n.name,
+        icon: BoxIcons.bx_rename,
+        obscureText: false,
+        autoCorrect: true,
+        suggestion: true,
+      ),
+      _useMonitorHttp.listenVal(
+        (useHttp) => useHttp ? UIs.placeholder : _buildSshConnFields(),
       ),
       TagTile(tags: _tags, allTags: ref.watch(serversProvider).tags).cardx,
       ListTile(
@@ -299,22 +229,16 @@ class _ServerEditPageState extends ConsumerState<ServerEditPage>
           ),
         ),
       ),
-      // The rest of the connection fields, as one group rather than three
-      // entries. Which of them are shown is up to the two switches, and each
-      // one that was its own [PageColumns] child left the grid's spacing
-      // behind when it rendered to nothing — an SSH-only server showed a gap
-      // between the password and the system type, held open by monitor
-      // fields that were not there.
-      ListenableBuilder(
-        listenable: Listenable.merge([_useSsh, _useMonitorHttp]),
-        builder: (_, _) => Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (_useSsh.value) _buildAuth(),
-            if (_useMonitorHttp.value) _buildMonitorHttp(),
-            if (_useSsh.value) ...[_buildSystemType(), _buildJumpServer()],
-          ],
-        ),
+      _useMonitorHttp.listenVal(
+        (useHttp) => useHttp ? _buildMonitorHttp() : _buildAuth(),
+      ),
+      _useMonitorHttp.listenVal(
+        (useHttp) => useHttp
+            ? UIs.placeholder
+            : Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [_buildSystemType(), _buildJumpServer()],
+              ),
       ),
       _buildMore(),
     ];

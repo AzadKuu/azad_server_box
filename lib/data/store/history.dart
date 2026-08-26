@@ -1,8 +1,5 @@
-import 'dart:convert';
-
 import 'package:fl_lib/fl_lib.dart';
 import 'package:meta/meta.dart';
-import 'package:server_box/data/model/app/tab.dart';
 
 /// index from 0 -> n : latest -> oldest
 class _ListHistory {
@@ -30,14 +27,6 @@ class _ListHistory {
   }
 
   void clear() => _store.set(_name, const <String>[]);
-
-  void replace(String oldValue, String newValue) {
-    final history = all;
-    final index = history.indexOf(oldValue);
-    if (index < 0) return;
-    history[index] = newValue;
-    _store.set(_name, history.toSet().toList());
-  }
 }
 
 class _MapHistory {
@@ -72,46 +61,6 @@ class HistoryStore extends SqliteStore {
 
   static final instance = HistoryStore._();
 
-  final Map<String, String> _serverIdAliases = {};
-
-  String resolveSshServerId(String id) {
-    var current = id;
-    final seen = <String>{};
-    while (seen.add(current)) {
-      final next = _serverIdAliases[current];
-      if (next == null) break;
-      current = next;
-    }
-    return current;
-  }
-
-  void renameSshServer(String oldId, String newId) {
-    for (final entry in _serverIdAliases.entries.toList()) {
-      if (entry.value == oldId) _serverIdAliases[entry.key] = newId;
-    }
-    _serverIdAliases[oldId] = newId;
-    sshServerHistory.replace(oldId, newId);
-
-    final saved = sshTabs.fetch();
-    if (saved.isEmpty) return;
-    try {
-      final decoded = jsonDecode(saved);
-      if (decoded is! List) return;
-      var changed = false;
-      for (final entry in decoded.whereType<Map>()) {
-        for (final key in const ['sourceId', 'serverId']) {
-          if (entry[key] == oldId) {
-            entry[key] = newId;
-            changed = true;
-          }
-        }
-      }
-      if (changed) sshTabs.put(jsonEncode(decoded));
-    } catch (e, s) {
-      Loggers.app.warning('Failed to rewrite renamed SSH tab state', e, s);
-    }
-  }
-
   late final sftpGoPath = _ListHistory(store: this, name: 'sftpPath');
 
   late final sftpLastPath = _MapHistory(store: this, name: 'sftpLastPath');
@@ -143,22 +92,10 @@ class HistoryStore extends SqliteStore {
   /// feature that had never once worked.
   late final fileTabs = propertyDefault('fileTabs', '');
 
-  /// Which bottom tab the app was last on, by [AppTab.name].
+  /// Which bottom tab the app was last on.
   ///
-  /// The tab and not its position. It was a position — an index into the
-  /// enabled tabs, which every reader had to clamp — and the enabled set is a
-  /// setting the user can reorder and shorten while the number is stored. So
-  /// moving Terminal to the front and relaunching reopened whatever had taken
-  /// its old place, which reads as the app forgetting rather than as the
-  /// consequence of a reorder. A name means the same tab or nothing at all.
-  ///
-  /// Empty means nothing has been stored, or a name this build cannot place:
-  /// the caller falls back to the first tab.
-  late final homeTab = propertyDefault('homeTab', '');
-
-  /// The position [homeTab] replaced, read once for an install upgrading from
-  /// a build that wrote it.
-  ///
-  /// TODO: delete once no install can still be carrying one.
+  /// An index into the enabled tabs rather than the tab's identity, which is
+  /// what it always was — and why every reader clamps it: the enabled set is a
+  /// setting, so the list under this number can change while it is stored.
   late final homeTabIndex = propertyDefault('homeTabIndex', 0);
 }

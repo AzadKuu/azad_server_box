@@ -2,7 +2,6 @@
   import {
     BatteryMedium,
     Cpu,
-    FolderOpen,
     Gauge,
     Gpu,
     HardDrive,
@@ -33,6 +32,7 @@
   import { fly } from 'svelte/transition'
   import type { HistoryPoint } from '../types'
 
+  const status = new Poller(api.getStatus, 5000)
   const metrics = new Poller(api.getMetrics, 5000)
 
   // Platform-only, doesn't change per-sample — fetched once per server
@@ -108,10 +108,13 @@
   $effect(() => {
     const serverId = servers.currentId
     if (serverId && servers.authenticated) {
+      status.reset()
       metrics.reset()
+      status.start()
       metrics.start()
     }
     return () => {
+      status.stop()
       metrics.stop()
     }
   })
@@ -142,7 +145,7 @@
     { label: $LL.up(), color: '#ec4899', values: history.map((p) => p.net_tx_speed) },
   ])
 
-  const error = $derived(metrics.error)
+  const error = $derived(status.error ?? metrics.error)
   // Agent reachability (unauthenticated /health ping, always running via
   // Sidebar) — independent of whether this browser is logged in yet, so an
   // address-only entry with no credentials doesn't read as "disconnected"
@@ -172,6 +175,7 @@
   // otherwise the address/id.
   const headerName = $derived(
     m?.server_name ??
+      status.data?.name ??
       (servers.current?.id === 'local'
         ? $LL.thisServer()
         : servers.current
@@ -212,7 +216,7 @@
   })
 </script>
 
-{#if servers.authenticated && metrics.loading}
+{#if servers.authenticated && status.loading && metrics.loading}
   <div class="min-h-screen flex items-center justify-center">
     <Spinner size="lg" />
   </div>
@@ -237,11 +241,6 @@
         {#if capabilities?.remote_access?.terminal}
           <IconButton label={$LL.terminal()} onclick={() => layout.navigate('terminal')}>
             <SquareTerminal class="w-4 h-4" />
-          </IconButton>
-        {/if}
-        {#if capabilities?.remote_access?.files}
-          <IconButton label={$LL.files()} onclick={() => layout.navigate('files')}>
-            <FolderOpen class="w-4 h-4" />
           </IconButton>
         {/if}
         <IconButton label={$LL.serverSettings()} onclick={() => layout.navigate('server-settings')}>
@@ -337,7 +336,7 @@
             : '--'}
           valueClass="text-lg"
           detail={m
-            ? `RX ${fmtBytes(m.network.rx_bytes_exact ?? m.network.rx_bytes)} \u00B7 TX ${fmtBytes(m.network.tx_bytes_exact ?? m.network.tx_bytes)}`
+            ? `RX ${fmtBytes(m.network.rx_bytes)} \u00B7 TX ${fmtBytes(m.network.tx_bytes)}`
             : ''}
           onclick={() => (detail = 'network')}
         />

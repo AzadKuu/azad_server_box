@@ -2,11 +2,9 @@ import 'dart:async';
 
 import 'package:dartssh2/dartssh2.dart';
 import 'package:fl_lib/fl_lib.dart';
-import 'package:flutter/scheduler.dart';
 import 'package:freezed_annotation/freezed_annotation.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 import 'package:server_box/core/extension/ssh_client.dart';
-import 'package:server_box/core/utils/monitor_exec.dart';
 import 'package:server_box/core/utils/server.dart';
 import 'package:server_box/core/utils/ssh_auth.dart';
 import 'package:server_box/core/utils/ssh_exec.dart';
@@ -14,6 +12,7 @@ import 'package:server_box/data/helper/ssh_decoder.dart';
 import 'package:server_box/data/helper/system_detector.dart';
 import 'package:server_box/data/model/app/error.dart';
 import 'package:server_box/data/model/app/scripts/cmd_types.dart';
+import 'package:server_box/data/model/app/scripts/script_consts.dart';
 import 'package:server_box/data/model/app/scripts/shell_func.dart';
 import 'package:server_box/data/model/server/capabilities.dart';
 import 'package:server_box/data/model/server/connect_credential.dart';
@@ -75,15 +74,12 @@ abstract class ServerState with _$ServerState {
 
   const ServerState._();
 
-  /// What this server can do. The UI reads this instead of testing which
-  /// transport is in use — see [ServerCapabilities].
-  ///
-  /// Across every way it is reachable, not just the one that leads: a server
-  /// carrying both SSH and an agent really can do both sets of things, and
-  /// hiding half of them behind a preference about *ordering* would take
-  /// features away for no reason the user could see.
-  ServerCapabilities get capabilities =>
-      ServerCapabilities.ofSpi(spi, granted: remoteAccess);
+  /// What this server's connection method can do. The UI reads this instead of
+  /// testing which transport is in use — see [ServerCapabilities].
+  ServerCapabilities get capabilities => ServerCapabilities.of(
+    ServerConnectCredential.fromSpi(spi),
+    granted: remoteAccess,
+  );
 
   /// Whether running a command would have to open a connection first, i.e.
   /// whether a caller is about to make the user wait.
@@ -114,27 +110,12 @@ class ServerNotifier extends _$ServerNotifier {
   /// when the SPI's connection config changes.
   ServerDataSource? _source;
 
-  int _cachedTimeout = 5;
-
   @override
   ServerState build(String serverId) {
     ref.onDispose(() {
       unawaited(_disposePersistentShell());
       _source?.close();
-      try {
-        state.client?.close();
-      } catch (_) {}
     });
-
-    // Cache timeout in memory; the DB read per poll is replaced by this.
-    _cachedTimeout = Stores.setting.timeout.fetch();
-    final timeoutListenable = Stores.setting.timeout.listenable();
-    void timeoutListener() {
-      _cachedTimeout = Stores.setting.timeout.fetch();
-    }
-
-    timeoutListenable.addListener(timeoutListener);
-    ref.onDispose(() => timeoutListenable.removeListener(timeoutListener));
 
     final serverNotifier = ref.read(serversProvider);
     final spi = serverNotifier.servers[serverId];
@@ -145,9 +126,6 @@ class ServerNotifier extends _$ServerNotifier {
     return ServerState(spi: spi, status: InitStatus.status);
   }
 
-  Duration get _timeout =>
-      Duration(seconds: _cachedTimeout <= 0 ? 5 : _cachedTimeout);
-
   // Update connection status
   void updateConnection(ServerConn conn) {
     state = state.copyWith(conn: conn);
@@ -156,29 +134,6 @@ class ServerNotifier extends _$ServerNotifier {
   // Update server status
   void updateStatus(ServerStatus status) {
     state = state.copyWith(status: status);
-    _rememberDist(status);
-  }
-
-  /// Files what this poll said the machine is running.
-  ///
-  /// Here rather than in the parser, because this is the one place that knows
-  /// *which server* a status belongs to. Written on every poll but only
-  /// reaches the database when the answer changed, so a server polled every
-  /// few seconds writes once and then never again.
-  ///
-  /// The reading is what lets a row draw the right mark without a live status
-  /// — the pickers, the known-hosts page and the order page all hold only an
-  /// id. See [ServerDistStore].
-  void _rememberDist(ServerStatus status) {
-    final dist = status.dist;
-    if (dist == null) return;
-    try {
-      Stores.serverDist.put(state.spi.id, dist);
-    } catch (e, s) {
-      // A cache, so a failure to write one is not a failure to poll: the row
-      // draws the neutral mark and the next poll tries again.
-      Loggers.app.warning('Caching the distribution of ${state.spi.name}', e, s);
-    }
   }
 
   ServerStatus _copyStatus(
@@ -207,8 +162,6 @@ class ServerNotifier extends _$ServerNotifier {
       history: source.history,
     );
     status.amd = source.amd?.toList();
-    status.osId = source.osId;
-    status.osIdLike = source.osIdLike;
     status.batteries.addAll(source.batteries);
     status.more.addAll(source.more);
     status.sensors.addAll(source.sensors);
@@ -288,10 +241,6 @@ class ServerNotifier extends _$ServerNotifier {
   /// server still marked failed after they had fixed its address.
   int? _refreshingOperation;
 
-  /// [interactive] means a person is waiting on this one — the Retry button on
-  /// a failed card or on the detail page — as opposed to the poll timer. It
-  /// decides both whether keyboard-interactive auth may raise a prompt and
-  /// whether the wait is shown before the work starts.
   Future<void> refresh({bool interactive = false}) async {
     final operation = _operationGeneration;
     // Two refreshes of the *same* generation are the overlap worth stopping.
@@ -299,24 +248,6 @@ class ServerNotifier extends _$ServerNotifier {
 
     _refreshingOperation = operation;
     try {
-      // Somebody pressed Retry, and the first thing they are owed is that it
-      // registered. Both paths raise a connecting/loading state of their own,
-      // but the monitor path can fail *synchronously* — an address that is not
-      // HTTPS is refused by `MonitorHttpClient._addr` before a request goes
-      // out — so the attempt began and ended inside one microtask drain and no
-      // frame ever carried the loading state. The button appeared dead.
-      //
-      // Only from a resting state: `finished` refreshing in place must not
-      // blink a spinner over the readings it already has.
-      final spi = state.spi;
-      if (interactive && state.conn < ServerConn.connecting) {
-        updateConnection(ServerConn.connecting);
-        // Waited on rather than assumed. Yielding to the microtask queue is
-        // not enough — a frame is scheduled on the event queue, and the whole
-        // failure would still land before it ran.
-        await SchedulerBinding.instance.endOfFrame;
-        if (!_isRefreshCurrent(operation, spi)) return;
-      }
       await _getData(interactive: interactive, operation: operation);
     } finally {
       // Only if it is still ours: a newer refresh may have taken over while
@@ -445,15 +376,10 @@ class ServerNotifier extends _$ServerNotifier {
           Loggers.app.warning('Ask ${spi.name} what it allows', e, s);
         }
       }
-      if (!_isRefreshCurrent(operation, spi)) return;
       updateConnection(ServerConn.finished);
       TryLimiter.reset(sid);
     } catch (e, s) {
-      Loggers.app.warning(
-        'Get status via monitor for ${spi.name} failed',
-        e,
-        s,
-      );
+      Loggers.app.warning('Get status via monitor for ${spi.name} failed', e, s);
       // A failure belongs to the server it was fetched for. Edit a server's
       // address and the poll still running against the old one eventually
       // times out; without this it counted that timeout against the retry
@@ -478,44 +404,20 @@ class ServerNotifier extends _$ServerNotifier {
   /// [ServerCapabilities.storedHistory], and once live samples exist — see
   /// [StatusHistory.seed].
   Future<void> seedHistory({int minutes = 60}) async {
-    final generation = _operationGeneration;
-    final spi = state.spi;
-    // Whichever transport *has* history, not whichever leads. On a server
-    // carrying both, SSH usually leads and has none — so asking only the
-    // leading one meant `capabilities.storedHistory` advertised a trend the
-    // page then never seeded, and the chart built up from empty exactly where
-    // an agent had months of it.
-    final credential = _historyCredential(spi);
-    if (credential == null) return;
+    final credential = ServerConnectCredential.fromSpi(state.spi);
+    if (!ServerCapabilities.of(credential).storedHistory) return;
     try {
-      // Asking for exactly what the buffer holds. Any more is averaged down
-      // on the agent's side instead of being carried here and dropped by
-      // [StatusHistory.seed] as it walks past the capacity.
-      final samples = await _resolveSource(credential).fetchHistory(
-        minutes: minutes,
-        maxPoints: StatusHistory.capacity,
-      );
-      if (!_isRefreshCurrent(generation, spi)) return;
+      final samples = await _resolveSource(
+        credential,
+      ).fetchHistory(minutes: minutes);
       if (samples.isEmpty) return;
       state.status.history.seed(samples);
       // history is mutated in place, so hand out a fresh ServerStatus to make
       // the watchers rebuild
       updateStatus(_copyStatus(state.status));
     } catch (e, s) {
-      if (!_isRefreshCurrent(generation, spi)) return;
-      Loggers.app.warning('Seed history for ${spi.name}', e, s);
+      Loggers.app.warning('Seed history for ${state.spi.name}', e, s);
     }
-  }
-
-  /// The way in that keeps its own trend data, or null when neither does.
-  ServerConnectCredential? _historyCredential(Spi spi) {
-    final primary = ServerConnectCredential.fromSpi(spi);
-    if (ServerCapabilities.of(primary).storedHistory) return primary;
-    final fallback = ServerConnectCredential.fallbackOf(spi);
-    if (fallback != null && ServerCapabilities.of(fallback).storedHistory) {
-      return fallback;
-    }
-    return null;
   }
 
   String get _sshSessionId => 'ssh_${state.spi.id}';
@@ -537,51 +439,16 @@ class ServerNotifier extends _$ServerNotifier {
   /// what keeps a second transport from being a condition inside each of
   /// them.
   ///
-  /// A server with only an agent runs its commands through it, never through
-  /// sshd: the agent is how that server is reachable at all, and reaching for
-  /// SSH would mean asking for credentials the user chose not to give this
-  /// app. A server carrying both falls through to the other on failure.
+  /// A monitor-backed server runs its commands through the agent, never
+  /// through sshd: the agent is how that server is reachable at all, and
+  /// falling back to SSH would mean asking for credentials the user chose not
+  /// to give this app.
   ///
   /// Throws whatever the transport throws when it cannot be reached.
   Future<ServerExec> ensureExec() async {
-    final spi = state.spi;
-    final fallbackExists = spi.fallbackTransport != null;
-    try {
-      return await _execOver(
-        ServerConnectCredential.fromSpi(spi),
-        // Only when there is somewhere to fall through to. Handing back a
-        // `MonitorExec` costs no request, so a dead agent is not discovered
-        // until the *caller's* command runs — outside the catch below, and too
-        // late to retry, since a command is not safe to run twice. One cheap
-        // authenticated request makes that failure land here instead. The
-        // agent-only case pays nothing: there is nothing to fall back to, so
-        // the caller's own error is the answer either way.
-        probe: fallbackExists,
-      );
-    } catch (e, s) {
-      // Only a server the user gave *both* sets of credentials to has one of
-      // these, and giving both is the request: reach this machine either way.
-      // Refusing to use the second because the first was asked for first would
-      // be honouring an ordering preference as though it were an exclusion.
-      final fallback = ServerConnectCredential.fallbackOf(spi);
-      if (fallback == null) rethrow;
-      Loggers.app.info(
-        'Exec over ${spi.transport.name} for ${spi.name} failed, '
-        'falling back to ${spi.fallbackTransport?.name}',
-        e,
-        s,
-      );
-      return await _execOver(fallback);
-    }
-  }
-
-  Future<ServerExec> _execOver(
-    ServerConnectCredential credential, {
-    bool probe = false,
-  }) async {
+    final credential = ServerConnectCredential.fromSpi(state.spi);
     switch (credential) {
       case ServerConnectCredentialSsh():
-        // Connecting *is* the probe here, and it always happens.
         return SshExec(await ensureShellClient());
       case ServerConnectCredentialMonitorHttp():
         final source = _resolveSource(credential);
@@ -590,29 +457,8 @@ class ServerNotifier extends _$ServerNotifier {
             'A monitor credential resolved to a ${source.runtimeType}',
           );
         }
-        // A GET the agent answers only to an authenticated caller, so it
-        // covers both halves of "can this reach the machine": the agent is up,
-        // and the login still works. Never the caller's command — that is what
-        // must not be attempted twice.
-        if (probe) await source.fetchCapabilities();
         return source.exec;
     }
-  }
-
-  bool isExecCurrent(ServerExec exec, Spi spi) {
-    if (state.spi != spi) return false;
-    if (exec is SshExec) {
-      return identical(state.client, exec.client) && !exec.client.isClosed;
-    }
-    if (exec is MonitorExec) {
-      final current = _source;
-      final currentExec = current is MonitorHttpDataSource
-          ? current.exec
-          : null;
-      return currentExec is MonitorExec &&
-          identical(currentExec.client, exec.client);
-    }
-    return false;
   }
 
   /// Whether the generated script has been written to this server since the
@@ -660,15 +506,8 @@ class ServerNotifier extends _$ServerNotifier {
       final merged = [
         ...?onServer,
         for (final e in local.entries)
-          if (!existing.contains(e.key))
-            ffi.CustomCmd(name: e.key, cmd: e.value),
+          if (!existing.contains(e.key)) ffi.CustomCmd(name: e.key, cmd: e.value),
       ];
-
-      // Reading the listing is an await, and an edit or a disconnect during it
-      // leaves `exec` pointing at the host this started on. The check below
-      // guards the database write; this one guards the write to the *server*,
-      // which is the one that cannot be taken back.
-      if (!isExecCurrent(exec, spi)) return;
 
       final install = await exec.run(
         ShellFuncManager.installCustomCmds(merged, systemType: system),
@@ -680,15 +519,9 @@ class ServerNotifier extends _$ServerNotifier {
 
       final custom = spi.custom;
       if (custom == null) return;
-      // Don't overwrite newer edits that happened while we were reading/installing.
-      final current = ref.read(serversProvider).servers[spi.id];
-      if (current == null || current != spi) return;
       await ref
           .read(serversProvider.notifier)
-          .updateServer(
-            current,
-            current.copyWith(custom: custom.withoutCmds()),
-          );
+          .updateServer(spi, spi.copyWith(custom: custom.withoutCmds()));
       Loggers.app.info(
         'Migrated ${local.length} custom command(s) for ${spi.name}',
       );
@@ -714,19 +547,7 @@ class ServerNotifier extends _$ServerNotifier {
   /// reporting an empty list on a server that has plenty of processes.
   Future<ServerExec> ensureScriptExec() async {
     final exec = await ensureExec();
-    final gen = _operationGeneration;
-    final origSpi = state.spi;
-    if (_scriptWritten) {
-      final spi = state.spi;
-      if (spi.custom?.cmds?.isNotEmpty == true &&
-          gen == _operationGeneration &&
-          origSpi == spi) {
-        try {
-          await _migrateCustomCmds(spi, state.status.system, exec);
-        } catch (_) {}
-      }
-      return exec;
-    }
+    if (_scriptWritten) return exec;
 
     final spi = state.spi;
     final system = state.status.system;
@@ -765,10 +586,9 @@ class ServerNotifier extends _$ServerNotifier {
     // A monitor-only server reaches this path too, which is the point: what
     // carries the commands is `ServerExec`, not SSH, so both kinds of server
     // reach the same directory.
-    if (gen == _operationGeneration && origSpi == state.spi) {
-      await _migrateCustomCmds(spi, system, exec);
-      _scriptWritten = true;
-    }
+    await _migrateCustomCmds(spi, system, exec);
+
+    _scriptWritten = true;
     return exec;
   }
 
@@ -784,8 +604,6 @@ class ServerNotifier extends _$ServerNotifier {
     if (existing != null && !existing.isClosed) return existing;
 
     final spi = state.spi;
-    final gen = _operationGeneration;
-    final origSpi = spi;
     if (spi.ssh == null) {
       throw SSHErr(
         type: SSHErrType.connect,
@@ -799,48 +617,17 @@ class ServerNotifier extends _$ServerNotifier {
       );
     }
 
-    // Held so the `catch` can close it. Authentication is awaited before
-    // `_setClient`, so a failure there would otherwise leak a connected client
-    // that nothing holds a reference to.
-    SSHClient? client;
     try {
-      client = await genClient(
+      final client = await genClient(
         spi,
-        timeout: _timeout,
+        timeout: Duration(seconds: Stores.setting.timeout.fetch()),
         onKeyboardInteractive: KeyboardInteractiveAuth.handle,
       );
       await client.authenticated;
-      // Checked after, as every await in the refresh paths already does.
-      // Authenticating takes as long as the far side and the user take, and
-      // editing the server or disconnecting it bumps the generation — so
-      // without this the client that eventually arrived was installed into the
-      // state of a server that is now somewhere else, and the next caller ran
-      // its commands on the old host.
-      if (!_isRefreshCurrent(gen, origSpi)) {
-        try {
-          client.close();
-        } catch (_) {}
-        throw StateError('superseded shell connect for ${origSpi.name}');
-      }
       TryLimiter.reset(_shellTryId);
       _setClient(client);
       return client;
     } catch (e, s) {
-      // Authentication is awaited before _setClient, so a failure would leak
-      // the newly created client if we only close state.client.
-      if (client != null) {
-        try {
-          client.close();
-        } catch (_) {}
-      }
-      // Not counted when it is this server that moved: the limiter is keyed on
-      // an id an edit keeps, so charging a superseded attempt to it would stop
-      // the *corrected* server reconnecting. `_failSsh` skips it for the same
-      // reason.
-      if (!_isRefreshCurrent(gen, origSpi)) {
-        Loggers.app.info('Discarded superseded shell connect for ${spi.name}');
-        rethrow;
-      }
       TryLimiter.inc(_shellTryId);
       Loggers.app.warning('Connect shell for ${spi.name}', e, s);
       rethrow;
@@ -930,7 +717,7 @@ class ServerNotifier extends _$ServerNotifier {
       try {
         final client = await genClient(
           spi,
-          timeout: _timeout,
+          timeout: Duration(seconds: Stores.setting.timeout.fetch()),
           onKeyboardInteractive: (server, request) {
             keyboardInteractiveRequested = true;
             if (!interactive) return null;
@@ -1172,7 +959,9 @@ class ServerNotifier extends _$ServerNotifier {
       //
       // Empty output is only a failure if the server was asked for anything.
       // A host with every status command disabled legitimately returns nothing.
-      final hasSegment = ffi.containsScriptSegment(raw: raw);
+      final hasSegment =
+          raw.contains(ScriptConstants.separator) ||
+          raw.contains(ScriptConstants.customCmdSep);
       if (!hasSegment && _hasEnabledStatusCommands(spi, state.status.system)) {
         if (Stores.setting.keepStatusWhenErr.fetch()) {
           // Keep previous server status when error occurs
@@ -1226,10 +1015,7 @@ class ServerNotifier extends _$ServerNotifier {
         force: interactive,
         operation: operation,
       );
-      // Built-in markers are trusted only before the first custom section;
-      // custom output may contain marker-looking text. Extended status has no
-      // custom commands, so put it first and leave custom output last.
-      final combined = extended.isEmpty ? raw : '$extended\n$raw';
+      final combined = extended.isEmpty ? raw : '$raw\n$extended';
 
       // Same conversion contract as the monitor path: raw transport output in,
       // ServerStatus (plus a trend sample) out
@@ -1299,7 +1085,7 @@ class ServerNotifier extends _$ServerNotifier {
       // *new* one would find them still within the interval and merge them
       // into its status.
       if (!_isRefreshCurrent(operation, spi)) return _extendedRaw;
-      if (ffi.containsStatusSegment(raw: raw)) _extendedRaw = raw;
+      if (raw.contains(ScriptConstants.separator)) _extendedRaw = raw;
     } catch (e, s) {
       Loggers.app.warning('Extended status for ${spi.name} failed', e, s);
     }
@@ -1327,7 +1113,11 @@ class ServerNotifier extends _$ServerNotifier {
 
     try {
       final shell = await _getPersistentShell();
-      final result = await shell.run(statusCmd, timeout: _timeout);
+      final statusTimeoutSeconds = Stores.setting.timeout.fetch();
+      final statusTimeout = Duration(
+        seconds: statusTimeoutSeconds <= 0 ? 5 : statusTimeoutSeconds,
+      );
+      final result = await shell.run(statusCmd, timeout: statusTimeout);
       return result.output;
     } on TimeoutException catch (e, s) {
       _usePersistentShellForStatus = false;

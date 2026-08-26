@@ -52,7 +52,7 @@ async fn check_enhanced_rule(
                 warn!("Push '{}' rate limit reached, skipping", push_config.name);
                 continue;
             }
-            match crate::monitoring::push::send_notification(config, push_config, &message).await {
+            match crate::monitoring::push::send_notification(push_config, &message).await {
                 Ok(()) => limiter.acquire(&push_config.name),
                 Err(e) => warn!("Failed to send push notification via '{}': {}", push_config.name, e),
             }
@@ -318,8 +318,6 @@ mod tests {
             temperature: Some(65.0),
             temps: vec![],
             sys: None,
-            os_id: None,
-            os_id_like: Vec::new(),
             cpu_brand: None,
             gpus: vec![],
             disk_details: vec![],

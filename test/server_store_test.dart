@@ -2,26 +2,15 @@ import 'dart:convert';
 
 import 'package:fl_lib/fl_lib.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:server_box/data/model/server/bmc_cfg.dart';
-import 'package:server_box/data/model/server/bmc_credential.dart';
 import 'package:server_box/data/model/server/custom.dart';
 import 'package:server_box/data/model/server/monitor_http_credential.dart';
 import 'package:server_box/data/model/server/server_private_info.dart';
-import 'package:server_box/data/model/server/snippet.dart';
 import 'package:server_box/data/model/server/ssh_credential.dart';
 import 'package:server_box/data/model/server/system.dart';
 import 'package:server_box/data/model/server/wol_cfg.dart';
-import 'package:server_box/data/store/bmc_credential.dart';
-import 'package:server_box/data/store/entity_store.dart';
 import 'package:server_box/data/store/server.dart';
-import 'package:server_box/data/store/snippet.dart';
 
 import 'helpers/test_db.dart';
-
-/// SHA-256 of a DER certificate, lowercase hex: 64 characters, which is what
-/// `certFingerprint` produces and what the column has to hold intact.
-const _fingerprint =
-    '9c1185a5c5e9fc54612808977ee8f548b2258d31ddadef8e3b1e1b06a1a1e2b7';
 
 /// A [Spi] is six tables now, so the question is whether it survives being
 /// taken apart and put back together.
@@ -68,10 +57,8 @@ void main() {
     final got = store.fetchOneRaw('srv-1')!;
     expect(got.name, 'prod');
     expect(got.autoConnect, isFalse);
-    expect(got.tags?.toSet(), {
-      'prod',
-      'db',
-    }, reason: 'a tag is membership; the child table keeps no order');
+    expect(got.tags?.toSet(), {'prod', 'db'},
+        reason: 'a tag is membership; the child table keeps no order');
     expect(got.envs, {'TERM': 'xterm', 'LANG': 'C'});
     expect(got.disabledCmdTypes, ['sensors']);
     expect(got.customSystemType, SystemType.linux);
@@ -86,160 +73,17 @@ void main() {
   });
 
   test('a monitor server round trips too', () {
-    store.put(
-      const Spi(
-        id: 'mon',
-        name: 'agent',
-        monitorHttp: MonitorHttpCredential(
-          addr: 'http://h:3770',
-          pwd: 'p',
-          allowInsecure: true,
-        ),
-      ),
-    );
+    store.put(const Spi(
+      id: 'mon',
+      name: 'agent',
+      monitorHttp: MonitorHttpCredential(addr: 'https://h:3770', pwd: 'p'),
+    ));
     store.invalidate();
 
     final got = store.fetchOneRaw('mon')!;
     expect(got.ssh, isNull);
-    expect(got.monitorHttp?.addr, 'http://h:3770');
+    expect(got.monitorHttp?.addr, 'https://h:3770');
     expect(got.monitorHttp?.pwd, 'p');
-    expect(got.monitorHttp?.allowInsecure, isTrue);
-  });
-
-  test('multiple IdentityFile paths survive the server table', () {
-    const paths = ['~/.ssh/work', '~/.ssh/personal'];
-    store.put(
-      const Spi(
-        id: 'multi-key',
-        name: 'multi-key',
-        ssh: SshCredential(
-          ip: 'host',
-          keyPath: '~/.ssh/work',
-          identityFiles: paths,
-        ),
-      ),
-    );
-    store.invalidate();
-
-    final ssh = store.fetchOneRaw('multi-key')!.ssh!;
-    expect(ssh.keyPath, paths.first);
-    expect(ssh.resolvedIdentityFiles, paths);
-  });
-
-  group('the BMC side channel', () {
-    late BmcCredentialStore creds;
-
-    const cred = BmcCredential(
-      id: 'cred-1',
-      name: 'rack-a',
-      user: 'ADMIN',
-      pwd: 'calvin',
-    );
-
-    const withBmc = Spi(
-      id: 'metal',
-      name: 'r730',
-      ssh: SshCredential(ip: '10.0.0.2', port: 22, user: 'root'),
-      bmc: BmcCfg(
-        addr: 'https://10.0.0.9',
-        credId: 'cred-1',
-        certSha256: _fingerprint,
-      ),
-    );
-
-    setUp(() {
-      creds = BmcCredentialStore.forTest();
-      creds.put(cred);
-    });
-
-    test('round trips beside the SSH credential rather than instead of it', () {
-      store.put(withBmc);
-      store.invalidate();
-
-      final got = store.fetchOneRaw('metal')!;
-      // Both, on one record: a BMC is not a way of reaching the host, so it
-      // neither satisfies the SSH-or-monitor requirement nor conflicts with it.
-      expect(got.ssh?.ip, '10.0.0.2');
-      expect(got.bmc?.addr, 'https://10.0.0.9');
-      expect(got.bmc?.credId, 'cred-1');
-      expect(got.bmc?.certSha256, _fingerprint);
-    });
-
-    test('an account that does not exist is refused by the schema', () {
-      // Rather than stored and discovered at connect time. The whole point of
-      // the reference being a foreign key.
-      expect(
-        () => store.put(
-          withBmc.copyWith(bmc: withBmc.bmc!.copyWith(credId: 'gone')),
-        ),
-        throwsA(anything),
-      );
-    });
-
-    test('several servers share one account', () {
-      store.put(withBmc);
-      store.put(
-        withBmc.copyWith(
-          id: 'metal-2',
-          name: 'r730-b',
-          ssh: const SshCredential(ip: '10.0.0.3', port: 22, user: 'root'),
-          bmc: const BmcCfg(addr: 'https://10.0.0.10', credId: 'cred-1'),
-        ),
-      );
-      store.invalidate();
-
-      // The reason it is a table: one password, rotated in one place.
-      expect(creds.serversUsing('cred-1'), 2);
-      expect(store.fetchOneRaw('metal')!.bmc?.credId, 'cred-1');
-      expect(store.fetchOneRaw('metal-2')!.bmc?.credId, 'cred-1');
-    });
-
-    test('deleting the account keeps the servers that used it', () {
-      store.put(withBmc);
-      creds.deleteById('cred-1');
-      store.invalidate();
-
-      final got = store.fetchOneRaw('metal');
-      // `ON DELETE SET NULL`, not cascade: losing an account must not lose the
-      // server. What is left is an address with nothing to log in with, which
-      // `isComplete` answers false to and the editor can say.
-      expect(got, isNotNull);
-      expect(got!.bmc?.addr, 'https://10.0.0.9');
-      expect(got.bmc?.credId, isNull);
-      expect(got.bmc?.isComplete, isFalse);
-    });
-
-    test('a server without one reads back as having none', () {
-      store.put(rich);
-      store.invalidate();
-      expect(store.fetchOneRaw('srv-1')!.bmc, isNull);
-    });
-
-    test('clearing the pinned certificate is stored, not ignored', () {
-      store.put(withBmc);
-      store.update(
-        withBmc,
-        withBmc.copyWith(bmc: withBmc.bmc!.copyWith(certSha256: null)),
-      );
-      store.invalidate();
-
-      final got = store.fetchOneRaw('metal')!;
-      expect(got.bmc?.addr, 'https://10.0.0.9');
-      expect(
-        got.bmc?.certSha256,
-        isNull,
-        reason:
-            'un-reviewing a certificate has to reach the column, or the '
-            'next connection trusts one the user withdrew',
-      );
-    });
-
-    test('removing the BMC removes it', () {
-      store.put(withBmc);
-      store.update(withBmc, withBmc.copyWith(bmc: null));
-      store.invalidate();
-      expect(store.fetchOneRaw('metal')!.bmc, isNull);
-    });
   });
 
   test('what an update drops is really dropped', () {
@@ -284,30 +128,27 @@ void main() {
     final second = SqliteDb.instance
         .select('SELECT updated_at, rev FROM server;')
         .single;
-    expect(
-      second['rev'],
-      greaterThan(first['rev'] as int),
-      reason: 'two edits in one millisecond still differ',
-    );
+    expect(second['rev'], greaterThan(first['rev'] as int),
+        reason: 'two edits in one millisecond still differ');
   });
 
   test('tags are answered by the database', () {
     store.put(rich);
-    store.put(
-      const Spi(
-        id: 'srv-2',
-        name: 'other',
-        tags: ['prod'],
-        ssh: SshCredential(ip: '10.0.0.2', user: 'root', port: 22),
-      ),
-    );
+    store.put(const Spi(
+      id: 'srv-2',
+      name: 'other',
+      tags: ['prod'],
+      ssh: SshCredential(ip: '10.0.0.2', user: 'root', port: 22),
+    ));
 
     expect(store.idsWithTag('prod')..sort(), ['srv-1', 'srv-2']);
     expect(store.allTags(), ['db', 'prod']);
   });
 
   test('a jump host that does not exist is not written', () {
-    store.put(rich.copyWith(ssh: rich.ssh!.copyWith(jumpIds: ['nope'])));
+    store.put(rich.copyWith(
+      ssh: rich.ssh!.copyWith(jumpIds: ['nope']),
+    ));
     store.invalidate();
     expect(store.fetchOneRaw('srv-1')!.ssh?.jumpIds, anyOf(isNull, isEmpty));
   });
@@ -320,12 +161,8 @@ void main() {
     /// decoded form.
     Map<String, dynamic> asStored(Spi spi) => Map<String, dynamic>.from(
       json.decode(
-            json.encode(
-              spi.toJson(),
-              toEncodable: (o) => (o as dynamic).toJson(),
-            ),
-          )
-          as Map,
+        json.encode(spi.toJson(), toEncodable: (o) => (o as dynamic).toJson()),
+      ) as Map,
     );
 
     const jumper = Spi(
@@ -357,7 +194,9 @@ void main() {
       // Every older envelope is like this. Comparing timestamps first made the
       // absent one a tie against a record this device does not have, and the
       // whole backup restored as nothing.
-      final added = store.merge({'srv-b': asStored(target)}, force: false);
+      final added = store.merge({
+        'srv-b': asStored(target),
+      }, force: false);
 
       expect(added, isTrue);
       expect(store.fetchOneRaw('srv-b')?.name, 'target');
@@ -373,54 +212,6 @@ void main() {
       store.merge({'srv-b': asStored(target)}, force: false);
 
       expect(store.fetchOneRaw('srv-1'), isNotNull);
-    });
-
-    test('a merged server tombstone stamps cascaded relationship owners', () {
-      final snippets = SnippetStore.forTest();
-      store.put(target);
-      store.put(jumper);
-      snippets.put(
-        const Snippet(
-          id: 'snippet-1',
-          name: 'deploy',
-          script: 'deploy',
-          autoRunOn: ['srv-b'],
-        ),
-      );
-      final oldSnippetRev =
-          SqliteDb.instance.select('SELECT rev FROM snippet WHERE id = ?;', [
-                'snippet-1',
-              ]).single['rev']
-              as int;
-      final oldOwnerRev =
-          SqliteDb.instance.select('SELECT rev FROM server WHERE id = ?;', [
-                'srv-a',
-              ]).single['rev']
-              as int;
-      final deletedAt =
-          store.timestamps.values.reduce((a, b) => a > b ? a : b) + 1;
-
-      store.merge({
-        EntityStore.lastModKey: {'srv-b': deletedAt},
-      }, force: false);
-      store.invalidate();
-      snippets.invalidate();
-
-      expect(store.fetchOneRaw('srv-b'), isNull);
-      expect(store.fetchOneRaw('srv-a')?.ssh?.resolvedJumpIds, isEmpty);
-      expect(snippets.fetch().single.autoRunOn, anyOf(isNull, isEmpty));
-      expect(
-        SqliteDb.instance.select('SELECT rev FROM snippet WHERE id = ?;', [
-          'snippet-1',
-        ]).single['rev'],
-        greaterThan(oldSnippetRev),
-      );
-      expect(
-        SqliteDb.instance.select('SELECT rev FROM server WHERE id = ?;', [
-          'srv-a',
-        ]).single['rev'],
-        greaterThan(oldOwnerRev),
-      );
     });
   });
 }

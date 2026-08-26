@@ -47,7 +47,8 @@ class _MapBackend implements FileBackend {
   final renamed = <(String from, String to)>[];
 
   @override
-  FileBackendTraits get traits => FileBackendTraits(sudoFallback: sudoFallback);
+  FileBackendTraits get traits =>
+      FileBackendTraits(sudoFallback: sudoFallback);
 
   @override
   Future<List<String>> reachableRoots() async => roots;
@@ -69,7 +70,8 @@ class _MapBackend implements FileBackend {
   Future<void> mkdir(String path) async {}
 
   @override
-  Stream<List<int>> read(String path, {int offset = 0}) => const Stream.empty();
+  Stream<List<int>> read(String path, {int offset = 0}) =>
+      const Stream.empty();
 
   @override
   Future<void> remove(String path, {bool recursive = false}) async =>
@@ -82,13 +84,7 @@ class _MapBackend implements FileBackend {
   Future<FileEntry?> stat(String path) async => null;
 
   @override
-  Future<void> write(
-    String path,
-    Stream<List<int>> data, {
-    int? size,
-    void Function(String staging)? onStaging,
-    Stream<List<int>> Function()? replayData,
-  }) async {}
+  Future<void> write(String path, Stream<List<int>> data, {int? size}) async {}
 }
 
 FileEntry _dir(String name) => FileEntry(name: name, kind: FileKind.dir);
@@ -113,11 +109,7 @@ void main() {
     await tempDir.delete(recursive: true);
   });
 
-  Future<void> pump(
-    WidgetTester tester,
-    FileBackend backend, {
-    String root = '/',
-  }) async {
+  Future<void> pump(WidgetTester tester, FileBackend backend) async {
     await tester.binding.setSurfaceSize(const Size(1200, 900));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     await tester.pumpWidget(
@@ -126,7 +118,7 @@ void main() {
           localizationsDelegates: AppLocalizations.localizationsDelegates,
           supportedLocales: AppLocalizations.supportedLocales,
           home: FileBrowserPage(
-            args: FileBrowserArgs(backend: backend, root: root),
+            args: FileBrowserArgs(backend: backend, root: '/'),
           ),
         ),
       ),
@@ -186,13 +178,19 @@ void main() {
       // The heading someone can act on...
       expect(find.text('This folder is no longer here'), findsOneWidget);
       // ...and the words the OS used, still there for whoever wants them.
-      expect(find.textContaining('No such file or directory'), findsOneWidget);
+      expect(
+        find.textContaining('No such file or directory'),
+        findsOneWidget,
+      );
     });
 
     testWidgets('offers sudo only where there is somewhere to escalate', (
       tester,
     ) async {
-      await pump(tester, _MapBackend(const {}, failWith: 'Permission denied'));
+      await pump(
+        tester,
+        _MapBackend(const {}, failWith: 'Permission denied'),
+      );
       expect(find.text('Try using sudo'), findsNothing);
 
       await pump(
@@ -236,7 +234,10 @@ void main() {
     ) async {
       // An empty answer is "browse anywhere", not "nowhere to go" — drawing a
       // heading with no chips under it would say the opposite.
-      await pump(tester, _MapBackend(const {}, failWith: 'Permission denied'));
+      await pump(
+        tester,
+        _MapBackend(const {}, failWith: 'Permission denied'),
+      );
 
       expect(find.text('Permission denied.'), findsOneWidget);
       expect(find.byType(ActionChip), findsNothing);
@@ -260,9 +261,12 @@ void main() {
     });
 
     testWidgets('can be tried again', (tester) async {
-      final backend = _MapBackend({
-        '/': [_file('back.txt')],
-      }, failWith: 'Connection closed');
+      final backend = _MapBackend(
+        {
+          '/': [_file('back.txt')],
+        },
+        failWith: 'Connection closed',
+      );
 
       await pump(tester, backend);
       expect(find.text('Failure'), findsOneWidget);
@@ -558,12 +562,9 @@ void main() {
     });
 
     testWidgets('select-all picks the whole listing', (tester) async {
-      await pump(
-        tester,
-        _MapBackend({
-          '/': [_file('a.txt'), _file('b.txt'), _file('c.txt')],
-        }),
-      );
+      await pump(tester, _MapBackend({
+        '/': [_file('a.txt'), _file('b.txt'), _file('c.txt')],
+      }));
       await focusList(tester);
 
       await tester.sendKeyDownEvent(LogicalKeyboardKey.meta);
@@ -747,12 +748,9 @@ void main() {
 
   group('searching this listing', () {
     testWidgets('finds an entry by part of its name', (tester) async {
-      await pump(
-        tester,
-        _MapBackend({
-          '/': [_file('notes.txt'), _file('report.pdf'), _dir('archive')],
-        }),
-      );
+      await pump(tester, _MapBackend({
+        '/': [_file('notes.txt'), _file('report.pdf'), _dir('archive')],
+      }));
 
       await tester.tap(find.byIcon(Icons.search));
       await tester.pumpAndSettle();
@@ -767,12 +765,9 @@ void main() {
     testWidgets('searches what is listed, directories included', (
       tester,
     ) async {
-      await pump(
-        tester,
-        _MapBackend({
-          '/': [_file('notes.txt'), _dir('archive')],
-        }),
-      );
+      await pump(tester, _MapBackend({
+        '/': [_file('notes.txt'), _dir('archive')],
+      }));
 
       await tester.tap(find.byIcon(Icons.search));
       await tester.pumpAndSettle();
@@ -780,52 +775,6 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('archive'), findsOneWidget);
-    });
-
-    testWidgets('and nothing the listing itself is hiding', (tester) async {
-      // The filter used to hold only until someone typed: search read the raw
-      // listing, so a query surfaced — and opened — the dotfiles the setting
-      // says not to show.
-      await pump(tester, _MapBackend({
-        '/': [_file('.bash_history'), _file('bash_notes.txt')],
-      }));
-
-      await tester.tap(find.byIcon(Icons.search));
-      await tester.pumpAndSettle();
-      await tester.enterText(find.byType(TextField), 'bash');
-      // Counted out rather than settled: a tree holding a text field always
-      // has something scheduled, so `pumpAndSettle` has nothing to settle to
-      // and only gives up after its ten-minute default. Several frames,
-      // because the match is a future and one frame only starts it.
-      for (var i = 0; i < 5; i++) {
-        await tester.pump(const Duration(milliseconds: 100));
-      }
-
-      expect(find.text('bash_notes.txt'), findsOneWidget);
-      expect(find.text('.bash_history'), findsNothing);
-    });
-  });
-
-  group('an entry whose name is not a name', () {
-    testWidgets('is left out of the listing entirely', (tester) async {
-      // `FileEntry.name` is the last component and never a path, and every
-      // backend here honours that. The browser joins it onto the directory
-      // being shown, so an entry that did not would make delete, rename and
-      // chmod act above the root — which `BrowsePath` guards for navigation
-      // and could not guard for this.
-      final backend = _MapBackend({
-        '/home/me': [
-          _file('notes.txt'),
-          _file('../../etc/shadow'),
-          _dir('..'),
-        ],
-      });
-
-      await pump(tester, backend, root: '/home/me');
-
-      expect(find.text('notes.txt'), findsOneWidget);
-      expect(find.text('../../etc/shadow'), findsNothing);
-      expect(find.text('..'), findsNothing);
     });
   });
 
@@ -838,25 +787,22 @@ void main() {
     test('a name in this directory is this directory', () {
       const here = LocalFileRef('/tmp/into');
 
-      expect(
-        here.child('dropped.txt'),
-        const LocalFileRef('/tmp/into/dropped.txt'),
-      );
+      expect(here.child('dropped.txt'), const LocalFileRef('/tmp/into/dropped.txt'));
     });
 
     test('a sibling directory is not', () {
       const here = LocalFileRef('/tmp/into');
 
       expect(
-        here.child('dropped.txt') ==
-            const LocalFileRef('/tmp/elsewhere/dropped.txt'),
+        here.child('dropped.txt') == const LocalFileRef('/tmp/elsewhere/dropped.txt'),
         isFalse,
       );
     });
 
     // That the same path on two different machines is also not the same place
     // is `file_transfer_test.dart`'s `two ends are the same place only when
-    // both halves match` — an `SshFileRef` carries the server it is on.
+    // both halves match` — an `SftpFileRef` carries the server it is on.
+
   });
 
   testWidgets('every icon button says what it does', (tester) async {
@@ -864,12 +810,9 @@ void main() {
     // the only label an icon-only button has, and on a desktop it is what a
     // hover is for; asserted over the tree rather than listed, so a button
     // added later is covered without anyone remembering to add it here.
-    await pump(
-      tester,
-      _MapBackend({
-        '/': [_file('a.txt')],
-      }),
-    );
+    await pump(tester, _MapBackend({
+      '/': [_file('a.txt')],
+    }));
 
     final silent = <String>[];
     for (final element in find.byType(IconButton).evaluate()) {

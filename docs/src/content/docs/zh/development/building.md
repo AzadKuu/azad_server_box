@@ -8,15 +8,8 @@ Server Box 使用自定义构建系统 (`fl_build`) 进行跨平台构建。
 ## 前置条件
 
 - Flutter SDK (stable channel)
-- 平台相关工具（iOS 需要 Xcode，Android 需要 Android Studio）
-- Rust 工具链（必需：`crates/sbm_ffi` Rust crate 由 Dart build hook 通过
-  `flutter_rust_bridge_hooks` 和 native assets 构建进 App）
-
-获取 Dart 依赖前，请先初始化项目内置的 Git 子模块：
-
-```bash
-git submodule update --init --recursive
-```
+- 平台特定工具 (iOS 需要 Xcode，Android 需要 Android Studio)
+- Rust 工具链（必需：状态解析库是 Rust crate,经 flutter_rust_bridge/cargokit 构建进各平台的 App）
 
 ## 开发版构建
 
@@ -28,7 +21,7 @@ flutter run
 flutter run -d <device-id>
 ```
 
-## 发布版构建
+## 生产版构建
 
 项目使用 `fl_build` 进行构建：
 
@@ -85,7 +78,7 @@ dart run fl_build -p linux
 dart run fl_build -p windows
 ```
 
-需要安装 Visual Studio 的 Windows 环境。
+需要安装了 Visual Studio 的 Windows 环境。
 
 ## 构建 monitor
 
@@ -97,7 +90,7 @@ cd monitor
 # 后端
 cargo build --release
 
-# 面板：存在 frontend/dist 时由 agent 自己提供
+# 面板 —— 存在 frontend/dist 时由 agent 自己提供
 cd frontend && npm install && npm run build
 ```
 
@@ -110,13 +103,15 @@ Docker 见 `monitor/Dockerfile`。
 
 ## 构建前/后处理
 
-`fl_build` 在每次构建时重新生成 `lib/data/res/build_data.dart`，构建号由 Git
-历史推导，并把对应版本写进 Xcode 配置。`pubspec.yaml` 的 `fl_build:` 段负责告诉它
-应用叫什么。
+`make.dart` 脚本负责处理：
+
+- 元数据生成
+- 版本字符串更新
+- 平台特定的配置
 
 ## 故障排除
 
-### 干净构建（Clean Build）
+### 全新构建 (Clean Build)
 
 ```bash
 flutter clean
@@ -126,7 +121,7 @@ flutter pub get
 
 ### 版本不匹配
 
-确认所有依赖项相互兼容：
+确保所有依赖项兼容：
 ```bash
 flutter pub upgrade
 ```

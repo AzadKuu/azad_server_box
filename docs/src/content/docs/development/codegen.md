@@ -3,18 +3,17 @@ title: Code Generation
 description: Using build_runner for code generation
 ---
 
-Server Box uses code generation for models, state management, and serialization.
+Server Box heavily uses code generation for models, state management, and serialization.
 
 ## When to Run Code Generation
 
-Run the relevant generator after modifying:
+Run after modifying:
 
 - Models with `@freezed` annotation
 - Classes with `@JsonSerializable`
-- Hive adapter sources in the current generated adapter list (not frozen legacy
-  readers)
+- Hive models
 - Providers with `@riverpod`
-- Localization ARB files; run `flutter gen-l10n`
+- Localizations (ARB files)
 
 ## Running Code Generation
 
@@ -22,7 +21,7 @@ Run the relevant generator after modifying:
 # Generate all code
 dart run build_runner build --delete-conflicting-outputs
 
-# Clear the build_runner cache
+# Clean generated build cache
 dart run build_runner clean
 
 # Then regenerate
@@ -46,7 +45,7 @@ class ServerState with _$ServerState {
 
 ### JSON Serialization (`*.g.dart`)
 
-The `json_serializable` package generates these files:
+Generated from `json_serializable`:
 
 ```dart
 @JsonSerializable()
@@ -77,7 +76,7 @@ class MyNotifier extends _$MyNotifier {
 
 ### Hive Adapters (`*.g.dart`)
 
-Generated Hive adapters cover the current adapter list:
+Auto-generated for Hive models (hive_ce):
 
 ```dart
 @HiveType(typeId: 0)
@@ -86,12 +85,6 @@ class ServerModel {
   final String id;
 }
 ```
-
-The adapters in `lib/hive/legacy_adapters.dart` are intentionally frozen readers.
-Do not regenerate them from current models or add a newly changed model to the
-generated adapter list: a newly added non-nullable field can make boxes written
-by older releases fail to open. Update a frozen reader and its migration test
-only when the bytes written by a released version require it.
 
 ## Rust Bindings (flutter_rust_bridge)
 
@@ -115,5 +108,5 @@ Generates `lib/generated/l10n/` from `lib/l10n/*.arb` files.
 ## Tips
 
 - Use `--delete-conflicting-outputs` to avoid conflicts
-- Commit generated files that are already tracked by this repository
+- Keep generated files in version control when they are already tracked by this repository
 - Never manually edit generated files

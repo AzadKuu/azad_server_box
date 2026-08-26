@@ -8,19 +8,6 @@ on:
         required: false
         type: boolean
         default: false
-      jobs:
-        # Comma-separated rather than a `choice`, which allows only one value,
-        # and there is no multi-select for `workflow_dispatch`. Empty means all,
-        # so the tag-push path is unaffected and so is dispatching without
-        # thinking about it.
-        #
-        # Unknown names are refused rather than ignored — see `Check job
-        # selection`. A typo that silently builds nothing looks exactly like a
-        # workflow that is broken.
-        description: 'What to run: android,ios,linux,windows,macos,monitor (empty = all; monitor is verification only)'
-        required: false
-        type: string
-        default: ''
   push:
     tags:
       - "v*"
@@ -29,37 +16,14 @@ permissions:
   contents: read
 
 env:
+  APP_NAME: ServerBox
   BUILD_TAG: test-build-${{ github.run_number }}-${{ github.sha }}
+  FLUTTER_VERSION: "3.47.0"
 
 jobs:
   reproducibilityCheck:
     name: Reproducibility check
     runs-on: ubuntu-latest
-    outputs:
-      # The selection, canonicalised once and matched exactly by every job
-      # below. Wrapped in commas so `contains(..., ',linux,')` cannot match a
-      # substring of another name, and so the jobs never see the raw input —
-      # which is what let `an droid` validate (whitespace was stripped before
-      # the check) and then match nothing (it was not stripped afterwards),
-      # skipping every job while reporting success.
-      selected: ${{ steps.selection.outputs.selected }}
-      # What the artifacts are called, read from the one line that says so —
-      # `fl_build:` in pubspec.yaml. `fl_build` names the files it produces
-      # after it and the steps below name the files they publish, so a second
-      # copy here that drifted would publish a release whose asset paths match
-      # nothing, which `action-gh-release` reports as a warning and an empty
-      # release rather than as a failure.
-      appName: ${{ steps.appName.outputs.name }}
-      # The version every job names its artifacts after. Resolved once, here,
-      # because it was resolved in two jobs and used in six: Android, Linux and
-      # Windows renamed with an empty `BUILD_NUMBER`, so their globs looked for
-      # `*__*.apk` and their release paths for `v1.0.`, and
-      # `action-gh-release` reported a warning rather than a failure.
-      buildNumber: ${{ steps.buildNumber.outputs.build }}
-      # Whether this run publishes. `github.ref_type == 'tag'` alone was true
-      # of a manual dispatch against a tag with the release box unticked, which
-      # is the one case the box exists to say no to.
-      isRelease: ${{ steps.buildNumber.outputs.release }}
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -68,7 +32,10 @@ jobs:
           persist-credentials: false
           fetch-depth: 0
       - name: Install Flutter
-        uses: ./.github/actions/setup-flutter
+        uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2
+        with:
+          channel: "stable"
+          flutter-version: ${{ env.FLUTTER_VERSION }}
       - name: Require tagged releases
         if: inputs.release == true && github.ref_type != 'tag'
         shell: bash
@@ -82,99 +49,20 @@ jobs:
         run: |
           set -euo pipefail
 
-          build_data="$(sed -n -E 's/.*static const int build = ([0-9]+);/\1/p' lib/data/res/build_data.dart | head -n 1)"
+          expected="${GITHUB_REF_NAME#v}"
+          build="${expected##*.}"
           pub_version="$(sed -n -E 's/^version:[[:space:]]*([^+]+)\+([0-9]+)$/\1+\2/p' pubspec.yaml | head -n 1)"
+          build_data="$(sed -n -E 's/.*static const int build = ([0-9]+);/\1/p' lib/data/res/build_data.dart | head -n 1)"
 
-          if [[ -z "$build_data" ]]; then
-            echo "::error::BuildData.build not found in lib/data/res/build_data.dart"
+          if [[ "$pub_version" != "$expected+$build" ]]; then
+            echo "pubspec.yaml version must match tag ${GITHUB_REF_NAME}; got ${pub_version}."
             exit 1
           fi
 
-          # The whole tag, not the number on the end of it. Everything
-          # downstream writes `v1.0.<build>` out by hand — the artifact names in
-          # every platform job, and the tag `publishRelease` opens the release
-          # on — while this compared only `${GITHUB_REF_NAME##*.}` and never the
-          # `1.0.` in front of it. So a tag of any other shape validated and
-          # then published somewhere else: `v2.0.1491`, with a pubspec of
-          # `2.0.1491+1491`, passed here, built assets named `..._v1.0.1491_...`
-          # and had the release opened on `v1.0.1491` — a tag git need not even
-          # have, created at this commit — leaving the tag that was actually
-          # pushed with nothing on it.
-          expected_tag="v1.0.${build_data}"
-          if [[ "$GITHUB_REF_NAME" != "$expected_tag" ]]; then
-            echo "::error::this workflow publishes ${expected_tag}, but the tag is ${GITHUB_REF_NAME}."
-            echo "Push ${expected_tag}, or set BuildData.build to the tag's build number."
+          if [[ "$build_data" != "$build" ]]; then
+            echo "BuildData.build must match tag ${GITHUB_REF_NAME}; got ${build_data}."
             exit 1
           fi
-
-          if [[ "$pub_version" != "1.0.${build_data}+${build_data}" ]]; then
-            echo "::error::pubspec.yaml version must be 1.0.${build_data}+${build_data}; got ${pub_version}."
-            exit 1
-          fi
-      - name: Check job selection
-        id: selection
-        shell: bash
-        # Through the environment, not `${{ }}` inside the script: an
-        # expression is substituted into the source before bash parses it, so
-        # a value containing a quote or a `;` would run as code. Only someone
-        # with write access can dispatch this, which lowers the stakes and does
-        # not change what the code says.
-        env:
-          REQUESTED: ${{ inputs.jobs }}
-          IS_DISPATCH: ${{ github.event_name == 'workflow_dispatch' }}
-          IS_RELEASE: ${{ inputs.release }}
-        run: |
-          set -euo pipefail
-
-          known="android ios linux windows macos monitor"
-          # `monitor` verifies a cross-build and publishes nothing, so its own
-          # `if` refuses a release run. Selecting it for one would validate,
-          # match nothing and finish green having built nothing at all.
-          verify_only="monitor"
-
-          if [[ "$IS_DISPATCH" != "true" || -z "${REQUESTED//[[:space:]]/}" ]]; then
-            # A tag push, or a dispatch that named nothing: everything runs.
-            selected="$known"
-          else
-            selected=""
-            bad=()
-            not_for_release=()
-            IFS=',' read -ra requested <<< "$REQUESTED"
-            for raw in "${requested[@]:-}"; do
-              # Trimmed at the ends only. Whitespace *inside* a token is a typo
-              # (`an droid`), not something to silently repair into a name the
-              # user did not type.
-              name="${raw#"${raw%%[![:space:]]*}"}"
-              name="${name%"${name##*[![:space:]]}"}"
-              [[ -z "$name" ]] && continue
-              if [[ " $known " != *" $name "* ]]; then bad+=("$name"); continue; fi
-              if [[ "$IS_RELEASE" == "true" && " $verify_only " == *" $name "* ]]; then
-                not_for_release+=("$name"); continue
-              fi
-              selected="$selected $name"
-            done
-
-            if (( ${#bad[@]} )); then
-              echo "Unknown job(s): ${bad[*]}"
-              echo "Valid names: $known"
-              exit 1
-            fi
-            if (( ${#not_for_release[@]} )); then
-              echo "Not available on a release run: ${not_for_release[*]}"
-              echo "Those verify a build rather than publish one."
-              exit 1
-            fi
-            if [[ -z "${selected//[[:space:]]/}" ]]; then
-              # Only reachable from a value that is all separators, such as
-              # `,` or `, ,` — which would otherwise pass and build nothing.
-              echo "No jobs selected. Leave the field empty to run all of them."
-              exit 1
-            fi
-          fi
-
-          canonical=",$(echo "$selected" | tr -s '[:space:]' ',' | sed 's/^,//;s/,$//'),"
-          echo "selected=$canonical" >> "$GITHUB_OUTPUT"
-          echo "Running:$selected"
       - name: Check locked dependencies
         shell: bash
         run: |
@@ -183,75 +71,13 @@ jobs:
       - name: Check JNI build-id patch
         shell: bash
         run: scripts/release/patch-jni-build-id.sh
-      - name: Read the app name
-        id: appName
-        shell: bash
-        run: |
-          set -euo pipefail
-          # `yq eval`, which is mikefarah's — the one on the Linux runner
-          # images, and the one the Flutter setup action calls the same way.
-          # It only installs its own for Windows, which is where it is missing.
-          name="$(yq eval '.fl_build.appName' pubspec.yaml)"
-          # An absent key reads back as the string `null`, and a release named
-          # after it would publish under `null_v1.0.<n>_arm64.apk` rather than
-          # fail.
-          if [[ -z "$name" || "$name" == 'null' ]]; then
-            echo "::error::pubspec.yaml has no fl_build.appName"
-            exit 1
-          fi
-          echo "name=$name" >> "$GITHUB_OUTPUT"
-          echo "app name: $name"
-      - name: Resolve build number
-        id: buildNumber
-        shell: bash
-        env:
-          IS_DISPATCH: ${{ github.event_name == 'workflow_dispatch' }}
-          WANTS_RELEASE: ${{ inputs.release }}
-        run: |
-          set -euo pipefail
-          build="$(sed -n -E 's/.*static const int build = ([0-9]+);/\1/p' lib/data/res/build_data.dart | head -n 1)"
-          if [[ -z "$build" ]]; then
-            echo "::error::BuildData.build not found in lib/data/res/build_data.dart"
-            exit 1
-          fi
-          echo "build=$build" >> "$GITHUB_OUTPUT"
 
-          # A tag push always releases; a dispatch only when asked. Tag *and*
-          # dispatch is the case the old condition got wrong.
-          release=false
-          if [[ "$WANTS_RELEASE" == 'true' ]]; then
-            release=true
-          elif [[ "$IS_DISPATCH" != 'true' && "$GITHUB_REF_TYPE" == 'tag' ]]; then
-            release=true
-          fi
-          echo "release=$release" >> "$GITHUB_OUTPUT"
-          echo "build $build, release $release"
-
-  buildMacOS:
-    name: Build macos
-    # A tag builds everything, unconditionally. The selector exists to narrow
-    # a manual dispatch; letting it decide the release path would mean an empty
-    # or unemitted output skips every job and reports success — which is the
-    # failure this whole mechanism is meant to prevent.
-    if: >-
-      github.ref_type == 'tag'
-      || contains(needs.reproducibilityCheck.outputs.selected, ',macos,')
+  verifyMacOS:
+    name: Verify macOS release
+    if: github.event_name == 'workflow_dispatch' && inputs.release != true
     needs: reproducibilityCheck
-    # From pubspec.yaml's `fl_build:`, by way of the job above — see its
-    # `appName`
-    # output. Job level rather than workflow level because that is the
-    # nearest scope an expression on `needs` can be written in.
-    env:
-      APP_NAME: ${{ needs.reproducibilityCheck.outputs.appName }}
-      BUILD_NUMBER: ${{ needs.reproducibilityCheck.outputs.buildNumber }}
     runs-on: macos-latest
     timeout-minutes: 45
-    # Read-only, on a release run as on any other. Nothing here writes to the
-    # repository: the artifact is handed to `publishRelease`, which is the one
-    # job that needs a write-capable token — and it runs nothing but the
-    # publication.
-    permissions:
-      contents: read
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -260,7 +86,10 @@ jobs:
           persist-credentials: false
           fetch-depth: 1
       - name: Install Flutter
-        uses: ./.github/actions/setup-flutter
+        uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2
+        with:
+          channel: "stable"
+          flutter-version: ${{ env.FLUTTER_VERSION }}
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
       - name: Install dependencies
         run: flutter pub get
@@ -295,10 +124,7 @@ jobs:
           </plist>
           EOF
       - name: Build release
-        run: |
-          flutter build macos --release \
-            --build-number="${BUILD_NUMBER}" \
-            --build-name="1.0.${BUILD_NUMBER}"
+        run: flutter build macos --release
       - name: Verify release launch
         shell: bash
         run: |
@@ -331,44 +157,10 @@ jobs:
           done
 
           cat "$log_file"
-      # Ad-hoc signed, like the unsigned IPA: the artifact is for looking at,
-      # not for handing to someone. macOS will refuse to open it without the
-      # user overriding Gatekeeper, and the name has to say so — `spctl` is
-      # expected to fail here, which is why the script only warns.
-      - name: Package dmg
-        shell: bash
-        env:
-          # `APP_NAME` is the *bundle* name and has a space in it. The job's
-          # own `env` sets it to `ServerBox`, which reaches every step —
-          # without this override `ditto` would stage the app into the DMG
-          # under a name it does not have, and the volume would differ from
-          # what `make package-dmg` produces locally.
-          #
-          # The two `${{ env.APP_NAME }}` below still read `ServerBox`: what a
-          # step's `env` block is evaluated against is the workflow's and the
-          # job's, never its own.
-          APP_NAME: Server Box
-          APP_ASSET_NAME: ${{ env.APP_NAME }}
-          APP_PATH: build/macos/Build/Products/Release/Server Box.app
-          DMG_BASENAME: ${{ env.APP_NAME }}_v1.0.${{ env.BUILD_NUMBER }}_NoSign
-        run: bash scripts/release/package-dmg-from-xcarchive.sh
-      # Always, release or not. The artifact is how the build reaches
-      # `publishRelease`; `if-no-files-found: error` is what makes a rename
-      # that did not fire fail here, in the job that would know why, rather
-      # than by publishing a release with whatever else happened to be there.
-      - name: Upload artifacts
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
-        with:
-          name: ${{ env.APP_NAME }}-${{ env.BUILD_TAG }}-macos
-          path: build/artifacts/${{ env.APP_NAME }}_v1.0.${{ env.BUILD_NUMBER }}_NoSign.dmg
-          if-no-files-found: error
-          retention-days: 14
 
   verifyMonitor:
     name: Verify monitor ${{ matrix.platform }}-${{ matrix.arch }}
-    if: >-
-      github.event_name == 'workflow_dispatch' && inputs.release != true
-      && contains(needs.reproducibilityCheck.outputs.selected, ',monitor,')
+    if: github.event_name == 'workflow_dispatch' && inputs.release != true
     needs: reproducibilityCheck
     strategy:
       fail-fast: false
@@ -419,22 +211,10 @@ jobs:
 
   buildAndroid:
     name: Build android
-    if: >-
-      github.ref_type == 'tag'
-      || contains(needs.reproducibilityCheck.outputs.selected, ',android,')
     needs: reproducibilityCheck
-    # From pubspec.yaml's `fl_build:`, by way of the job above — see its
-    # `appName`
-    # output. Job level rather than workflow level because that is the
-    # nearest scope an expression on `needs` can be written in.
-    env:
-      APP_NAME: ${{ needs.reproducibilityCheck.outputs.appName }}
-      BUILD_NUMBER: ${{ needs.reproducibilityCheck.outputs.buildNumber }}
     runs-on: ubuntu-latest
-    # See `buildMacOS` — publication is one job, and it is the only one that
-    # needs to write.
     permissions:
-      contents: read
+      contents: write
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -443,22 +223,18 @@ jobs:
           persist-credentials: false
           fetch-depth: 0
       - name: Install Flutter
-        uses: ./.github/actions/setup-flutter
+        uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2
+        with:
+          channel: "stable"
+          flutter-version: ${{ env.FLUTTER_VERSION }}
       - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
         with:
           distribution: "zulu"
           java-version: "21"
       - name: Fetch secrets
-        # Through the environment, and quoted. Expanded into the script the way
-        # they were, a space or a shell metacharacter in either value is parsed
-        # as script rather than as part of the value.
-        env:
-          BASIC_AUTH: ${{ secrets.BASIC_AUTH }}
-          URL_PREFIX: ${{ secrets.URL_PREFIX }}
         run: |
-          set -euo pipefail
-          curl --fail --show-error --location -u "$BASIC_AUTH" -o android/app/app.key "${URL_PREFIX}app.key"
-          curl --fail --show-error --location -u "$BASIC_AUTH" -o android/key.properties "${URL_PREFIX}key.properties"
+          curl --fail --show-error --location -u ${{ secrets.BASIC_AUTH }} -o android/app/app.key ${{ secrets.URL_PREFIX }}app.key
+          curl --fail --show-error --location -u ${{ secrets.BASIC_AUTH }} -o android/key.properties ${{ secrets.URL_PREFIX }}key.properties
       - name: Patch JNI build-id
         run: |
           flutter pub get
@@ -473,11 +249,11 @@ jobs:
           export ANDROID_NDK_HOME="${ANDROID_NDK_LATEST_HOME:-${ANDROID_NDK_ROOT:-}}"
           scripts/build-proot-android.sh
       - name: Build (release)
-        if: needs.reproducibilityCheck.outputs.isRelease == 'true'
+        if: inputs.release == true || github.ref_type == 'tag'
         shell: bash
         run: dart run fl_build -bp -p android
       - name: Build (test)
-        if: needs.reproducibilityCheck.outputs.isRelease != 'true'
+        if: inputs.release != true && github.ref_type != 'tag'
         shell: bash
         run: dart run fl_build -p android
       # `useLegacyPackaging` off means nothing is extracted from the APK, so
@@ -505,39 +281,32 @@ jobs:
           done
           # Remove original APKs copied by fl_build
           rm -f app-*-release.apk
-      # Named one by one rather than `*.apk`, so the artifact holds exactly what
-      # a release publishes and nothing else. `if-no-files-found` only fires
-      # when *no* pattern matched, so it does not catch a single missing ABI —
-      # `publishRelease`'s `Check every expected asset arrived` is what does.
       - name: Upload artifacts
+        if: inputs.release != true && github.ref_type != 'tag'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: ${{ env.APP_NAME }}-${{ env.BUILD_TAG }}-android
-          path: |
+          path: build/app/outputs/flutter-apk/*.apk
+          if-no-files-found: error
+          retention-days: 14
+      - name: Create Release
+        if: inputs.release == true || github.ref_type == 'tag'
+        uses: softprops/action-gh-release@3d0d9888cb7fd7b750713d6e236d1fcb99157228 # v3
+        with:
+          tag_name: v1.0.${{ env.BUILD_NUMBER }}
+          files: |
             build/app/outputs/flutter-apk/${{ env.APP_NAME }}_v1.0.${{ env.BUILD_NUMBER }}_arm64.apk
             build/app/outputs/flutter-apk/${{ env.APP_NAME }}_v1.0.${{ env.BUILD_NUMBER }}_arm.apk
             build/app/outputs/flutter-apk/${{ env.APP_NAME }}_v1.0.${{ env.BUILD_NUMBER }}_amd64.apk
-          if-no-files-found: error
-          retention-days: 14
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   buildIOS:
     name: Build ios
-    if: >-
-      github.ref_type == 'tag'
-      || contains(needs.reproducibilityCheck.outputs.selected, ',ios,')
     needs: reproducibilityCheck
-    # From pubspec.yaml's `fl_build:`, by way of the job above — see its
-    # `appName`
-    # output. Job level rather than workflow level because that is the
-    # nearest scope an expression on `needs` can be written in.
-    env:
-      APP_NAME: ${{ needs.reproducibilityCheck.outputs.appName }}
-      BUILD_NUMBER: ${{ needs.reproducibilityCheck.outputs.buildNumber }}
     runs-on: macos-latest
-    # See `buildMacOS` — publication is one job, and it is the only one that
-    # needs to write.
     permissions:
-      contents: read
+      contents: write
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -546,65 +315,54 @@ jobs:
           persist-credentials: false
           fetch-depth: 0
       - name: Install Flutter
-        uses: ./.github/actions/setup-flutter
-      - name: Turn the Linux engine on
+        uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2
+        with:
+          channel: "stable"
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+      - name: Resolve build number
         shell: bash
         run: |
           set -euo pipefail
 
-          # Untracked by design. ios/Flutter/Ish.xcconfig defaults SBM_ISH to
-          # 0 so that a checkout which has not built the engine cannot link
-          # one that is not there; CI opts in the way a development machine
-          # does rather than by moving that default.
-          #
-          # The libraries themselves are fetched by the Runner target, through
-          # scripts/ensure-ish-libs.sh: the release the fork publishes for the
-          # revision the gitlink names. Nothing is built here, and no toolchain
-          # is installed — if that download has no release to find, the gitlink
-          # points at an unpublished revision and the build says so.
-          printf 'SBM_ISH = 1\n' > ios/Flutter/IshLocal.xcconfig
+          build="$(sed -n -E 's/.*static const int build = ([0-9]+);/\1/p' lib/data/res/build_data.dart | head -n 1)"
+          if [[ -z "$build" ]]; then
+            echo "BuildData.build not found in lib/data/res/build_data.dart"
+            exit 1
+          fi
+
+          echo "BUILD_NUMBER=$build" >> "$GITHUB_ENV"
       - name: Build (unsigned)
         shell: bash
         run: |
           flutter build ios --release --no-codesign \
             --build-number="${BUILD_NUMBER}" \
             --build-name="1.0.${BUILD_NUMBER}"
-      # The step above asked for the engine; this is what says it arrived. It
-      # cannot fail at build time — nothing in the app calls those functions, so
-      # a linker that dead-strips them produces an IPA that builds, installs and
-      # runs, with the terminal tab's Linux userland simply absent. Android has
-      # `Check proot shipped` for the same reason.
-      - name: Check the Linux engine linked
-        shell: bash
-        run: scripts/check-ish-linkage.sh build/ios/iphoneos/Runner.app/Runner on
       - name: Package ipa
         shell: bash
         run: APP_ASSET_NAME="${APP_NAME}" scripts/release/package-unsigned-ipa.sh
       - name: Upload artifacts
+        if: inputs.release != true && github.ref_type != 'tag'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: ${{ env.APP_NAME }}-${{ env.BUILD_TAG }}-ios
-          path: build/artifacts/${{ env.APP_NAME }}_v1.0.${{ env.BUILD_NUMBER }}_NoSign.ipa
+          path: build/artifacts/*.ipa
           if-no-files-found: error
           retention-days: 14
+      - name: Create Release
+        if: inputs.release == true || github.ref_type == 'tag'
+        uses: softprops/action-gh-release@3d0d9888cb7fd7b750713d6e236d1fcb99157228 # v3
+        with:
+          tag_name: v1.0.${{ env.BUILD_NUMBER }}
+          files: |
+            build/artifacts/${{ env.APP_NAME }}_v1.0.${{ env.BUILD_NUMBER }}_NoSign.ipa
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   buildLinux:
     name: Build linux
-    if: >-
-      github.ref_type == 'tag'
-      || contains(needs.reproducibilityCheck.outputs.selected, ',linux,')
     needs: reproducibilityCheck
-    # From pubspec.yaml's `fl_build:`, by way of the job above — see its
-    # `appName`
-    # output. Job level rather than workflow level because that is the
-    # nearest scope an expression on `needs` can be written in.
-    env:
-      APP_NAME: ${{ needs.reproducibilityCheck.outputs.appName }}
-      BUILD_NUMBER: ${{ needs.reproducibilityCheck.outputs.buildNumber }}
-    # See `buildMacOS` — publication is one job, and it is the only one that
-    # needs to write.
     permissions:
-      contents: read
+      contents: write
     strategy:
       fail-fast: false
       matrix:
@@ -624,18 +382,21 @@ jobs:
           persist-credentials: false
           fetch-depth: 0
       - name: Install Flutter
-        uses: ./.github/actions/setup-flutter
+        uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2
+        with:
+          channel: 'stable'
+          flutter-version: ${{ env.FLUTTER_VERSION }}
       - name: Install dependencies
         run: |
           sudo apt update
           sudo apt install -y clang cmake ninja-build pkg-config libgtk-3-dev mesa-utils libvulkan-dev desktop-file-utils wget
           sudo apt install -y libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev libunwind-dev libsecret-1-dev
       - name: Build (release)
-        if: needs.reproducibilityCheck.outputs.isRelease == 'true'
+        if: inputs.release == true || github.ref_type == 'tag'
         shell: bash
         run: dart run fl_build -bp -p linux
       - name: Build (test)
-        if: needs.reproducibilityCheck.outputs.isRelease != 'true'
+        if: inputs.release != true && github.ref_type != 'tag'
         shell: bash
         run: dart run fl_build -p linux
       - name: Rename
@@ -650,31 +411,29 @@ jobs:
         run: |
           mv "${APP_NAME}_v1.0.${BUILD_NUMBER}_amd64.AppImage" "${APP_NAME}_v1.0.${BUILD_NUMBER}${{ matrix.release_suffix }}_amd64.AppImage"
       - name: Upload artifacts
+        if: inputs.release != true && github.ref_type != 'tag'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: ${{ env.APP_NAME }}-${{ env.BUILD_TAG }}-linux${{ matrix.artifact_suffix }}
-          path: ${{ env.APP_NAME }}_v1.0.${{ env.BUILD_NUMBER }}${{ matrix.release_suffix }}_amd64.AppImage
+          path: "*.AppImage"
           if-no-files-found: error
           retention-days: 14
+      - name: Create Release
+        if: inputs.release == true || github.ref_type == 'tag'
+        uses: softprops/action-gh-release@3d0d9888cb7fd7b750713d6e236d1fcb99157228 # v3
+        with:
+          tag_name: v1.0.${{ env.BUILD_NUMBER }}
+          files: |
+            ${{ env.APP_NAME }}_v1.0.${{ env.BUILD_NUMBER }}${{ matrix.release_suffix }}_amd64.AppImage
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   buildWindows:
     name: Build windows
-    if: >-
-      github.ref_type == 'tag'
-      || contains(needs.reproducibilityCheck.outputs.selected, ',windows,')
     needs: reproducibilityCheck
-    # From pubspec.yaml's `fl_build:`, by way of the job above — see its
-    # `appName`
-    # output. Job level rather than workflow level because that is the
-    # nearest scope an expression on `needs` can be written in.
-    env:
-      APP_NAME: ${{ needs.reproducibilityCheck.outputs.appName }}
-      BUILD_NUMBER: ${{ needs.reproducibilityCheck.outputs.buildNumber }}
     runs-on: windows-latest
-    # See `buildMacOS` — publication is one job, and it is the only one that
-    # needs to write.
     permissions:
-      contents: read
+      contents: write
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -683,13 +442,16 @@ jobs:
           persist-credentials: false
           fetch-depth: 0
       - name: Install Flutter
-        uses: ./.github/actions/setup-flutter
+        uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2
+        with:
+          channel: 'stable'
+          flutter-version: ${{ env.FLUTTER_VERSION }}
       - name: Build (release)
-        if: needs.reproducibilityCheck.outputs.isRelease == 'true'
+        if: inputs.release == true || github.ref_type == 'tag'
         shell: bash
         run: dart run fl_build -bp -p windows
       - name: Build (test)
-        if: needs.reproducibilityCheck.outputs.isRelease != 'true'
+        if: inputs.release != true && github.ref_type != 'tag'
         shell: bash
         run: dart run fl_build -p windows
       - name: Rename
@@ -699,103 +461,19 @@ jobs:
             mv "$f" "${f/_${BUILD_NUMBER}_/_v1.0.${BUILD_NUMBER}_}"
           done
       - name: Upload artifacts
+        if: inputs.release != true && github.ref_type != 'tag'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: ${{ env.APP_NAME }}-${{ env.BUILD_TAG }}-windows
-          path: ${{ env.APP_NAME }}_v1.0.${{ env.BUILD_NUMBER }}_windows_amd64.zip
+          path: "*_windows_amd64.zip"
           if-no-files-found: error
           retention-days: 14
-
-  # The one job that publishes, and the only one with a write-capable token.
-  #
-  # Every platform used to open the release itself and upload into it, six jobs
-  # racing to create one thing; then the release was opened here and they
-  # uploaded into it, which stopped the race but not the half-finished result —
-  # a build that failed after another had uploaded left the tag carrying two
-  # platforms out of six, published, with nothing to say the rest were coming.
-  # `fail_on_unmatched_files` cannot see that: it knows about the files one job
-  # was asked for, not about the job that never ran.
-  #
-  # So: `needs` every platform, which a skipped or failed one fails; assemble
-  # the assets from their artifacts; refuse if the set is not complete; create
-  # the release as a **draft** and only then publish it. A failure anywhere
-  # before that last step leaves a draft, which is not a release anyone can
-  # download.
-  publishRelease:
-    name: Publish the release
-    if: needs.reproducibilityCheck.outputs.isRelease == 'true'
-    needs:
-      - reproducibilityCheck
-      - buildMacOS
-      - buildAndroid
-      - buildIOS
-      - buildLinux
-      - buildWindows
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    env:
-      APP_NAME: ${{ needs.reproducibilityCheck.outputs.appName }}
-      BUILD_NUMBER: ${{ needs.reproducibilityCheck.outputs.buildNumber }}
-      # Built from the build number rather than read from `github.ref_name`, so
-      # it is the same expression the platform jobs name their files with. The
-      # two are only interchangeable because `Check tag source version` refuses
-      # a tag that is not exactly this; without that check this opened a release
-      # on a tag nobody pushed.
-      TAG: v1.0.${{ needs.reproducibilityCheck.outputs.buildNumber }}
-    steps:
-      - name: Collect the platform artifacts
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
-        with:
-          pattern: ${{ env.APP_NAME }}-${{ env.BUILD_TAG }}-*
-          path: assets
-          merge-multiple: true
-      # The complete set, named here because this is the only place that can
-      # know it. Each build job knows about its own files and answers for those;
-      # a platform whose job never ran has no files and no complaint to make.
-      - name: Check every expected asset arrived
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          expected=(
-            "${APP_NAME}_${TAG}_NoSign.dmg"
-            "${APP_NAME}_${TAG}_NoSign.ipa"
-            "${APP_NAME}_${TAG}_arm64.apk"
-            "${APP_NAME}_${TAG}_arm.apk"
-            "${APP_NAME}_${TAG}_amd64.apk"
-            "${APP_NAME}_${TAG}_amd64.AppImage"
-            "${APP_NAME}_${TAG}_legacy_amd64.AppImage"
-            "${APP_NAME}_${TAG}_windows_amd64.zip"
-          )
-
-          missing=()
-          for name in "${expected[@]}"; do
-            [ -f "assets/$name" ] || missing+=("$name")
-          done
-
-          echo "collected:"
-          ls -la assets
-
-          if (( ${#missing[@]} )); then
-            echo "::error::the release is incomplete, ${#missing[@]} asset(s) missing: ${missing[*]}"
-            exit 1
-          fi
-      # As a draft, so nothing is downloadable until the step below says so.
-      # `action-gh-release` sends `draft` on an update too, so a second call
-      # without it would publish the release — which is exactly what the step
-      # below is for.
-      - name: Stage the release
+      - name: Create Release
+        if: inputs.release == true || github.ref_type == 'tag'
         uses: softprops/action-gh-release@3d0d9888cb7fd7b750713d6e236d1fcb99157228 # v3
         with:
-          tag_name: ${{ env.TAG }}
-          draft: true
-          fail_on_unmatched_files: true
-          files: assets/*
+          tag_name: v1.0.${{ env.BUILD_NUMBER }}
+          files: |
+            ${{ env.APP_NAME }}_v1.0.${{ env.BUILD_NUMBER }}_windows_amd64.zip
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      - name: Publish
-        shell: bash
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release edit "$TAG" --draft=false --repo "$GITHUB_REPOSITORY"

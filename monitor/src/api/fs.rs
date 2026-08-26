@@ -2,9 +2,10 @@
 //! operator named.
 //!
 //! The app's third file backend. It already browses a server's files over SFTP
-//! whenever it can reach sshd, so this endpoint exists for exactly one case: a
-//! host running the agent with no reachable sshd at all. That is a small set,
-//! and it is why this is off by default and why it is confined.
+//! whenever it can reach sshd — directly, or relayed through this agent's
+//! tunnel — so this endpoint exists for exactly one case: a host running the
+//! agent with no reachable sshd at all. That is a small set, and it is why
+//! this is off by default and why it is confined.
 //!
 //! **Confinement is the whole design.** `core::fs_roots` resolves every
 //! request to a canonical path and refuses anything that lands outside the
@@ -28,10 +29,7 @@ use serde::{Deserialize, Serialize};
 use tokio::io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt};
 
 use super::server::{AppState, verify_auth};
-use super::ws::{
-    self,
-    audit::{Action, Event, Kind, Outcome, peer_ip},
-};
+use super::ws::audit::{Action, Event, Kind, Outcome, peer_ip};
 use crate::core::fs_roots::FsDenied;
 
 /// How much of a file is read per chunk. The same 32 KiB the SFTP path uses,
@@ -104,14 +102,10 @@ async fn admit(
     if verify_auth(req, &state.config.get_jwt_secret()).is_err() {
         return Err(HttpResponse::Unauthorized().finish());
     }
-    if !state
-        .remote_access
-        .fs
-        .available(is_secure_request(req, state))
-    {
+    if !state.remote_access.fs.available() {
         Event::new(Kind::Fs, Action::Denied, Outcome::Denied)
             .remote_ip(peer_ip(req))
-            .detail("file api disabled or insecure transport")
+            .detail("file api disabled")
             .record(&state.db)
             .await;
         return Err(HttpResponse::Forbidden().finish());
@@ -124,10 +118,6 @@ async fn admit(
         .record(&state.db)
         .await;
     Ok(())
-}
-
-fn is_secure_request(req: &HttpRequest, state: &AppState) -> bool {
-    ws::is_secure_transport(req, state.tls_active)
 }
 
 /// Turns a refusal into a response.
@@ -144,12 +134,10 @@ fn failed(e: std::io::Error) -> HttpResponse {
         std::io::ErrorKind::NotFound => {
             HttpResponse::NotFound().json(&serde_json::json!({ "error": "not found" }))
         }
-        std::io::ErrorKind::PermissionDenied => {
-            HttpResponse::Forbidden().json(&serde_json::json!({ "error": "permission denied" }))
-        }
-        _ => {
-            HttpResponse::InternalServerError().json(&serde_json::json!({ "error": e.to_string() }))
-        }
+        std::io::ErrorKind::PermissionDenied => HttpResponse::Forbidden()
+            .json(&serde_json::json!({ "error": "permission denied" })),
+        _ => HttpResponse::InternalServerError()
+            .json(&serde_json::json!({ "error": e.to_string() })),
     }
 }
 
@@ -303,12 +291,7 @@ pub async fn write(
     // the name something else is about to open. A rename within one directory
     // is atomic; a temp dir elsewhere would make it a copy.
     let staging = staging_path(&path);
-    let mut file = match tokio::fs::OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .open(&staging)
-        .await
-    {
+    let mut file = match tokio::fs::File::create(&staging).await {
         Ok(file) => file,
         Err(e) => return Ok(failed(e)),
     };
@@ -389,7 +372,7 @@ pub async fn remove(
     if let Err(res) = admit(&req, &state, "remove", &body.path).await {
         return Ok(res);
     }
-    let path = match state.remote_access.fs.roots.resolve_entry(&body.path) {
+    let path = match state.remote_access.fs.roots.resolve_existing(&body.path) {
         Ok(path) => path,
         Err(e) => return Ok(denied(e)),
     };
@@ -441,7 +424,7 @@ pub async fn rename(
     let roots = &state.remote_access.fs.roots;
     // Both ends checked. Only checking the source would make rename a way to
     // move a file anywhere the agent can write.
-    let from = match roots.resolve_entry(&body.from) {
+    let from = match roots.resolve_existing(&body.from) {
         Ok(path) => path,
         Err(e) => return Ok(denied(e)),
     };

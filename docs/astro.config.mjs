@@ -18,11 +18,11 @@ export default defineConfig({
 				},
 				zh: {
 					label: '简体中文',
-					lang: 'zh-CN',
+					lang: 'zh',
 				},
 			},
 			logo: {
-				src: './src/assets/app_icon.png',
+				src: './src/assets/logo.svg',
 			},
 			social: [
 				{ icon: 'github', label: 'GitHub', href: 'https://github.com/lollipopkit/flutter_server_box' },
@@ -58,7 +58,6 @@ export default defineConfig({
 						{ label: 'Monitor Agent', translations: { zh: 'Monitor Agent' }, slug: 'advanced/monitor-agent' },
 						{ label: 'Agent', translations: { zh: 'Agent' }, slug: 'advanced/agent' },
 						{ label: 'Terminal on This Device', translations: { zh: '本机终端' }, slug: 'advanced/local-terminal' },
-						{ label: 'BMC (Redfish)', translations: { zh: 'BMC(Redfish)' }, slug: 'advanced/bmc' },
 						{ label: 'Bulk Import Servers', translations: { zh: '批量导入服务器' }, slug: 'advanced/bulk-import' },
 						{ label: 'Widget Setup', translations: { zh: '小组件设置' }, slug: 'advanced/widgets' },
 						{ label: 'Custom Commands', translations: { zh: '自定义命令' }, slug: 'advanced/custom-commands' },
@@ -77,7 +76,6 @@ export default defineConfig({
 						{ label: 'SSH Connection', translations: { zh: 'SSH 连接' }, slug: 'principles/ssh' },
 						{ label: 'Terminal', translations: { zh: '终端' }, slug: 'principles/terminal' },
 						{ label: 'SFTP', translations: { zh: 'SFTP' }, slug: 'principles/sftp' },
-						{ label: 'BMC (Redfish)', translations: { zh: 'BMC(Redfish)' }, slug: 'principles/bmc' },
 						{ label: 'State Management', translations: { zh: '状态管理' }, slug: 'principles/state' },
 					],
 				},

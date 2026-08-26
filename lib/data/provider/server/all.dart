@@ -4,23 +4,17 @@ import 'package:fl_lib/fl_lib.dart';
 import 'package:flutter/foundation.dart' show listEquals;
 import 'package:freezed_annotation/freezed_annotation.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
-import 'package:server_box/core/service/scoped_token.dart';
 import 'package:server_box/core/service/watch_sync.dart';
-import 'package:server_box/core/service/widget_sync.dart';
 import 'package:server_box/core/sync.dart';
 import 'package:server_box/core/utils/refresh_interval.dart';
-import 'package:server_box/core/utils/server.dart';
 import 'package:server_box/core/utils/sudo_password.dart';
 import 'package:server_box/data/model/app/error.dart';
 import 'package:server_box/data/model/server/server.dart';
 import 'package:server_box/data/model/server/server_private_info.dart';
 import 'package:server_box/data/model/server/try_limiter.dart';
-import 'package:server_box/data/provider/port_forward_provider.dart';
-import 'package:server_box/data/provider/server/selection.dart';
 import 'package:server_box/data/provider/server/single.dart';
 import 'package:server_box/data/res/store.dart';
 import 'package:server_box/data/ssh/session_manager.dart';
-import 'package:server_box/data/store/entity_store.dart';
 
 part 'all.freezed.dart';
 part 'all.g.dart';
@@ -40,48 +34,18 @@ abstract class ServersState with _$ServersState {
 class ServersNotifier extends _$ServersNotifier {
   static const _maxConcurrentRefreshes = 4;
   int _autoRefreshGeneration = 0;
-  Future<void> _mutationTail = Future.value();
-
-  Future<T> _mutate<T>(Future<T> Function() action) async {
-    final previous = _mutationTail;
-    final release = Completer<void>();
-    _mutationTail = release.future;
-    try {
-      await previous.catchError((_) {});
-      return await action();
-    } finally {
-      release.complete();
-    }
-  }
 
   @override
   ServersState build() {
     return _load();
   }
 
-  Future<void> reload({bool refreshConnections = true}) async {
+  Future<void> reload() async {
     Stores.server.dropCache();
     final newState = _load();
-    final selectedId = ref.read(serverSelectionProvider);
-    if (selectedId != null && !newState.servers.containsKey(selectedId)) {
-      ref.read(serverSelectionProvider.notifier).select(null);
-    }
     if (newState == state) return;
-    final previousServers = state.servers;
     state = newState;
-    for (final entry in previousServers.entries) {
-      if (newState.servers.containsKey(entry.key)) continue;
-      final provider = serverProvider(entry.key);
-      if (ref.exists(provider)) ref.invalidate(provider);
-    }
-    for (final entry in newState.servers.entries) {
-      if (previousServers[entry.key] == entry.value) continue;
-      final provider = serverProvider(entry.key);
-      if (ref.exists(provider)) {
-        ref.read(provider.notifier).updateSpi(entry.value);
-      }
-    }
-    if (refreshConnections) await refresh();
+    await refresh();
   }
 
   ServersState _load() {
@@ -204,48 +168,17 @@ class ServersNotifier extends _$ServersNotifier {
       TryLimiter.reset(id);
     }
 
-    await _refreshEach(serversToRefresh.map((e) => e.key).toList());
-  }
-
-  /// Connects every server, the ones taken down by hand included.
-  ///
-  /// [refresh] passes over those on purpose — a poll on a timer is not allowed
-  /// to undo a disconnect the user asked for — and it also passes over a
-  /// server whose `autoConnect` is off. Asking for all of them is the one case
-  /// where both of those are the point, so this forgets what was closed by
-  /// hand and connects the lot.
-  ///
-  /// Non-interactive, like the timer's refresh and unlike opening one server:
-  /// a keyboard-interactive prompt per machine would be a stack of dialogs
-  /// nobody asked for. Those servers keep the lock on their card, which is
-  /// where answering one at a time belongs.
-  Future<void> connectAll() async {
-    final ids = state.servers.keys.toList();
-    if (ids.isEmpty) return;
-    state = state.copyWith(manualDisconnectedIds: const <String>{});
-    for (final id in ids) {
-      TryLimiter.reset(id);
-    }
-    await _refreshEach(ids);
-  }
-
-  /// Refreshes [ids], a few at a time.
-  ///
-  /// The cap is what keeps a list of thirty machines from opening thirty
-  /// connections at once; the workers share one cursor rather than a slice
-  /// each, so a slow server holds up nothing but itself.
-  Future<void> _refreshEach(List<String> ids) async {
     var next = 0;
     Future<void> worker() async {
-      while (next < ids.length) {
-        final serverNotifier = ref.read(serverProvider(ids[next++]).notifier);
+      while (next < serversToRefresh.length) {
+        final entry = serversToRefresh[next++];
+        final serverNotifier = ref.read(serverProvider(entry.key).notifier);
         await serverNotifier.refresh();
       }
     }
-
     await Future.wait(
       List.generate(
-        ids.length.clamp(0, _maxConcurrentRefreshes).toInt(),
+        serversToRefresh.length.clamp(0, _maxConcurrentRefreshes).toInt(),
         (_) => worker(),
       ),
     );
@@ -277,7 +210,6 @@ class ServersNotifier extends _$ServersNotifier {
       });
       state = state.copyWith(autoRefreshTimer: timer);
     }
-
     schedule();
   }
 
@@ -335,23 +267,13 @@ class ServersNotifier extends _$ServersNotifier {
     TermSessionManager.remove(sessionId);
   }
 
-  Future<void> addServer(Spi spi) => _mutate(() => _addServer(spi));
-
-  Future<void> _addServer(Spi spi) async {
+  Future<void> addServer(Spi spi) async {
     spi.validateOrThrow();
 
-    final exists = state.servers.containsKey(spi.id);
     final newServers = Map<String, Spi>.from(state.servers);
     newServers[spi.id] = spi;
 
-    final newOrder = List<String>.from(state.serverOrder);
-    if (!exists) {
-      newOrder.add(spi.id);
-    } else {
-      Loggers.app.warning(
-        'addServer: id ${spi.id} already exists, updating in place',
-      );
-    }
+    final newOrder = List<String>.from(state.serverOrder)..add(spi.id);
     final newTags = _calculateTags(newServers);
     final newManualDisconnected = Set<String>.from(state.manualDisconnectedIds)
       ..remove(spi.id);
@@ -364,39 +286,13 @@ class ServersNotifier extends _$ServersNotifier {
       tags: newTags,
       manualDisconnectedIds: newManualDisconnected,
     );
-    // If the server already had a live notifier, refresh its Spi rather than
-    // leaving it stale with the old credentials.
-    if (exists) {
-      try {
-        ref.read(serverProvider(spi.id).notifier).updateSpi(spi);
-      } catch (_) {
-        // Provider may not have been created yet (keepAlive not yet built)
-        ref.invalidate(serverProvider(spi.id));
-      }
-    }
     unawaited(refresh(spi: spi));
     bakSync.sync(milliDelay: 1000);
   }
 
-  Future<void> delServer(String id) => _mutate(() => _delServer(id));
-
-  Future<void> _delServer(String id) async {
+  Future<void> delServer(String id) async {
     final deleting = state.servers[id];
-    if (deleting == null) return;
-    // Started here, because revoking is an authenticated call to the agent
-    // and the credential is on the record. Neither publishes — see
-    // `revokeServer`: a rebuild from a store that still holds this server
-    // would mint a replacement token for the one being deleted.
-    //
-    // Not waited for, for the reason the edit path does not either: an agent
-    // that has gone away costs ten seconds per call to establish that, and a
-    // delete that hangs on it is a delete that looks ignored. `deleting` is a
-    // value already in hand, so the request carries the old credential
-    // whatever the store does next, and a rebuild after the row is gone has
-    // nothing to mint for.
-    unawaited(WatchSync.instance.revokeServer(deleting));
-    unawaited(WidgetSync.instance.revokeServer(deleting));
-    await _clearServerData(id);
+    if (deleting != null) await WatchSync.instance.removeServer(deleting);
     final newServers = Map<String, Spi>.from(state.servers);
     newServers.remove(id);
 
@@ -407,10 +303,6 @@ class ServersNotifier extends _$ServersNotifier {
 
     Stores.setting.serverOrder.put(newOrder);
     Stores.server.deleteById(id);
-    // The row goes with the server — the foreign key cascades — but the whole
-    // map this store keeps in memory does not, so a list drawn afterwards read
-    // a mark for a server that no longer exists.
-    Stores.serverDist.remove(id);
     state = state.copyWith(
       servers: newServers,
       serverOrder: newOrder,
@@ -419,17 +311,7 @@ class ServersNotifier extends _$ServersNotifier {
     );
     await _clearSudoPasswordOverrideBestEffort(id);
 
-    // Now that the row is gone, so the rebuilt lists cannot contain it.
-    await WatchSync.instance.push();
-    await WidgetSync.instance.push();
-
-    // Deselect if the deleted server was selected, and invalidate its provider
-    // so the keepAlive notifier (PersistentShell, Pve socket) is disposed.
-    if (ref.read(serverSelectionProvider) == id) {
-      ref.read(serverSelectionProvider.notifier).select(null);
-    }
-    ref.invalidate(serverProvider(id));
-    forgetHostKeyFingerprints(id);
+    Stores.connectionStats.clearServerStats(id);
 
     // Remove SSH session when server is deleted
     final sessionId = 'ssh_$id';
@@ -438,9 +320,7 @@ class ServersNotifier extends _$ServersNotifier {
     bakSync.sync(milliDelay: 1000);
   }
 
-  Future<void> deleteAll() => _mutate(_deleteAll);
-
-  Future<void> _deleteAll() async {
+  Future<void> deleteAll() async {
     final serverIds = state.servers.keys.toList();
 
     // Remove all SSH sessions before clearing servers
@@ -449,22 +329,8 @@ class ServersNotifier extends _$ServersNotifier {
       TermSessionManager.remove(sessionId);
     }
 
-    // Revoke every one first, while the records are still there to
-    // authenticate with; the single push comes after the store is empty.
-    //
-    // All at once, because one at a time made an unreachable agent cost the
-    // whole ten-second connect timeout and the next server wait behind it —
-    // a confirmed "delete everything" sat there for `2N` timeouts with
-    // nothing on screen explaining why. Both calls swallow their own errors,
-    // so this settles whatever the agents answer.
-    await Future.wait([
-      for (final spi in state.servers.values) ...[
-        WatchSync.instance.revokeServer(spi),
-        WidgetSync.instance.revokeServer(spi),
-      ],
-    ]);
-    for (final id in serverIds) {
-      await _clearServerData(id);
+    for (final spi in state.servers.values) {
+      await WatchSync.instance.removeServer(spi);
     }
     final bool cleared;
     try {
@@ -479,35 +345,12 @@ class ServersNotifier extends _$ServersNotifier {
     }
     Stores.setting.serverOrder.put([]);
     state = const ServersState();
-    // One push, once the store is empty. Pushing per server inside the loop
-    // above would rebuild from a store that still held the rest and re-issue
-    // tokens for servers on their way out.
-    await WatchSync.instance.push();
-    await WidgetSync.instance.push();
     await Future.wait(serverIds.map(_clearSudoPasswordOverrideBestEffort));
-    for (final id in serverIds) {
-      ref.invalidate(serverProvider(id));
-      forgetHostKeyFingerprints(id);
-      // The rows went with the servers — the foreign key cascades — but the
-      // map this store keeps in memory did not, so a list drawn afterwards
-      // read a mark for a server that no longer exists. `delServer` does the
-      // same for the one it deletes.
-      Stores.serverDist.remove(id);
-    }
-    ref.read(serverSelectionProvider.notifier).select(null);
+    Stores.connectionStats.clearAll();
     bakSync.sync(milliDelay: 1000);
   }
 
-  Future<void> _clearServerData(String id) async {
-    await ref.read(portForwardProvider(id).notifier).clear();
-    Stores.agentConversation.clearServer(id);
-    await Stores.connectionStats.clearServerStats(id);
-  }
-
-  Future<void> updateServerOrder(List<String> order) =>
-      _mutate(() => _updateServerOrder(order));
-
-  Future<void> _updateServerOrder(List<String> order) async {
+  Future<void> updateServerOrder(List<String> order) async {
     final seen = <String>{};
     final newOrder = <String>[];
 
@@ -541,27 +384,11 @@ class ServersNotifier extends _$ServersNotifier {
     return listEquals(a, b);
   }
 
-  Future<void> updateServer(Spi old, Spi newSpi) =>
-      _mutate(() => _updateServer(old, newSpi));
-
-  Future<void> _updateServer(Spi old, Spi newSpi) async {
+  Future<void> updateServer(Spi old, Spi newSpi) async {
     newSpi.validateOrThrow();
 
-    if (state.servers[old.id] != old) {
-      throw StateError('${libL10n.server}: ${libL10n.retry}');
-    }
-
     if (old != newSpi) {
-      if (newSpi.id != old.id) {
-        // `EntityStore.update` explicitly rejects id changes; renaming must
-        // move dependent rows and handle sync metadata itself.
-        if (state.servers.containsKey(newSpi.id)) {
-          throw DuplicateNameException(newSpi.name);
-        }
-        Stores.server.rename(old, newSpi);
-      } else {
-        Stores.server.update(old, newSpi);
-      }
+      Stores.server.update(old, newSpi);
 
       final newServers = Map<String, Spi>.from(state.servers);
       final newOrder = List<String>.from(state.serverOrder);
@@ -577,9 +404,17 @@ class ServersNotifier extends _$ServersNotifier {
           newManualDisconnected.add(newSpi.id);
         }
         Stores.setting.serverOrder.put(newOrder);
-        Stores.history.renameSshServer(old.id, newSpi.id);
+
+        // Update SSH session ID when server ID changes
+        final oldSessionId = 'ssh_${old.id}';
+        TermSessionManager.remove(oldSessionId);
+        // Session will be re-added when reconnecting if necessary
+        await _clearSudoPasswordOverrideBestEffort(old.id);
       } else {
         newServers[old.id] = newSpi;
+        // Update SPI in the corresponding IndividualServerNotifier
+        final serverNotifier = ref.read(serverProvider(old.id).notifier);
+        serverNotifier.updateSpi(newSpi);
       }
 
       final newTags = _calculateTags(newServers);
@@ -589,43 +424,6 @@ class ServersNotifier extends _$ServersNotifier {
         tags: newTags,
         manualDisconnectedIds: newManualDisconnected,
       );
-
-      if (newSpi.id != old.id) {
-        // Publish the replacement before selection or async cleanup can make
-        // consumers rebuild against the deleted id.
-        if (ref.read(serverSelectionProvider) == old.id) {
-          ref.read(serverSelectionProvider.notifier).select(newSpi.id);
-        }
-        ref.invalidate(serverProvider(old.id));
-
-        final oldSessionId = 'ssh_${old.id}';
-        TermSessionManager.remove(oldSessionId);
-        await _clearSudoPasswordOverrideBestEffort(old.id);
-      } else {
-        final serverNotifier = ref.read(serverProvider(old.id).notifier);
-        serverNotifier.updateSpi(newSpi);
-      }
-
-      // While the *old* credential is still known. A scoped token is revoked
-      // by an authenticated call to the agent that issued it, so this is the
-      // last moment anything can: after this the old address and login are
-      // gone, and a rebuild of the token set can only stop handing the
-      // credential out, never take it back.
-      //
-      // Started here and not waited for. The old address is the one being
-      // moved away from, and the commonest reason to move away from an
-      // address is that it stopped answering — so this is a request that
-      // routinely runs into `MonitorHttpClient`'s ten-second connect timeout,
-      // twice, on the one code path between the Save button and the editor
-      // closing. `_mutate` serialises every mutation, so a second tap queued
-      // behind the first instead of doing anything: the save appeared to be
-      // ignored for as long as the old agent took to not answer.
-      //
-      // Nothing below depends on the result, `old` is a value this closure
-      // holds rather than something re-read from the store, and the call
-      // already swallows its own failures — see its own doc comment for why
-      // a token that outlives the edit is the accepted worst case.
-      unawaited(revokeScopedTokensLeftBehind(old, newSpi));
 
       // Only reconnect if neccessary
       if (newSpi.shouldReconnect(old)) {

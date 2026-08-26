@@ -14,12 +14,7 @@ export interface SystemMetrics {
   disk: DiskMetrics;
   network: NetworkMetrics;
   temperature?: number;
-  temps?: TempReading[];
   sys?: string;
-  // /etc/os-release's ID= and ID_LIKE=. Linux only, and absent on agents
-  // predating them, where `sys` (its PRETTY_NAME line) is all there is.
-  os_id?: string;
-  os_id_like?: string[];
   cpu_brand?: string;
   // Detail lists are absent on older agents; treat as optional
   gpus?: GpuMetrics[];
@@ -40,11 +35,6 @@ export interface SystemMetrics {
   /// Output of the user's custom commands, in the order they run in.
   /// Refreshed on the extended cycle, like the fields above it.
   custom_cmds?: CustomCmdOutput[];
-}
-
-export interface TempReading {
-  device: string;
-  value: number;
 }
 
 export interface CustomCmdOutput {
@@ -102,18 +92,18 @@ export interface Capabilities {
 }
 
 /// Which remote-access paths this agent will actually accept, already
-/// accounting for the transport check.
+/// accounting for the transport check — `terminal: false` with
+/// `secure: false` means "would work over TLS or from loopback".
 export interface RemoteAccess {
+  tunnel: boolean
   terminal: boolean
+  secure: boolean
   /// Whether a shell can be opened straight from this panel session, with no
   /// SSH credentials. Absent on agents predating the feature.
   full_access?: boolean
-  /// Whether the agent's confined file API is available. Absent on agents
-  /// predating remote file access.
-  files?: boolean
 }
 
-export type WsTicketPurpose = 'terminal'
+export type WsTicketPurpose = 'terminal' | 'tunnel'
 
 export interface WsTicketResponse {
   ticket: string
@@ -129,8 +119,6 @@ export interface DiskIoMetrics {
   dev: string;
   sectors_read: number;
   sectors_write: number;
-  sectors_read_exact?: string;
-  sectors_write_exact?: string;
 }
 
 export interface DiskIoRate {
@@ -171,8 +159,6 @@ export interface GpuMetrics {
   memory_used: number;
   memory_total: number;
   memory_unit: string;
-  /** Which tool reported it: `nvidia` or `amd`. Absent on older agents. */
-  vendor?: string;
 }
 
 export interface DiskDetail {
@@ -188,8 +174,6 @@ export interface IfaceMetrics {
   name: string;
   rx_bytes: number;
   tx_bytes: number;
-  rx_bytes_exact?: string;
-  tx_bytes_exact?: string;
 }
 
 export interface MemoryMetrics {
@@ -215,8 +199,6 @@ export interface DiskMetrics {
 export interface NetworkMetrics {
   rx_bytes: number;
   tx_bytes: number;
-  rx_bytes_exact?: string;
-  tx_bytes_exact?: string;
 }
 
 export interface StatusResponse {
@@ -296,28 +278,4 @@ export interface SettingsView extends SettingsPayload {
 /// GET/PUT /api/v1/card-order handlers for why
 export interface CardOrderPayload {
   card_order: string[];
-}
-
-/// One entry in a directory the agent serves, as `/fs/list` and `/fs/stat`
-/// answer. Mirrors `EntryView` in `monitor/src/api/fs.rs`, which the app's
-/// `FileEntry` is also defined against — the three have to agree.
-export interface FsEntry {
-  name: string;
-  /// Matches the app's `FileKind`.
-  kind: 'file' | 'dir' | 'link' | 'other';
-  /// Null where the platform did not say, which reads as "no size" rather
-  /// than as zero.
-  size: number | null;
-  /// Seconds since the epoch, as SFTP reports them.
-  modified: number | null;
-  /// Permission bits only, so `chmod` can take the value back unchanged.
-  mode: number | null;
-  /// Where a link points, unresolved. Null for anything else.
-  link_target: string | null;
-}
-
-/// The directories the operator opened up. Everything outside them is denied,
-/// so this is the whole of what the panel can browse.
-export interface FsRootsResponse {
-  roots: string[];
 }

@@ -18,6 +18,8 @@ import 'package:server_box/data/res/store.dart';
 import 'package:server_box/data/ssh/terminal_source.dart';
 import 'package:server_box/view/page/container/resource_views.dart';
 import 'package:server_box/view/page/ssh/page/page.dart';
+import 'package:server_box/view/widget/page_columns.dart';
+import 'package:server_box/view/widget/page_issue.dart';
 
 part 'actions.dart';
 part 'types.dart';
@@ -159,7 +161,10 @@ extension _ContainerPageWidgets on _ContainerPageState {
         refreshKey: const ValueKey('refresh-containers-button'),
         onRefresh: _containerActionsBusy
             ? null
-            : () => _refreshContainerTab(_ContainerTabs.ps, showLoading: true),
+            : () => _refreshContainerTab(
+                _ContainerTabs.ps,
+                showLoading: true,
+              ),
       ),
     );
   }
@@ -194,11 +199,7 @@ extension _ContainerPageWidgets on _ContainerPageState {
     ContainerState containerState,
     _ContainerTabs tab,
   ) {
-    final error = switch (tab) {
-      _ContainerTabs.ps => containerState.containersError,
-      _ContainerTabs.images => containerState.imagesError,
-      _ContainerTabs.settings => null,
-    };
+    final error = containerState.error;
     if (error == null) return UIs.centerLoading;
     return PageIssueView(
       title: error.title,
@@ -251,12 +252,12 @@ extension _ContainerPageWidgets on _ContainerPageState {
 
   Widget _buildSettingsTab(ContainerState containerState) {
     return PageColumns(
-      children: <Widget>[
-        ..._SettingsMenuItems.values.map(
-          (item) => _buildSettingCard(item, containerState),
-        ),
-        ..._PruneTypes.values.map(_buildPruneCard),
-      ],
+        children: <Widget>[
+          ..._SettingsMenuItems.values.map(
+            (item) => _buildSettingCard(item, containerState),
+          ),
+          ..._PruneTypes.values.map(_buildPruneCard),
+        ],
     );
   }
 
@@ -299,14 +300,13 @@ extension _ContainerPageWidgets on _ContainerPageState {
     return IgnorePointer(
       ignoring: _containerActionsBusy,
       child: PopupMenu(
-        items:
-            ContainerGroupMenu.items(
-                  anyRunning: groupItems.any((e) => e.status.isRunning),
-                  anyStopped: groupItems.any((e) => e.status.isStopped),
-                )
-                .where((e) => e != ContainerGroupMenu.logs || hasWorkingDir)
-                .map((e) => PopMenu.build(e, e.icon, e.toStr))
-                .toList(),
+        items: ContainerGroupMenu.items(
+          anyRunning: groupItems.any((e) => e.status.isRunning),
+          anyStopped: groupItems.any((e) => e.status.isStopped),
+        )
+            .where((e) => e != ContainerGroupMenu.logs || hasWorkingDir)
+            .map((e) => PopMenu.build(e, e.icon, e.toStr))
+            .toList(),
         onSelected: (item) => _onTapGroupMenu(item, groupItems),
       ),
     );
@@ -331,21 +331,19 @@ extension _ContainerPageWidgets on _ContainerPageState {
       child: ListTile(
         key: ValueKey('container-setting-prune-${type.name}'),
         leading: Icon(type.icon),
-        onTap: _containerActionsBusy
-            ? null
-            : () async {
-                switch (type) {
-                  case _PruneTypes.volumes:
-                    await _showPruneDialog(
-                      title: title,
-                      onConfirm: containerNotifier.pruneVolumes,
-                    );
-                    break;
-                  case _PruneTypes.unusedData:
-                    await _showSystemPruneDialog();
-                    break;
-                }
-              },
+        onTap: _containerActionsBusy ? null : () async {
+          switch (type) {
+            case _PruneTypes.volumes:
+              await _showPruneDialog(
+                title: title,
+                onConfirm: containerNotifier.pruneVolumes,
+              );
+              break;
+            case _PruneTypes.unusedData:
+              await _showSystemPruneDialog();
+              break;
+          }
+        },
         title: Text(title),
         trailing: const Icon(Icons.keyboard_arrow_right),
       ),
@@ -356,7 +354,9 @@ extension _ContainerPageWidgets on _ContainerPageState {
     _SettingsMenuItems item,
     ContainerState containerState,
   ) {
-    return CardX(child: _buildSettingTile(item, containerState));
+    return CardX(
+      child: _buildSettingTile(item, containerState),
+    );
   }
 
   Widget _buildSettingTile(
@@ -380,27 +380,25 @@ extension _ContainerPageWidgets on _ContainerPageState {
     return ListTile(
       key: ValueKey('container-setting-${item.name}'),
       leading: Icon(item.icon),
-      onTap: _containerActionsBusy
-          ? null
-          : () {
-              switch (item) {
-                case _SettingsMenuItems.editContainerHost:
-                  _showEditHostDialog();
-                  break;
-                case _SettingsMenuItems.switchProvider:
-                  final changed = ref
-                      .read(_provider.notifier)
-                      .setType(
-                        containerState.type == ContainerType.docker
-                            ? ContainerType.podman
-                            : ContainerType.docker,
-                      );
-                  if (changed) {
-                    unawaited(_refreshContainerTab(_lastResourceTab));
-                  }
-                  break;
-              }
-            },
+      onTap: _containerActionsBusy ? null : () {
+        switch (item) {
+          case _SettingsMenuItems.editContainerHost:
+            _showEditHostDialog();
+            break;
+          case _SettingsMenuItems.switchProvider:
+            final changed = ref
+                .read(_provider.notifier)
+                .setType(
+                  containerState.type == ContainerType.docker
+                      ? ContainerType.podman
+                      : ContainerType.docker,
+                );
+            if (changed) {
+              unawaited(_refreshContainerTab(_lastResourceTab));
+            }
+            break;
+        }
+      },
       title: Text(title),
       trailing: const Icon(Icons.keyboard_arrow_right),
     );
@@ -465,9 +463,8 @@ extension _ContainerPageUtils on _ContainerPageState {
       ..sort((a, b) {
         final countComparison = b.value.compareTo(a.value);
         if (countComparison != 0) return countComparison;
-        final lowerComparison = a.key.toLowerCase().compareTo(
-          b.key.toLowerCase(),
-        );
+        final lowerComparison =
+            a.key.toLowerCase().compareTo(b.key.toLowerCase());
         if (lowerComparison != 0) return lowerComparison;
         return a.key.compareTo(b.key);
       });

@@ -8,11 +8,13 @@ use crate::{
         session::SessionStore,
         terminal::{start_reaper, terminal_ws},
         ticket::{Purpose, TicketRequest, TicketResponse, TicketStore},
+        tunnel::{TunnelCount, tunnel_ws},
     },
     core::config::Config,
     core::config_file,
     core::remote_access::RemoteAccess,
     monitoring::{self, LiveSettings, SystemMetrics},
+    monitoring::size::Size,
     monitoring::velocity::{NetworkSpeedInfo, VelocityAnalysisResponse, VelocityManager},
     utils::error::{MonitorError, Result},
 };
@@ -75,7 +77,7 @@ pub struct AppState {
     pub last_viewer_seen: Arc<RwLock<chrono::DateTime<chrono::Utc>>>,
     /// Resolved remote-access settings (capacities filled in from physical
     /// memory at startup — see `core::remote_access`). A snapshot, like
-    /// `config`: turning the terminal on is a restart-level change,
+    /// `config`: turning the tunnel or terminal on is a restart-level change,
     /// not something a running process should pick up mid-session.
     pub remote_access: Arc<RemoteAccess>,
     /// Whether this process terminates TLS itself. Decided once at startup
@@ -83,6 +85,8 @@ pub struct AppState {
     /// to re-derive it.
     pub tls_active: bool,
     pub tickets: Arc<TicketStore>,
+    /// Live tunnel count, for `remote_access.tunnel.max_conns`.
+    pub tunnel_count: Arc<TunnelCount>,
     /// Terminal sessions, which outlive the WebSockets driving them so a
     /// reconnect can rejoin the same shell — see `api::ws::session`.
     pub sessions: Arc<SessionStore>,
@@ -104,7 +108,8 @@ pub struct AppState {
 
 impl AppState {
     pub fn new(config: Arc<Config>, db: SqlitePool) -> Arc<Self> {
-        let velocity_manager = Arc::new(RwLock::new(VelocityManager::new()));
+        let db_arc = Arc::new(db.clone());
+        let velocity_manager = Arc::new(RwLock::new(VelocityManager::new(db_arc)));
         let live_settings = Arc::new(RwLock::new(LiveSettings::from_config(&config.get_monitoring())));
         let tls_active = config.get_server().tls.is_some();
         let remote_access = config
@@ -119,6 +124,7 @@ impl AppState {
             remote_access: Arc::new(remote_access),
             tls_active,
             tickets: Arc::new(TicketStore::new()),
+            tunnel_count: Arc::new(Default::default()),
             sessions,
             login_throttle: Arc::new(LoginThrottle::new()),
             full_access_off: Arc::new(AtomicBool::new(false)),
@@ -182,113 +188,6 @@ struct ErrorResponse {
     error: String,
 }
 
-fn unauthorized_response() -> HttpResponse {
-    HttpResponse::Unauthorized().json(&ErrorResponse {
-        error: "Invalid or missing token".to_string(),
-    })
-}
-
-/// Require a full panel JWT and return its claims. The early response stays
-/// identical across handlers, while the macro makes endpoints that need the
-/// subject just as explicit as endpoints that only need authentication.
-macro_rules! require_jwt {
-    ($req:expr, $app_state:expr) => {{
-        match verify_auth($req, &$app_state.config.get_jwt_secret()) {
-            Ok(claims) => claims,
-            Err(_) => return Ok(unauthorized_response()),
-        }
-    }};
-}
-
-/// Require either a full panel JWT or a paired Watch read token.
-macro_rules! require_read_access {
-    ($req:expr, $app_state:expr) => {{
-        match verify_read_auth($req, $app_state).await {
-            Ok(subject) => subject,
-            Err(_) => return Ok(unauthorized_response()),
-        }
-    }};
-}
-
-/// Every `/api/v1` route, in one place both the real server and the tests
-/// mount.
-///
-/// Extracted because the auth gate an endpoint gets is a property of *this*
-/// table, not of the handler: [`require_read_access`] accepts a watch token
-/// and [`require_jwt`] does not, and which one a route ends up behind is
-/// decided here. A test that hand-built its own scope could assert whatever it
-/// liked about a handler and still say nothing about what the shipped binary
-/// exposes — see `tests/watch_token_scope.rs`, whose whole subject is this
-/// table.
-pub fn configure_api(cfg: &mut web::ServiceConfig) {
-    cfg.service(
-        web::scope("/api/v1")
-            .route("/login", web::post().to(login))
-            .service(
-                web::resource("/watch-token")
-                    .route(web::post().to(issue_watch_token))
-                    .route(web::delete().to(revoke_watch_token)),
-            )
-            .route("/status", web::get().to(get_status))
-            .route("/metrics", web::get().to(get_metrics))
-            .route("/capabilities", web::get().to(get_capabilities))
-            .route("/ws-ticket", web::post().to(issue_ws_ticket))
-            .route("/terminal/ws", web::get().to(terminal_ws))
-            .service(
-                // Its own payload limit: ntex allows 32 KiB by
-                // default, and this endpoint's `stdin` carries the
-                // generated status script — 5 KiB today, but it grows
-                // with every custom command a user adds, and going
-                // over would answer 413 with nothing to explain it.
-                web::resource("/exec")
-                    .state(
-                        web::types::JsonConfig::default()
-                            .limit(crate::api::exec::MAX_REQUEST),
-                    )
-                    .route(web::post().to(crate::api::exec::exec)),
-            )
-            .service(
-                // A streamed body, so ntex's payload limit must not
-                // apply: the point of this endpoint is the file that
-                // `/exec` could not carry.
-                web::resource("/fs/write").route(web::put().to(crate::api::fs::write)),
-            )
-            .route("/fs/roots", web::get().to(crate::api::fs::roots))
-            .route("/fs/list", web::get().to(crate::api::fs::list))
-            .route("/fs/stat", web::get().to(crate::api::fs::stat))
-            .route("/fs/read", web::get().to(crate::api::fs::read))
-            .route("/fs/mkdir", web::post().to(crate::api::fs::mkdir))
-            .route("/fs/rename", web::post().to(crate::api::fs::rename))
-            .route("/fs/chmod", web::post().to(crate::api::fs::chmod))
-            .route("/fs/remove", web::delete().to(crate::api::fs::remove))
-            .route(
-                "/remote-access/full-access",
-                web::delete().to(disable_full_access),
-            )
-            .service(
-                // Its own payload limit, like `/exec`: the body is
-                // every custom command at once, and a user who pastes
-                // a real script into one would otherwise meet ntex's
-                // 32 KiB default as a 413 with nothing to explain it.
-                web::resource("/custom-cmds")
-                    .state(
-                        web::types::JsonConfig::default()
-                            .limit(crate::api::custom_cmds::MAX_REQUEST),
-                    )
-                    .route(web::get().to(crate::api::custom_cmds::list))
-                    .route(web::put().to(crate::api::custom_cmds::replace)),
-            )
-            .route("/settings", web::get().to(get_settings))
-            .route("/settings", web::put().to(update_settings))
-            .route("/card-order", web::get().to(get_card_order))
-            .route("/card-order", web::put().to(update_card_order))
-            .route("/metrics/history", web::get().to(get_metrics_history))
-            .route("/health", web::get().to(health_check))
-            .route("/velocity", web::get().to(get_velocity))
-            .route("/velocity/history", web::get().to(get_velocity_history)),
-    );
-}
-
 pub async fn start_server(app_state: Arc<AppState>) -> Result<()> {
     let server_config = app_state.config.get_server();
     let bind_addr = format!("{}:{}", server_config.host, server_config.port);
@@ -310,7 +209,74 @@ pub async fn start_server(app_state: Arc<AppState>) -> Result<()> {
             .state(app_state.clone())
             .middleware(Logger::default())
             .middleware(cors)
-            .configure(configure_api)
+            .service(
+                web::scope("/api/v1")
+                    .route("/login", web::post().to(login))
+                    .service(
+                        web::resource("/watch-token")
+                            .route(web::post().to(issue_watch_token))
+                            .route(web::delete().to(revoke_watch_token)),
+                    )
+                    .route("/status", web::get().to(get_status))
+                    .route("/metrics", web::get().to(get_metrics))
+                    .route("/capabilities", web::get().to(get_capabilities))
+                    .route("/ws-ticket", web::post().to(issue_ws_ticket))
+                    .route("/tunnel/ws", web::get().to(tunnel_ws))
+                    .route("/terminal/ws", web::get().to(terminal_ws))
+                    .service(
+                        // Its own payload limit: ntex allows 32 KiB by
+                        // default, and this endpoint's `stdin` carries the
+                        // generated status script — 5 KiB today, but it grows
+                        // with every custom command a user adds, and going
+                        // over would answer 413 with nothing to explain it.
+                        web::resource("/exec")
+                            .state(
+                                web::types::JsonConfig::default()
+                                    .limit(crate::api::exec::MAX_REQUEST),
+                            )
+                            .route(web::post().to(crate::api::exec::exec)),
+                    )
+                    .service(
+                        // A streamed body, so ntex's payload limit must not
+                        // apply: the point of this endpoint is the file that
+                        // `/exec` could not carry.
+                        web::resource("/fs/write")
+                            .route(web::put().to(crate::api::fs::write)),
+                    )
+                    .route("/fs/roots", web::get().to(crate::api::fs::roots))
+                    .route("/fs/list", web::get().to(crate::api::fs::list))
+                    .route("/fs/stat", web::get().to(crate::api::fs::stat))
+                    .route("/fs/read", web::get().to(crate::api::fs::read))
+                    .route("/fs/mkdir", web::post().to(crate::api::fs::mkdir))
+                    .route("/fs/rename", web::post().to(crate::api::fs::rename))
+                    .route("/fs/chmod", web::post().to(crate::api::fs::chmod))
+                    .route("/fs/remove", web::delete().to(crate::api::fs::remove))
+                    .route(
+                        "/remote-access/full-access",
+                        web::delete().to(disable_full_access),
+                    )
+                    .service(
+                        // Its own payload limit, like `/exec`: the body is
+                        // every custom command at once, and a user who pastes
+                        // a real script into one would otherwise meet ntex's
+                        // 32 KiB default as a 413 with nothing to explain it.
+                        web::resource("/custom-cmds")
+                            .state(
+                                web::types::JsonConfig::default()
+                                    .limit(crate::api::custom_cmds::MAX_REQUEST),
+                            )
+                            .route(web::get().to(crate::api::custom_cmds::list))
+                            .route(web::put().to(crate::api::custom_cmds::replace)),
+                    )
+                    .route("/settings", web::get().to(get_settings))
+                    .route("/settings", web::put().to(update_settings))
+                    .route("/card-order", web::get().to(get_card_order))
+                    .route("/card-order", web::put().to(update_card_order))
+                    .route("/metrics/history", web::get().to(get_metrics_history))
+                    .route("/health", web::get().to(health_check))
+                    .route("/velocity", web::get().to(get_velocity))
+                    .route("/velocity/history", web::get().to(get_velocity_history)),
+            )
             // TODO: Go-compat endpoint (used by the flutter_server_box app); remove once the app migrates to /api/v1
             .route("/status", web::get().to(get_status_compat))
             // Static file serving configuration:
@@ -391,55 +357,38 @@ async fn login(
 ) -> Result<HttpResponse> {
     let peer_ip = http_req.peer_addr().map(|addr| addr.ip());
 
-    // Reserve under the throttle lock before touching the database or bcrypt,
-    // so concurrent guesses cannot all pass the same pre-failure snapshot.
-    let attempt = match app_state.login_throttle.begin(peer_ip, &req.username) {
-        Ok(attempt) => attempt,
-        Err(wait) => {
-            let seconds = wait.as_secs().max(1);
-            return Ok(HttpResponse::TooManyRequests()
-                .header(RETRY_AFTER, seconds.to_string())
-                .json(&ErrorResponse {
-                    error: format!("Too many failed attempts; retry in {seconds}s"),
-                }));
-        }
-    };
+    // Checked before touching the database, so a guessing loop can't keep
+    // spending bcrypt verifications (~100ms each) on this process.
+    if let Some(wait) = app_state.login_throttle.check(peer_ip, &req.username) {
+        let seconds = wait.as_secs().max(1);
+        return Ok(HttpResponse::TooManyRequests()
+            .header(RETRY_AFTER, seconds.to_string())
+            .json(&ErrorResponse {
+                error: format!("Too many failed attempts; retry in {seconds}s"),
+            }));
+    }
 
     // Verify user credentials
-    let user = match sqlx::query!(
+    let user = sqlx::query!(
         "SELECT id, username, password_hash FROM users WHERE username = ?",
         req.username
     )
     .fetch_optional(&app_state.db)
-    .await
-    {
-        Ok(user) => user,
-        Err(error) => {
-            app_state.login_throttle.cancel(attempt);
-            return Err(error.into());
-        }
-    };
+    .await?;
 
     // A missing account must cost the same bcrypt verification as a wrong
     // password, or response timing turns the login endpoint into a username
     // oracle even though both paths return the same status and throttle key.
-    let password_matches = match verify_login_password_off_worker(
+    let password_matches = verify_login_password_off_worker(
         req.password.clone(),
         user.as_ref().map(|user| user.password_hash.clone()),
     )
-    .await
-    {
-        Ok(matched) => matched,
-        Err(error) => {
-            app_state.login_throttle.cancel(attempt);
-            return Err(error);
-        }
-    };
+    .await?;
 
     if let Some(user) = user
         && password_matches
     {
-        app_state.login_throttle.record_success(attempt);
+        app_state.login_throttle.record_success(peer_ip, &req.username);
 
         // Update last login
         sqlx::query!(
@@ -458,7 +407,7 @@ async fn login(
     // One counter for both "no such user" and "wrong password": tracking them
     // separately would let an attacker tell the two apart by how quickly they
     // get throttled.
-    app_state.login_throttle.record_failure(attempt);
+    app_state.login_throttle.record_failure(peer_ip, &req.username);
 
     Ok(HttpResponse::Unauthorized().json(&ErrorResponse {
         error: "Invalid credentials".to_string(),
@@ -486,7 +435,14 @@ async fn issue_watch_token(
     app_state: web::types::State<Arc<AppState>>,
     payload: web::types::Json<WatchTokenRequest>,
 ) -> Result<HttpResponse> {
-    let claims = require_jwt!(&req, &app_state);
+    let claims = match verify_auth(&req, &app_state.config.get_jwt_secret()) {
+        Ok(claims) => claims,
+        Err(_) => {
+            return Ok(HttpResponse::Unauthorized().json(&ErrorResponse {
+                error: "Invalid or missing token".to_string(),
+            }));
+        }
+    };
     let client_id = validate_watch_client_id(&payload.client_id)?;
     let token = format!("sbw_{}", crate::utils::secrets::random_hex(32)?);
     let token_hash = watch_token_hash(&token);
@@ -514,7 +470,14 @@ async fn revoke_watch_token(
     app_state: web::types::State<Arc<AppState>>,
     payload: web::types::Json<WatchTokenRequest>,
 ) -> Result<HttpResponse> {
-    let claims = require_jwt!(&req, &app_state);
+    let claims = match verify_auth(&req, &app_state.config.get_jwt_secret()) {
+        Ok(claims) => claims,
+        Err(_) => {
+            return Ok(HttpResponse::Unauthorized().json(&ErrorResponse {
+                error: "Invalid or missing token".to_string(),
+            }));
+        }
+    };
     let client_id = validate_watch_client_id(&payload.client_id)?;
     sqlx::query("DELETE FROM watch_tokens WHERE subject = ? AND client_id = ?")
         .bind(&claims.sub)
@@ -524,36 +487,42 @@ async fn revoke_watch_token(
     Ok(HttpResponse::Ok().json(&serde_json::json!({ "status": "revoked" })))
 }
 
-/// The retired Go-compat endpoint.
-///
-/// It answered unauthenticated, with values preformatted as strings —
-/// `"1.3g / 1.9g"`, `"31.7%"` — and no history at all. That shape is why the
-/// clients built on it could never draw a trend: there were no numbers in it
-/// to draw. They read `/api/v1/metrics` and `/metrics/history` now, with a
-/// scoped read-only token.
-///
-/// Answers 410 rather than 404, and says where to go. Anything still calling
-/// this is a build old enough to have no other path, and a 404 would send its
-/// owner looking for a typo in an address that was correct.
-///
-/// The route is kept for one release so the failure has an explanation
-/// attached; a client that no longer exists cannot be told anything.
-///
-/// TODO: remove the route entirely in the release after this one.
-async fn get_status_compat() -> Result<HttpResponse> {
-    Ok(HttpResponse::Gone().json(&serde_json::json!({
-        "code": 410,
-        "error": "GET /status has been removed. Use GET /api/v1/metrics with a \
-                  token from POST /api/v1/watch-token, or configure this server \
-                  in the ServerBox app.",
-    })))
+// TODO: Go-compat endpoint (matches the legacy GET /status response format, unauthenticated); remove once flutter_server_box migrates
+async fn get_status_compat(
+    app_state: web::types::State<Arc<AppState>>,
+) -> Result<HttpResponse> {
+    let metrics = app_state.current_metrics.read().await;
+    let data = go_status_data(metrics.as_ref(), &app_state.config.get_server_name());
+    Ok(HttpResponse::Ok().json(&serde_json::json!({ "code": 0, "data": data })))
+}
+
+/// Response data of Go web.Status: sizes in Size.String() format (e.g. "26.0g"), CPU as one-decimal percentage
+pub fn go_status_data(metrics: Option<&SystemMetrics>, server_name: &str) -> serde_json::Value {
+    match metrics {
+        Some(m) => serde_json::json!({
+            "name": m.server_name,
+            "cpu": format!("{:.1}%", m.cpu_usage),
+            "mem": format!("{} / {}", Size(m.memory.used), Size(m.memory.total)),
+            "net": format!("{} / {}", Size(m.network.rx_bytes), Size(m.network.tx_bytes)),
+            "disk": format!("{} / {}", Size(m.disk.used), Size(m.disk.total)),
+        }),
+        None => serde_json::json!({
+            "name": server_name,
+            "cpu": "", "mem": "", "net": "", "disk": "",
+        }),
+    }
 }
 
 async fn get_status(
     req: HttpRequest,
     app_state: web::types::State<Arc<AppState>>,
 ) -> Result<HttpResponse> {
-    require_read_access!(&req, &app_state);
+    // Verify JWT token
+    if verify_read_auth(&req, &app_state).await.is_err() {
+        return Ok(HttpResponse::Unauthorized().json(&ErrorResponse {
+            error: "Invalid or missing token".to_string(),
+        }));
+    }
     touch_viewer_heartbeat(&app_state).await;
 
     let metrics = app_state.current_metrics.read().await;
@@ -595,79 +564,22 @@ async fn get_metrics(
     req: HttpRequest,
     app_state: web::types::State<Arc<AppState>>,
 ) -> Result<HttpResponse> {
-    require_read_access!(&req, &app_state);
+    // Verify JWT token
+    if verify_read_auth(&req, &app_state).await.is_err() {
+        return Ok(HttpResponse::Unauthorized().json(&ErrorResponse {
+            error: "Invalid or missing token".to_string(),
+        }));
+    }
     touch_viewer_heartbeat(&app_state).await;
 
     let metrics = app_state.current_metrics.read().await;
 
     if let Some(ref metrics) = *metrics {
-        let body = metrics_json(metrics)?;
-        Ok(HttpResponse::Ok().json(&body))
+        Ok(HttpResponse::Ok().json(metrics))
     } else {
         Ok(HttpResponse::ServiceUnavailable().json(&ErrorResponse {
             error: "Metrics not available yet".to_string(),
         }))
-    }
-}
-
-/// Keep the established numeric fields for existing clients, while exposing
-/// exact decimal forms for browser clients that cannot represent every u64.
-fn metrics_json(metrics: &SystemMetrics) -> serde_json::Result<serde_json::Value> {
-    let mut value = serde_json::to_value(metrics)?;
-    add_exact_counters(
-        &mut value,
-        &metrics.network,
-        &metrics.ifaces,
-        &metrics.diskio,
-    );
-    Ok(value)
-}
-
-fn add_exact_counters(
-    value: &mut serde_json::Value,
-    network_metrics: &monitoring::NetworkMetrics,
-    iface_metrics: &[monitoring::IfaceMetrics],
-    diskio_metrics: &[sbm_parser::types::DiskIoPiece],
-) {
-    if let Some(network) = value.get_mut("network").and_then(serde_json::Value::as_object_mut) {
-        network.insert(
-            "rx_bytes_exact".to_string(),
-            serde_json::Value::String(network_metrics.rx_bytes.to_string()),
-        );
-        network.insert(
-            "tx_bytes_exact".to_string(),
-            serde_json::Value::String(network_metrics.tx_bytes.to_string()),
-        );
-    }
-
-    if let Some(ifaces) = value.get_mut("ifaces").and_then(serde_json::Value::as_array_mut) {
-        for (wire, source) in ifaces.iter_mut().zip(iface_metrics) {
-            if let Some(wire) = wire.as_object_mut() {
-                wire.insert(
-                    "rx_bytes_exact".to_string(),
-                    serde_json::Value::String(source.rx_bytes.to_string()),
-                );
-                wire.insert(
-                    "tx_bytes_exact".to_string(),
-                    serde_json::Value::String(source.tx_bytes.to_string()),
-                );
-            }
-        }
-    }
-
-    if let Some(diskio) = value.get_mut("diskio").and_then(serde_json::Value::as_array_mut) {
-        for (wire, source) in diskio.iter_mut().zip(diskio_metrics) {
-            if let Some(wire) = wire.as_object_mut() {
-                wire.insert(
-                    "sectors_read_exact".to_string(),
-                    serde_json::Value::String(source.sectors_read.to_string()),
-                );
-                wire.insert(
-                    "sectors_write_exact".to_string(),
-                    serde_json::Value::String(source.sectors_write.to_string()),
-                );
-            }
-        }
     }
 }
 
@@ -691,10 +603,12 @@ struct CapabilitiesView {
 /// Which remote-access paths this agent will actually accept, as opposed to
 /// what the config asks for: `terminal` already accounts for the transport
 /// check, so the panel can hide the entry rather than offer something that
-/// answers 403.
+/// answers 403. `secure` is reported separately so it can explain *why*.
 #[derive(Serialize)]
 struct RemoteAccessView {
+    tunnel: bool,
     terminal: bool,
+    secure: bool,
     /// Whether a shell can be opened without SSH credentials. The panel only
     /// offers that entry when this is true — and, being a UI decision, it is
     /// re-checked server-side when the request actually arrives.
@@ -706,7 +620,11 @@ struct RemoteAccessView {
 }
 
 async fn get_capabilities(req: HttpRequest, app_state: web::types::State<Arc<AppState>>) -> Result<HttpResponse> {
-    require_jwt!(&req, &app_state);
+    if verify_auth(&req, &app_state.config.get_jwt_secret()).is_err() {
+        return Ok(HttpResponse::Unauthorized().json(&ErrorResponse {
+            error: "Invalid or missing token".to_string(),
+        }));
+    }
     let platform = monitoring::system_type();
     let capabilities = monitoring::effective_capabilities(platform);
     let secure = ws::is_secure_transport(&req, app_state.tls_active);
@@ -714,9 +632,11 @@ async fn get_capabilities(req: HttpRequest, app_state: web::types::State<Arc<App
         capabilities,
         platform,
         remote_access: RemoteAccessView {
+            tunnel: app_state.remote_access.tunnel.enabled,
             terminal: app_state.remote_access.terminal.available(secure),
+            secure,
             full_access: app_state.full_access_allowed(secure),
-            files: app_state.remote_access.fs.available(secure),
+            files: app_state.remote_access.fs.available(),
         },
     }))
 }
@@ -725,44 +645,49 @@ async fn get_capabilities(req: HttpRequest, app_state: web::types::State<Arc<App
 /// authorises one WebSocket upgrade — see `api::ws::ticket` for why the
 /// upgrade can't just carry the JWT.
 ///
-/// Refuses to mint a ticket while the terminal is unavailable, so a client
-/// finds out here rather than at a failed handshake.
+/// Refuses to mint a ticket for a path that isn't open, so a client finds out
+/// here rather than at a failed handshake.
 async fn issue_ws_ticket(
     req: HttpRequest,
     app_state: web::types::State<Arc<AppState>>,
     payload: web::types::Json<TicketRequest>,
 ) -> Result<HttpResponse> {
-    let claims = require_jwt!(&req, &app_state);
 
+    let claims = match verify_auth(&req, &app_state.config.get_jwt_secret()) {
+        Ok(claims) => claims,
+        Err(_) => {
+            return Ok(HttpResponse::Unauthorized().json(&ErrorResponse {
+                error: "Invalid or missing token".to_string(),
+            }));
+        }
+    };
+
+    let purpose = payload.into_inner().purpose;
     let remote_ip = audit::peer_ip(&req);
-    // The purpose is read and dropped: `Purpose` has one variant, so there is
-    // nothing to branch on. It used to be compared and the mismatch declared
-    // `unreachable!()` — a panic guarding a value that arrives in a request
-    // body, which a second variant would have turned into a way to kill the
-    // worker with a POST. Everything below names `Purpose::Terminal` outright.
-    let _ = payload.into_inner();
-    let available = app_state
-        .remote_access
-        .terminal
-        .available(ws::is_secure_transport(&req, app_state.tls_active));
+    let available = match purpose {
+        Purpose::Tunnel => app_state.remote_access.tunnel.enabled,
+        Purpose::Terminal => app_state
+            .remote_access
+            .terminal.available(ws::is_secure_transport(&req, app_state.tls_active)),
+    };
     if !available {
         Event::new(Kind::Ticket, Action::Denied, Outcome::Denied)
             .subject(&claims.sub)
             .remote_ip(remote_ip)
-            .detail("terminal not available")
+            .detail(format!("{purpose:?} not available"))
             .record(&app_state.db)
             .await;
         return Ok(HttpResponse::Forbidden().json(&ErrorResponse {
-            error: "The terminal is not available".to_string(),
+            error: "Remote access is not enabled for this purpose".to_string(),
         }));
     }
 
-    match app_state.tickets.issue(Purpose::Terminal, &claims.sub) {
+    match app_state.tickets.issue(purpose, &claims.sub) {
         Ok(ticket) => {
             Event::new(Kind::Ticket, Action::Open, Outcome::Ok)
                 .subject(&claims.sub)
                 .remote_ip(remote_ip)
-                .detail("terminal")
+                .detail(format!("{purpose:?}"))
                 .record(&app_state.db)
                 .await;
             Ok(HttpResponse::Ok()
@@ -775,17 +700,9 @@ async fn issue_ws_ticket(
                 .detail("issue failed")
                 .record(&app_state.db)
                 .await;
-            match e {
-                MonitorError::Quota {
-                    message,
-                    retry_after_secs,
-                } => Ok(HttpResponse::TooManyRequests()
-                    .header(RETRY_AFTER, retry_after_secs.to_string())
-                    .json(&ErrorResponse { error: message })),
-                other => Ok(HttpResponse::ServiceUnavailable().json(&ErrorResponse {
-                    error: other.to_string(),
-                })),
-            }
+            Ok(HttpResponse::ServiceUnavailable().json(&ErrorResponse {
+                error: e.to_string(),
+            }))
         }
     }
 }
@@ -797,7 +714,7 @@ async fn issue_ws_ticket(
 #[derive(Serialize, Deserialize)]
 struct SettingsPayload {
     interval_seconds: u64,
-    /// `null` = `interval_seconds * 10`, with a 120-second floor
+    /// `null` = follow `interval_seconds` (see `LiveSettings`)
     extended_interval_secs: Option<u64>,
     idle_pause_enabled: bool,
     /// `null` = `interval_seconds * 4`
@@ -822,7 +739,11 @@ struct SettingsView {
 const SETTINGS_LIVE_FIELDS: &[&str] = &["extended_interval_secs", "idle_pause_enabled", "idle_pause_threshold_secs"];
 
 async fn get_settings(req: HttpRequest, app_state: web::types::State<Arc<AppState>>) -> Result<HttpResponse> {
-    require_jwt!(&req, &app_state);
+    if verify_auth(&req, &app_state.config.get_jwt_secret()).is_err() {
+        return Ok(HttpResponse::Unauthorized().json(&ErrorResponse {
+            error: "Invalid or missing token".to_string(),
+        }));
+    }
 
     let file_config = match config_file::read() {
         Ok(c) => c,
@@ -863,17 +784,16 @@ async fn update_settings(
     app_state: web::types::State<Arc<AppState>>,
     payload: web::types::Json<SettingsPayload>,
 ) -> Result<HttpResponse> {
-    require_jwt!(&req, &app_state);
+    if verify_auth(&req, &app_state.config.get_jwt_secret()).is_err() {
+        return Ok(HttpResponse::Unauthorized().json(&ErrorResponse {
+            error: "Invalid or missing token".to_string(),
+        }));
+    }
     let payload = payload.into_inner();
 
     if payload.interval_seconds < 1 {
         return Ok(HttpResponse::BadRequest()
             .json(&ErrorResponse { error: "interval_seconds must be at least 1".to_string() }));
-    }
-    if let Some(retention) = &payload.data_retention
-        && let Err(error) = retention.validate()
-    {
-        return Ok(HttpResponse::BadRequest().json(&ErrorResponse { error }));
     }
     for rule in &payload.rules {
         if let Err(e) = validate_threshold_format(&rule.threshold) {
@@ -940,7 +860,14 @@ async fn disable_full_access(
     req: HttpRequest,
     app_state: web::types::State<Arc<AppState>>,
 ) -> Result<HttpResponse> {
-    let claims = require_jwt!(&req, &app_state);
+    let claims = match verify_auth(&req, &app_state.config.get_jwt_secret()) {
+        Ok(claims) => claims,
+        Err(_) => {
+            return Ok(HttpResponse::Unauthorized().json(&ErrorResponse {
+                error: "Invalid or missing token".to_string(),
+            }));
+        }
+    };
 
     let _config_guard = app_state.config_write.lock().await;
     let mut config = match config_file::read() {
@@ -959,10 +886,9 @@ async fn disable_full_access(
     }
 
     app_state.full_access_off.store(true, Ordering::Release);
-    let closed = app_state.sessions.close_local();
     tracing::info!(
-        "Access without SSH disabled from the panel by {}; closed {closed} local terminal sessions",
-        claims.sub,
+        "Access without SSH disabled from the panel by {}",
+        claims.sub
     );
     Ok(HttpResponse::Ok().json(&serde_json::json!({ "status": "ok" })))
 }
@@ -979,7 +905,11 @@ struct CardOrderPayload {
 }
 
 async fn get_card_order(req: HttpRequest, app_state: web::types::State<Arc<AppState>>) -> Result<HttpResponse> {
-    require_jwt!(&req, &app_state);
+    if verify_auth(&req, &app_state.config.get_jwt_secret()).is_err() {
+        return Ok(HttpResponse::Unauthorized().json(&ErrorResponse {
+            error: "Invalid or missing token".to_string(),
+        }));
+    }
     let file_config = match config_file::read() {
         Ok(c) => c,
         Err(e) => {
@@ -995,7 +925,11 @@ async fn update_card_order(
     app_state: web::types::State<Arc<AppState>>,
     payload: web::types::Json<CardOrderPayload>,
 ) -> Result<HttpResponse> {
-    require_jwt!(&req, &app_state);
+    if verify_auth(&req, &app_state.config.get_jwt_secret()).is_err() {
+        return Ok(HttpResponse::Unauthorized().json(&ErrorResponse {
+            error: "Invalid or missing token".to_string(),
+        }));
+    }
     let _config_guard = app_state.config_write.lock().await;
 
     let mut config = match config_file::read() {
@@ -1016,18 +950,6 @@ async fn update_card_order(
     Ok(HttpResponse::Ok().json(&serde_json::json!({ "status": "ok" })))
 }
 
-/// One numeric query parameter, or `None` when it is absent or unreadable.
-///
-/// Read by hand rather than deserialised into a struct: these are integers
-/// with no encoding to undo, and every one of them is clamped at the use site
-/// anyway, so a bad value and a missing value have the same answer.
-fn query_param<T: std::str::FromStr>(query: &str, name: &str) -> Option<T> {
-    query
-        .split('&')
-        .find_map(|kv| kv.strip_prefix(name)?.strip_prefix('='))
-        .and_then(|v| v.parse().ok())
-}
-
 #[derive(Serialize)]
 struct HistoryPoint {
     timestamp: String,
@@ -1042,43 +964,29 @@ struct HistoryPoint {
     battery_percent: Option<f64>,
 }
 
-/// Bucketed time series from system_metrics.
-///
-/// `?minutes=` selects the window (default 60, clamped to 5..=10080) and
-/// `?max_points=` how many points to answer with (default 300, clamped to
-/// 2..=300). Rows are averaged into that many buckets and network rates are
-/// derived from consecutive cumulative counters.
-///
-/// The count is the caller's to pick because it is a property of what is
-/// drawing the result, not of what is stored: a home widget a few hundred
-/// pixels wide cannot render 300 points, and asking for them means carrying
-/// them over the network to throw them away. Thinning here is also better
-/// than thinning on the client — an average over a wider bucket keeps the
-/// spikes that dropping every third row loses.
+/// Bucketed time series from system_metrics. `?minutes=` selects the window
+/// (default 60, clamped to 5..=10080); rows are averaged into at most 300
+/// buckets and network rates are derived from consecutive cumulative counters.
 async fn get_metrics_history(
     req: HttpRequest,
     app_state: web::types::State<Arc<AppState>>,
 ) -> Result<HttpResponse> {
-    require_read_access!(&req, &app_state);
+    if verify_read_auth(&req, &app_state).await.is_err() {
+        return Ok(HttpResponse::Unauthorized().json(&ErrorResponse {
+            error: "Invalid or missing token".to_string(),
+        }));
+    }
 
-    let query = req.query_string();
-    let minutes: i64 = query_param(query, "minutes")
+    let minutes: i64 = req
+        .query_string()
+        .split('&')
+        .find_map(|kv| kv.strip_prefix("minutes="))
+        .and_then(|v| v.parse().ok())
         .unwrap_or(60)
         .clamp(5, 7 * 24 * 60);
 
-    /// What this endpoint has always answered with, and still does for a
-    /// caller that names no count.
     const MAX_POINTS: i64 = 300;
-    let max_points: i64 = query_param(query, "max_points")
-        .unwrap_or(MAX_POINTS)
-        .clamp(2, MAX_POINTS);
-
-    // Rounded up, so the window divides into no more buckets than were asked
-    // for. Rounding down leaves buckets narrower than the window/count ratio
-    // and answers with more points than the caller said it could take —
-    // `minutes=7&max_points=100` is 4-second buckets and 105 of them.
-    // `i64::div_ceil` is still unstable; both operands are positive here.
-    let bucket_secs = ((minutes * 60 + max_points - 1) / max_points).max(1);
+    let bucket_secs = (minutes * 60 / MAX_POINTS).max(1);
 
     use sqlx::Row;
     let rows = sqlx::query(
@@ -1125,16 +1033,6 @@ async fn get_metrics_history(
         });
     }
 
-    // A bucket boundary is an absolute multiple of `bucket_secs` while the
-    // window's start is wherever "now minus N minutes" falls, so the first
-    // bucket is a partial one and the count can come out one over. Drop from
-    // the old end: the rates above are derived from consecutive buckets, so
-    // they have to be computed over the whole series before anything is cut.
-    let max_points = max_points as usize;
-    if points.len() > max_points {
-        points.drain(..points.len() - max_points);
-    }
-
     Ok(HttpResponse::Ok().json(&points))
 }
 
@@ -1142,7 +1040,12 @@ async fn get_velocity(
     req: HttpRequest,
     app_state: web::types::State<Arc<AppState>>,
 ) -> Result<HttpResponse> {
-    require_jwt!(&req, &app_state);
+    // Verify JWT token
+    if verify_auth(&req, &app_state.config.get_jwt_secret()).is_err() {
+        return Ok(HttpResponse::Unauthorized().json(&ErrorResponse {
+            error: "Invalid or missing token".to_string(),
+        }));
+    }
 
     let server_name = app_state.config.get_server_name();
 
@@ -1191,19 +1094,19 @@ async fn get_velocity_history(
     req: HttpRequest,
     app_state: web::types::State<Arc<AppState>>,
 ) -> Result<HttpResponse> {
-    require_jwt!(&req, &app_state);
+    // Verify JWT token
+    if verify_auth(&req, &app_state.config.get_jwt_secret()).is_err() {
+        return Ok(HttpResponse::Unauthorized().json(&ErrorResponse {
+            error: "Invalid or missing token".to_string(),
+        }));
+    }
 
     let query = web::types::Query::<serde_json::Value>::from_query(req.query_string())
         .unwrap_or_else(|_| web::types::Query(serde_json::Value::Object(serde_json::Map::new())));
 
     let limit = query
         .get("limit")
-        .and_then(|v| {
-            v.as_u64().or_else(|| {
-                v.as_str()
-                    .and_then(|s| s.parse::<u64>().ok())
-            })
-        })
+        .and_then(|v| v.as_u64())
         .map(|l| l as usize);
 
     match app_state
@@ -1356,39 +1259,5 @@ mod watch_token_tests {
             .await
             .unwrap();
         assert!(verify_watch_token(&pool, token, 19).await.is_err());
-    }
-}
-
-#[cfg(test)]
-mod metrics_json_tests {
-    use super::*;
-
-    #[test]
-    fn cumulative_counters_include_exact_decimal_strings() {
-        let network = monitoring::NetworkMetrics {
-            rx_bytes: 9_007_199_254_740_993,
-            tx_bytes: 9_007_199_254_740_994,
-        };
-        let ifaces = [monitoring::IfaceMetrics {
-            name: "eth0".to_string(),
-            rx_bytes: 9_007_199_254_740_995,
-            tx_bytes: 9_007_199_254_740_996,
-        }];
-        let diskio = [sbm_parser::types::DiskIoPiece {
-            dev: "sda".to_string(),
-            sectors_read: 9_007_199_254_740_997,
-            sectors_write: 9_007_199_254_740_998,
-        }];
-        let mut value = serde_json::json!({
-            "network": { "rx_bytes": network.rx_bytes, "tx_bytes": network.tx_bytes },
-            "ifaces": [{ "name": "eth0", "rx_bytes": ifaces[0].rx_bytes, "tx_bytes": ifaces[0].tx_bytes }],
-            "diskio": [{ "dev": "sda", "sectors_read": diskio[0].sectors_read, "sectors_write": diskio[0].sectors_write }],
-        });
-
-        add_exact_counters(&mut value, &network, &ifaces, &diskio);
-
-        assert_eq!(value["network"]["rx_bytes_exact"], "9007199254740993");
-        assert_eq!(value["ifaces"][0]["tx_bytes_exact"], "9007199254740996");
-        assert_eq!(value["diskio"][0]["sectors_read_exact"], "9007199254740997");
     }
 }

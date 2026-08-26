@@ -13,8 +13,8 @@ extension _App on _AppSettingsPageState {
       _buildThemeMode(),
       _buildAppColor(),
       _buildCheckUpdate(),
+      _buildHomeTabs(),
       PlatformPublicSettings.buildBioAuth,
-      ?PlatformPublicSettings.buildPrivacyBlur,
       ?androidSettings,
       ?specific,
       _buildAppMore(),
@@ -27,54 +27,73 @@ extension _App on _AppSettingsPageState {
     return ExpandTile(
       leading: const Icon(Icons.phone_android),
       title: Text('Android ${libL10n.setting}'),
-      children: [_buildBgRun()],
+      children: [_buildBgRun(), _buildAndroidWidgetSharedPreference()],
     );
   }
 
   Widget _buildBgRun() {
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        ListTile(
-          title: TipText(l10n.bgRun, l10n.bgRunTip),
-          trailing: StoreSwitch(prop: Stores.setting.bgRun),
-        ),
-        _buildBgRunPermission(),
-      ],
+    return ListTile(
+      title: TipText(l10n.bgRun, l10n.bgRunTip),
+      trailing: StoreSwitch(prop: Stores.setting.bgRun),
     );
   }
 
-  /// Says so when the switch above cannot do what it says.
-  ///
-  /// Running in the background means holding a foreground service, and a
-  /// foreground service means a notification — so an app whose notifications
-  /// are turned off is frozen the moment it leaves the screen, and every
-  /// connection dies with nothing on screen explaining it (#1287). Shown only
-  /// in that case: a row saying "this is fine" on every other device is noise.
-  Widget _buildBgRunPermission() {
-    return FutureWidget(
-      future: MethodChans.notificationsAllowed(),
-      loading: UIs.placeholder,
-      error: (_, _) => UIs.placeholder,
-      success: (allowed) {
-        if (allowed != false) return UIs.placeholder;
-        return ListTile(
-          leading: Icon(Icons.notifications_off, color: UIs.primaryColor),
-          title: TipText(libL10n.permission, l10n.bgRunNeedsNotification),
-          trailing: const Icon(Icons.keyboard_arrow_right),
-          onTap: () async {
-            await MethodChans.openNotificationSettings();
-            // Read again on the way back: the point of sending someone there
-            // is that they change it, and a row still saying it is off would
-            // make them wonder whether it took.
-            setStateSafe(() {});
-          },
+  Widget _buildAndroidWidgetSharedPreference() {
+    return ListTile(
+      title: Text(l10n.homeWidgetUrlConfig),
+      trailing: const Icon(Icons.keyboard_arrow_right),
+      onTap: () async {
+        const prefix = 'widget_';
+        final data = <String, String>{};
+        final keys = PrefStore.shared.keys();
+
+        for (final key in keys) {
+          if (!key.startsWith(prefix)) continue;
+          final val = PrefStore.shared.get<String>(key);
+          if (val != null) data[key] = val;
+        }
+        final result = await KvEditor.route.go(
+          context,
+          KvEditorArgs(data: data, prefix: prefix),
         );
+        if (result != null) {
+          await _saveWidgetSP(result, data, prefix);
+        }
       },
     );
   }
 
+  Future<void> _saveWidgetSP(
+    Map<String, String> map,
+    Map<String, String> old,
+    String prefix,
+  ) async {
+    try {
+      final keysDel = old.keys.toSet().difference(map.keys.toSet());
+      for (final key in keysDel) {
+        if (!key.startsWith(prefix)) continue;
+        await PrefStore.shared.remove(key);
+      }
+      for (final entry in map.entries) {
+        if (!entry.key.startsWith(prefix)) continue;
+        await PrefStore.shared.set(entry.key, entry.value);
+      }
+      if (mounted) Toast.success(libL10n.success);
+    } catch (e) {
+      if (mounted) Toast.error(e.toString());
+    }
+  }
+
   Widget? _buildPlatformSetting() {
+    if (isIOS) {
+      return ListTile(
+        leading: const Icon(MingCute.apple_fill),
+        title: Text('iOS ${libL10n.setting}'),
+        trailing: const Icon(Icons.keyboard_arrow_right),
+        onTap: () => IosSettingsPage.route.go(context),
+      );
+    }
+
     // The App Store build's one standing entry about the DMG build. The line
     // in the update dialog is asked to go away and does; this one stays, so
     // there is somewhere to read the whole thing afterwards.
@@ -366,6 +385,17 @@ extension _App on _AppSettingsPageState {
           await SystemUIs.updateTitleBarStyle(hideTitleBar: value);
         },
       ),
+    );
+  }
+
+  Widget _buildHomeTabs() {
+    return ListTile(
+      leading: const Icon(Icons.tab),
+      title: Text(l10n.homeTabs),
+      trailing: const Icon(Icons.keyboard_arrow_right),
+      onTap: () {
+        HomeTabsConfigPage.route.go(context);
+      },
     );
   }
 

@@ -16,11 +16,6 @@ _Spi _$SpiFromJson(Map<String, dynamic> json) => _Spi(
       : MonitorHttpCredential.fromJson(
           json['monitorHttp'] as Map<String, dynamic>,
         ),
-  preferredTransport: $enumDecodeNullable(
-    _$ServerTransportEnumMap,
-    json['preferredTransport'],
-    unknownValue: JsonKey.nullForUndefinedEnumValue,
-  ),
   tags: (json['tags'] as List<dynamic>?)?.map((e) => e as String).toList(),
   autoConnect: json['autoConnect'] as bool? ?? true,
   custom: json['custom'] == null
@@ -29,9 +24,6 @@ _Spi _$SpiFromJson(Map<String, dynamic> json) => _Spi(
   wolCfg: json['wolCfg'] == null
       ? null
       : WakeOnLanCfg.fromJson(json['wolCfg'] as Map<String, dynamic>),
-  bmc: json['bmc'] == null
-      ? null
-      : BmcCfg.fromJson(json['bmc'] as Map<String, dynamic>),
   envs: (json['envs'] as Map<String, dynamic>?)?.map(
     (k, e) => MapEntry(k, e as String),
   ),
@@ -49,21 +41,14 @@ Map<String, dynamic> _$SpiToJson(_Spi instance) => <String, dynamic>{
   'name': instance.name,
   'ssh': ?instance.ssh,
   'monitorHttp': ?instance.monitorHttp,
-  'preferredTransport': ?_$ServerTransportEnumMap[instance.preferredTransport],
   'tags': ?instance.tags,
   'autoConnect': instance.autoConnect,
   'custom': ?instance.custom,
   'wolCfg': ?instance.wolCfg,
-  'bmc': ?instance.bmc,
   'envs': ?instance.envs,
   'id': instance.id,
   'customSystemType': ?_$SystemTypeEnumMap[instance.customSystemType],
   'disabledCmdTypes': ?instance.disabledCmdTypes,
-};
-
-const _$ServerTransportEnumMap = {
-  ServerTransport.ssh: 'ssh',
-  ServerTransport.monitorHttp: 'monitorHttp',
 };
 
 const _$SystemTypeEnumMap = {

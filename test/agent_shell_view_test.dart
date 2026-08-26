@@ -20,7 +20,7 @@ import 'helpers/test_db.dart';
 /// conversation.
 class _FixedSession extends AgentSession {
   @override
-  AgentSessionState build(String scope) =>
+  AgentSessionState build() =>
       const AgentSessionState(protocol: AskAiProtocol.chatCompletions);
 }
 
@@ -64,7 +64,7 @@ void main() {
     addTearDown(tester.view.reset);
 
     final container = ProviderContainer(
-      overrides: [globalAgentSessionProvider.overrideWith(_FixedSession.new)],
+      overrides: [agentSessionProvider.overrideWith(_FixedSession.new)],
     );
     addTearDown(container.dispose);
 

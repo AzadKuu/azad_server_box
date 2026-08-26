@@ -5,7 +5,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
 import 'package:server_box/core/utils/ios_rootfs.dart';
 import 'package:server_box/core/utils/ish_exec.dart';
-import 'package:server_box/data/model/app/linux_distro.dart';
 
 /// What the Linux guest costs the app while it is working.
 ///
@@ -39,12 +38,7 @@ void main() {
       markTestSkipped('this build carries no engine (SBM_ISH = 0)');
       return;
     }
-    // Only when there is nothing: `install` without `into:` adds a system
-    // beside the existing ones, so an unconditional call leaves a fresh
-    // Alpine behind on every run of this benchmark.
-    if (IosRootfs.selected == null) {
-      await IosRootfs.install(distro: LinuxDistro.alpine);
-    }
+    await IosRootfs.install();
     const exec = IshExec();
 
     // Booted and idle, before any work: what the engine costs simply for
@@ -100,12 +94,7 @@ echo DONE
       return;
     }
     await IosRootfs.prepare();
-    // Only when there is nothing: `install` without `into:` adds a system
-    // beside the existing ones, so an unconditional call leaves a fresh
-    // Alpine behind on every run of this benchmark.
-    if (IosRootfs.selected == null) {
-      await IosRootfs.install(distro: LinuxDistro.alpine);
-    }
+    await IosRootfs.install();
     const exec = IshExec();
 
     final before = rss();

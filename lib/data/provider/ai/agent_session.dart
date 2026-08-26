@@ -5,7 +5,6 @@ import 'package:riverpod_annotation/riverpod_annotation.dart';
 import 'package:server_box/data/model/ai/agent_conversation.dart';
 import 'package:server_box/data/model/ai/agent_conversation_replay.dart';
 import 'package:server_box/data/model/ai/ask_ai_models.dart';
-import 'package:server_box/data/provider/ai/agent_scope.dart';
 import 'package:server_box/data/provider/ai/ask_ai.dart';
 import 'package:server_box/data/provider/ai/global_agent_tools.dart';
 import 'package:server_box/data/res/store.dart';
@@ -20,15 +19,7 @@ part 'agent_session.g.dart';
 /// be chosen where there is a `BuildContext` — at render time, in whatever
 /// language the app is in *then*, not the one it was in when the notice
 /// happened.
-enum AgentNoticeKind {
-  declined,
-  interrupted,
-
-  /// The command was put on the terminal's input line for the user to run
-  /// themselves, so what it did — or whether it ran at all — is not known here.
-  /// Only a terminal Agent can reach this.
-  inserted,
-}
+enum AgentNoticeKind { declined, interrupted }
 
 @immutable
 sealed class AgentTimelineEntry {
@@ -56,24 +47,6 @@ final class AgentToolResultEntry extends AgentTimelineEntry {
 
   final AskAiCommand proposal;
   final AgentToolExecutionResult result;
-  final bool autoApproved;
-}
-
-/// A shell command run in a terminal, and what it printed.
-///
-/// Separate from [AgentToolResultEntry] rather than converted into one: the
-/// two are stored differently, and the stored form is what the model reads
-/// back as the tool's output. Converting would rewrite the protocol for every
-/// terminal conversation, including the ones already on disk.
-final class AgentShellResultEntry extends AgentTimelineEntry {
-  const AgentShellResultEntry(
-    this.command,
-    this.result, {
-    this.autoApproved = false,
-  });
-
-  final AskAiCommand command;
-  final AskAiCommandResult result;
   final bool autoApproved;
 }
 
@@ -180,19 +153,13 @@ class AgentSessionState {
   }
 }
 
-/// An Agent conversation, and everything it is doing right now.
+/// The app-wide Agent conversation, and everything it is doing right now.
 ///
-/// Lives here rather than in a page's `State` because a conversation has more
-/// than one view: the Agent tab and the floating shell show the same one, and
+/// Lives here rather than in the page's `State` because it has more than one
+/// view: the Agent tab and the floating shell show the same conversation, and
 /// a turn started in one has to keep streaming while the other is on screen —
 /// or while neither is. Nothing about a widget's lifetime should end a turn;
 /// only the user stopping it, through [stopWork].
-///
-/// Keyed by [scope], which is the same key the conversations are stored under:
-/// [globalAgentConversationScope] for the app-wide Agent, a server's id for
-/// the Agent in that server's terminal. Both run this loop. What they do *not*
-/// share is on [AgentScopeHost] — the machine, the tools, and who carries out
-/// an approved proposal — which is why there is one of these rather than two.
 @Riverpod(keepAlive: true)
 class AgentSession extends _$AgentSession {
   StreamSubscription<AskAiEvent>? _subscription;
@@ -206,12 +173,10 @@ class AgentSession extends _$AgentSession {
   /// — reuse it rather than dropping the hint halfway through a conversation.
   String? _localeHint;
 
-  /// Read per use, never held: a terminal can close and reopen under a session
-  /// that outlives both.
-  AgentScopeHost get _host => ref.read(agentScopeHostsProvider)[scope];
+  GlobalAgentToolService get _tools => ref.read(globalAgentToolServiceProvider);
 
   @override
-  AgentSessionState build(String scope) {
+  AgentSessionState build() {
     // Watches the box, so a write this class did not make — a restored backup
     // — is not missed.
     _conversationWatch = Stores.agentConversation.watch().listen((_) {
@@ -222,7 +187,9 @@ class AgentSession extends _$AgentSession {
       _subscription?.cancel();
     });
 
-    return _stateFor(Stores.agentConversation.fetchActive(scope));
+    return _stateFor(
+      Stores.agentConversation.fetchActive(globalAgentConversationScope),
+    );
   }
 
   // ---------------------------------------------------------------- turns
@@ -264,17 +231,16 @@ class AgentSession extends _$AgentSession {
       error: null,
       streamingContent: '',
     );
-    final host = _host;
     _subscription = ref
         .read(askAiRepositoryProvider)
         .ask(
-          terminalContext: host.terminalContext,
-          serverName: host.serverName,
+          terminalContext: '',
+          serverName: 'ServerBox',
           localeHint: _localeHint,
           conversation: List.unmodifiable(state.history),
           protocol: state.protocol,
-          customInstructions: host.buildInstructions(localeHint: _localeHint),
-          tools: host.tools,
+          customInstructions: _tools.buildInstructions(localeHint: _localeHint),
+          tools: globalAgentToolDefinitions,
         )
         .listen(
           _handleEvent,
@@ -379,42 +345,38 @@ class AgentSession extends _$AgentSession {
       error: null,
       autoRunCount: autoApproved ? state.autoRunCount + 1 : null,
     );
-    final host = _host;
-    AgentRunResult run;
+    AgentToolExecutionResult result;
     try {
-      run = await host.execute(proposal);
+      result = await _tools.execute(proposal);
     } catch (error) {
-      run = host.describeFailure(proposal, error);
+      result = AgentToolExecutionResult(
+        toolName: proposal.toolName,
+        serverId: proposal.serverId,
+        summary: 'The tool failed to run.',
+        succeeded: false,
+        duration: Duration.zero,
+        localFailure: true,
+        data: {'error': error.toString()},
+      );
     }
     state = state.copyWith(
       history: [
         ...state.history,
         AskAiFunctionOutputItem(
           callId: proposal.id,
-          output: run.toToolMessage(),
+          output: result.toToolMessage(),
         ),
       ],
       timeline: [
         ...state.timeline,
-        switch (run) {
-          AgentToolRun(:final result) => AgentToolResultEntry(
-            proposal,
-            result,
-            autoApproved: autoApproved,
-          ),
-          AgentShellRun(:final result) => AgentShellResultEntry(
-            proposal,
-            result,
-            autoApproved: autoApproved,
-          ),
-        },
+        AgentToolResultEntry(proposal, result, autoApproved: autoApproved),
       ],
       pendingTool: null,
       pendingToolRestored: false,
       isExecuting: false,
     );
     await _persist();
-    if (!run.cancelled) startStream();
+    if (!result.cancelled) startStream();
   }
 
   Future<void> declinePendingTool() async {
@@ -441,43 +403,9 @@ class AgentSession extends _$AgentSession {
     startStream();
   }
 
-  /// Puts the pending command on the terminal's input line instead of running
-  /// it, and records that this is what happened.
-  ///
-  /// No turn follows, unlike [declinePendingTool]: whether the command runs at
-  /// all is the user's now, and asking the model to carry on would have it
-  /// answer about a result nobody has yet.
-  ///
-  /// False when this scope has nowhere to put a command, which is every scope
-  /// but a terminal's.
-  Future<bool> insertPendingTool() async {
-    final proposal = state.pendingTool;
-    if (proposal == null || state.isWorking) return false;
-    if (!_host.insert(proposal.command)) return false;
-    state = state.copyWith(
-      history: [
-        ...state.history,
-        AskAiFunctionOutputItem(
-          callId: proposal.id,
-          output: encodeAgentConversationToolAction(
-            AgentConversationToolAction.inserted,
-          ),
-        ),
-      ],
-      timeline: [
-        ...state.timeline,
-        const AgentNoticeEntry(AgentNoticeKind.inserted),
-      ],
-      pendingTool: null,
-      pendingToolRestored: false,
-    );
-    await _persist();
-    return true;
-  }
-
   Future<void> stopWork() async {
     if (state.isExecuting) {
-      await _host.cancelCurrent();
+      await _tools.cancelCurrent();
       return;
     }
     if (!state.isStreaming) return;
@@ -507,7 +435,7 @@ class AgentSession extends _$AgentSession {
     if (state.isWorking) return;
     restoreConversation(
       Stores.agentConversation.create(
-        serverId: scope,
+        serverId: globalAgentConversationScope,
         protocol: _configuredProtocol(),
         providerBaseUrl: Stores.setting.askAiBaseUrl.fetch(),
         model: Stores.setting.askAiModel.fetch(),
@@ -517,11 +445,11 @@ class AgentSession extends _$AgentSession {
 
   Future<void> activateConversation(AgentConversation conversation) async {
     if (state.isWorking ||
-        conversation.serverId != scope) {
+        conversation.serverId != globalAgentConversationScope) {
       return;
     }
     if (!Stores.agentConversation.setActive(
-      scope,
+      globalAgentConversationScope,
       conversation.id,
     )) {
       return;
@@ -548,12 +476,12 @@ class AgentSession extends _$AgentSession {
     if (state.isWorking) return;
     final deletingCurrent = state.conversation?.id == id;
     Stores.agentConversation.deleteConversation(
-      scope,
+      globalAgentConversationScope,
       id,
     );
     if (deletingCurrent) {
       restoreConversation(
-        Stores.agentConversation.fetchActive(scope),
+        Stores.agentConversation.fetchActive(globalAgentConversationScope),
       );
     } else {
       state = state.copyWith(conversations: _fetchConversations());
@@ -562,14 +490,14 @@ class AgentSession extends _$AgentSession {
 
   Future<void> clearConversationHistory() async {
     if (state.isWorking) return;
-    Stores.agentConversation.clearServer(scope);
+    Stores.agentConversation.clearServer(globalAgentConversationScope);
     restoreConversation(null);
   }
 
   // --------------------------------------------------------------- internals
 
   AgentSessionState _stateFor(AgentConversation? conversation) {
-    final replay = replayAgentTimeline(
+    final replay = replayGlobalAgentTimeline(
       conversation?.items ?? const <AskAiConversationItem>[],
     );
     final stored = conversation?.protocol;
@@ -590,7 +518,7 @@ class AgentSession extends _$AgentSession {
     final existing = state.conversation;
     if (existing != null) return existing;
     final created = Stores.agentConversation.create(
-      serverId: scope,
+      serverId: globalAgentConversationScope,
       protocol: state.protocol,
       providerBaseUrl: Stores.setting.askAiBaseUrl.fetch(),
       model: Stores.setting.askAiModel.fetch(),
@@ -621,7 +549,7 @@ class AgentSession extends _$AgentSession {
   }
 
   List<AgentConversation> _fetchConversations() =>
-      Stores.agentConversation.fetchForServer(scope);
+      Stores.agentConversation.fetchForServer(globalAgentConversationScope);
 
   AskAiProtocol _configuredProtocol() => AskAiRepository.resolveProtocol(
     configured: parseAskAiProtocol(Stores.setting.askAiProtocol.fetch()),
@@ -629,31 +557,19 @@ class AgentSession extends _$AgentSession {
   );
 }
 
-/// The app-wide Agent: the member of [agentSessionProvider] whose scope is not
-/// a server.
-///
-/// Named because it is referred to in a dozen places and the family argument
-/// is the same every time. A terminal's session has no such name — its scope
-/// is the server's id, known only where there is a server.
-final globalAgentSessionProvider = agentSessionProvider(
-  globalAgentConversationScope,
-);
-
 /// Rebuilds a timeline from a stored conversation, and finds the tool call —
 /// if any — that was proposed but never answered.
 ///
-/// One function for both surfaces, which is possible because a conversation is
-/// stored the same way either way. Only the tool output differs, and the two
-/// encodings are told apart rather than guessed at: a global tool result is
-/// marked and its decoder rejects anything unmarked, so it is tried first and
-/// a shell result is what is left.
+/// The counterpart of `AgentConversationReplay.fromItems`, for the app-wide
+/// Agent: the same protocol, but tool results are [AgentToolExecutionResult]
+/// rather than a shell command's output, because these tools are not all
+/// shells.
 ///
 /// Entries carry data, never sentences. Nothing here knows what language the
 /// app is in, and a conversation reopened after the user changed it should
 /// read in the new one.
-({List<AgentTimelineEntry> entries, AskAiCommand? pending}) replayAgentTimeline(
-  List<AskAiConversationItem> items,
-) {
+({List<AgentTimelineEntry> entries, AskAiCommand? pending})
+replayGlobalAgentTimeline(List<AskAiConversationItem> items) {
   final entries = <AgentTimelineEntry>[];
   final calls = <String, List<_PendingCall>>{};
   final callOrder = <_PendingCall>[];
@@ -687,27 +603,11 @@ final globalAgentSessionProvider = agentSessionProvider(
           entries.add(AgentToolResultEntry(call.command, result));
           continue;
         }
-        // A terminal Agent's output. Tried second because its decoder accepts
-        // anything carrying `stdout` or `stderr`, while the tool encoding
-        // above is marked and rejects everything else — so this order is what
-        // keeps a tool result from being read as a shell result.
-        final shell = AskAiCommandResult.tryFromToolMessage(
-          output,
-          fallbackCommand: call.command.command,
-        );
-        if (shell != null) {
-          entries.add(AgentShellResultEntry(call.command, shell));
-          continue;
-        }
-        switch (decodeAgentConversationToolAction(output)) {
-          case AgentConversationToolAction.declined:
-            entries.add(const AgentNoticeEntry(AgentNoticeKind.declined));
-          case AgentConversationToolAction.inserted:
-            entries.add(const AgentNoticeEntry(AgentNoticeKind.inserted));
-          case null:
-            if (output.trim().isNotEmpty) {
-              entries.add(AgentRawNoticeEntry(output));
-            }
+        if (decodeAgentConversationToolAction(output) ==
+            AgentConversationToolAction.declined) {
+          entries.add(const AgentNoticeEntry(AgentNoticeKind.declined));
+        } else if (output.trim().isNotEmpty) {
+          entries.add(AgentRawNoticeEntry(output));
         }
       case AskAiReasoningItem() || AskAiRawResponseItem():
         break;

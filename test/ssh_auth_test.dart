@@ -82,7 +82,8 @@ void main() {
           info: HostKeyPromptInfo(
             spi: _spi,
             keyType: 'ssh-ed25519',
-            fingerprint: 'SHA256:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA',
+            fingerprintHex: '00:11',
+            fingerprintBase64: 'ABCD',
             isMismatch: false,
           ),
         ),

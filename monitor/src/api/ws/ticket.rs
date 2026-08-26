@@ -5,7 +5,7 @@
 //! string would write it into ntex's access log on every connection, and it
 //! stays valid for 24 hours. Instead the client exchanges its JWT — over an
 //! ordinary authenticated `POST` — for a ticket that is single-use, expires in
-//! seconds, and is bound to the terminal endpoint.
+//! seconds, and is bound to one purpose.
 //!
 //! The app takes the same path even though it *could* send a header: one
 //! mechanism to audit and get right rather than two, at the cost of one extra
@@ -29,15 +29,17 @@ const TTL: Duration = Duration::from_secs(30);
 /// so this is a backstop against a buggy or hostile client looping on the
 /// issue endpoint, not a security boundary.
 const MAX_LIVE: usize = 256;
-const MAX_PER_SUBJECT: usize = 32;
 
 const ID_BYTES: usize = 16;
 const SECRET_BYTES: usize = 32;
 
-/// The only WebSocket endpoint the agent exposes.
+/// What a ticket authorises. A ticket minted for the terminal cannot open a
+/// tunnel and vice versa, so a leak in one path can't be redirected into the
+/// other.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Purpose {
+    Tunnel,
     Terminal,
 }
 
@@ -47,7 +49,6 @@ struct Entry {
     purpose: Purpose,
     subject: String,
     expires_at: Instant,
-    reserved: bool,
 }
 
 #[derive(Default)]
@@ -56,8 +57,8 @@ pub struct TicketStore {
 }
 
 /// Why a ticket was refused. Deliberately not surfaced to the client in
-/// detail — every failure answers the same 401, so a prober cannot tell how
-/// far it got.
+/// detail — every failure answers the same 401, since distinguishing
+/// "expired" from "wrong purpose" tells a prober how far they got.
 #[derive(Debug, PartialEq, Eq)]
 pub enum TicketError {
     Malformed,
@@ -70,18 +71,7 @@ pub enum TicketError {
 /// The subject a ticket was issued to, or why it was refused. Named so the
 /// signatures don't have to spell out `std::result::Result` to escape this
 /// crate's `Result` alias.
-pub type TicketResult<T = String> = std::result::Result<T, TicketError>;
-
-pub struct TicketReservation {
-    id: String,
-    subject: String,
-}
-
-impl TicketReservation {
-    pub fn subject(&self) -> &str {
-        &self.subject
-    }
-}
+pub type TicketResult = std::result::Result<String, TicketError>;
 
 impl TicketStore {
     pub fn new() -> Self {
@@ -101,36 +91,6 @@ impl TicketStore {
         self.consume_at(raw, purpose, Instant::now())
     }
 
-    /// Claims a ticket while an HTTP upgrade is attempted.
-    pub fn reserve(
-        &self,
-        raw: &str,
-        purpose: Purpose,
-    ) -> TicketResult<TicketReservation> {
-        self.reserve_at(raw, purpose, Instant::now())
-    }
-
-    /// Burns a reservation after the WebSocket handshake succeeds.
-    pub fn commit(&self, reservation: TicketReservation) -> String {
-        self.entries
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .remove(&reservation.id);
-        reservation.subject
-    }
-
-    /// Makes a reservation usable again after the HTTP upgrade fails.
-    pub fn rollback(&self, reservation: TicketReservation) {
-        if let Some(entry) = self
-            .entries
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .get_mut(&reservation.id)
-        {
-            entry.reserved = false;
-        }
-    }
-
     fn issue_at(&self, purpose: Purpose, subject: &str, now: Instant) -> Result<String> {
         let id = random_hex(ID_BYTES)?;
         let secret = random_hex(SECRET_BYTES)?;
@@ -146,16 +106,6 @@ impl TicketStore {
                 "Too many outstanding WebSocket tickets".to_string(),
             ));
         }
-        let per_subject = entries.values().filter(|e| e.subject == subject).count();
-        if per_subject >= MAX_PER_SUBJECT {
-            return Err(MonitorError::Quota {
-                message: format!(
-                    "Too many outstanding WebSocket tickets for this account; retry after {} seconds",
-                    TTL.as_secs()
-                ),
-                retry_after_secs: TTL.as_secs(),
-            });
-        }
 
         entries.insert(
             id.clone(),
@@ -164,23 +114,12 @@ impl TicketStore {
                 purpose,
                 subject: subject.to_string(),
                 expires_at: now + TTL,
-                reserved: false,
             },
         );
         Ok(format!("{id}.{secret}"))
     }
 
     fn consume_at(&self, raw: &str, purpose: Purpose, now: Instant) -> TicketResult {
-        let reservation = self.reserve_at(raw, purpose, now)?;
-        Ok(self.commit(reservation))
-    }
-
-    fn reserve_at(
-        &self,
-        raw: &str,
-        purpose: Purpose,
-        now: Instant,
-    ) -> TicketResult<TicketReservation> {
         let Some((id, secret)) = raw.split_once('.') else {
             return Err(TicketError::Malformed);
         };
@@ -190,17 +129,9 @@ impl TicketStore {
         // ever delivered together with its secret, so anyone who can name one
         // already has the whole thing. Burning it on a mismatch turns a
         // guessing loop against a known id into a single attempt.
-        let Some(mut entry) = entries.remove(id) else {
+        let Some(entry) = entries.remove(id) else {
             return Err(TicketError::Unknown);
         };
-
-        // A concurrent request cannot share an in-flight reservation. Keep
-        // the entry in place so the request that owns it can still commit or
-        // roll back after its handshake completes.
-        if entry.reserved {
-            entries.insert(id.to_string(), entry);
-            return Err(TicketError::Unknown);
-        }
 
         if entry.expires_at <= now {
             return Err(TicketError::Expired);
@@ -211,13 +142,7 @@ impl TicketStore {
         if !constant_time_eq(entry.secret.as_bytes(), secret.as_bytes()) {
             return Err(TicketError::BadSecret);
         }
-        let subject = entry.subject.clone();
-        entry.reserved = true;
-        entries.insert(id.to_string(), entry);
-        Ok(TicketReservation {
-            id: id.to_string(),
-            subject,
-        })
+        Ok(entry.subject)
     }
 
     #[cfg(test)]
@@ -255,11 +180,21 @@ mod tests {
     #[test]
     fn a_ticket_works_exactly_once() {
         let store = TicketStore::new();
-        let ticket = store.issue(Purpose::Terminal, "admin").unwrap();
-        assert_eq!(store.consume(&ticket, Purpose::Terminal).unwrap(), "admin");
+        let ticket = store.issue(Purpose::Tunnel, "admin").unwrap();
+        assert_eq!(store.consume(&ticket, Purpose::Tunnel).unwrap(), "admin");
         assert_eq!(
-            store.consume(&ticket, Purpose::Terminal),
+            store.consume(&ticket, Purpose::Tunnel),
             Err(TicketError::Unknown)
+        );
+    }
+
+    #[test]
+    fn purpose_is_binding() {
+        let store = TicketStore::new();
+        let ticket = store.issue(Purpose::Terminal, "admin").unwrap();
+        assert_eq!(
+            store.consume(&ticket, Purpose::Tunnel),
+            Err(TicketError::WrongPurpose)
         );
     }
 
@@ -267,9 +202,9 @@ mod tests {
     fn expiry_is_enforced() {
         let store = TicketStore::new();
         let now = Instant::now();
-        let ticket = store.issue_at(Purpose::Terminal, "admin", now).unwrap();
+        let ticket = store.issue_at(Purpose::Tunnel, "admin", now).unwrap();
         assert_eq!(
-            store.consume_at(&ticket, Purpose::Terminal, now + TTL + Duration::from_secs(1)),
+            store.consume_at(&ticket, Purpose::Tunnel, now + TTL + Duration::from_secs(1)),
             Err(TicketError::Expired)
         );
     }
@@ -277,17 +212,17 @@ mod tests {
     #[test]
     fn a_wrong_secret_burns_the_ticket() {
         let store = TicketStore::new();
-        let ticket = store.issue(Purpose::Terminal, "admin").unwrap();
+        let ticket = store.issue(Purpose::Tunnel, "admin").unwrap();
         let (id, _) = ticket.split_once('.').unwrap();
         let forged = format!("{id}.{}", "0".repeat(SECRET_BYTES * 2));
 
         assert_eq!(
-            store.consume(&forged, Purpose::Terminal),
+            store.consume(&forged, Purpose::Tunnel),
             Err(TicketError::BadSecret)
         );
         // Guessing the secret gets one shot, not unlimited attempts
         assert_eq!(
-            store.consume(&ticket, Purpose::Terminal),
+            store.consume(&ticket, Purpose::Tunnel),
             Err(TicketError::Unknown)
         );
     }
@@ -295,13 +230,13 @@ mod tests {
     #[test]
     fn malformed_input_is_rejected_without_touching_the_store() {
         let store = TicketStore::new();
-        let ticket = store.issue(Purpose::Terminal, "admin").unwrap();
+        let ticket = store.issue(Purpose::Tunnel, "admin").unwrap();
         assert_eq!(
-            store.consume("no-separator", Purpose::Terminal),
+            store.consume("no-separator", Purpose::Tunnel),
             Err(TicketError::Malformed)
         );
         assert_eq!(store.len(), 1);
-        assert!(store.consume(&ticket, Purpose::Terminal).is_ok());
+        assert!(store.consume(&ticket, Purpose::Tunnel).is_ok());
     }
 
     #[test]
@@ -309,12 +244,12 @@ mod tests {
         let store = TicketStore::new();
         let now = Instant::now();
         for _ in 0..10 {
-            store.issue_at(Purpose::Terminal, "admin", now).unwrap();
+            store.issue_at(Purpose::Tunnel, "admin", now).unwrap();
         }
         assert_eq!(store.len(), 10);
 
         store
-            .issue_at(Purpose::Terminal, "admin", now + TTL + Duration::from_secs(1))
+            .issue_at(Purpose::Tunnel, "admin", now + TTL + Duration::from_secs(1))
             .unwrap();
         assert_eq!(store.len(), 1, "expired tickets should not accumulate");
     }
@@ -323,37 +258,17 @@ mod tests {
     fn outstanding_tickets_are_capped() {
         let store = TicketStore::new();
         let now = Instant::now();
-        for i in 0..MAX_LIVE {
-            store
-                .issue_at(Purpose::Terminal, &format!("user{i}"), now)
-                .unwrap();
+        for _ in 0..MAX_LIVE {
+            store.issue_at(Purpose::Tunnel, "admin", now).unwrap();
         }
-        assert!(store
-            .issue_at(Purpose::Terminal, "extra", now)
-            .is_err());
-    }
-
-    #[test]
-    fn outstanding_tickets_are_capped_per_subject() {
-        let store = TicketStore::new();
-        let now = Instant::now();
-        for _ in 0..MAX_PER_SUBJECT {
-            store.issue_at(Purpose::Terminal, "admin", now).unwrap();
-        }
-        assert!(matches!(
-            store.issue_at(Purpose::Terminal, "admin", now),
-            Err(MonitorError::Quota { retry_after_secs, .. }) if retry_after_secs == TTL.as_secs()
-        ));
-        assert!(store
-            .issue_at(Purpose::Terminal, "someone-else", now)
-            .is_ok());
+        assert!(store.issue_at(Purpose::Tunnel, "admin", now).is_err());
     }
 
     #[test]
     fn tickets_are_unique_and_long_enough_to_be_unguessable() {
         let store = TicketStore::new();
-        let a = store.issue(Purpose::Terminal, "admin").unwrap();
-        let b = store.issue(Purpose::Terminal, "admin").unwrap();
+        let a = store.issue(Purpose::Tunnel, "admin").unwrap();
+        let b = store.issue(Purpose::Tunnel, "admin").unwrap();
         assert_ne!(a, b);
 
         let (id, secret) = a.split_once('.').unwrap();
@@ -366,19 +281,5 @@ mod tests {
         let store = TicketStore::new();
         let ticket = store.issue(Purpose::Terminal, "someone").unwrap();
         assert_eq!(store.consume(&ticket, Purpose::Terminal).unwrap(), "someone");
-    }
-
-    #[test]
-    fn a_rolled_back_reservation_can_be_used_again() {
-        let store = TicketStore::new();
-        let ticket = store.issue(Purpose::Terminal, "admin").unwrap();
-        let reservation = store.reserve(&ticket, Purpose::Terminal).unwrap();
-
-        assert_eq!(
-            store.reserve(&ticket, Purpose::Terminal).err(),
-            Some(TicketError::Unknown)
-        );
-        store.rollback(reservation);
-        assert_eq!(store.consume(&ticket, Purpose::Terminal).unwrap(), "admin");
     }
 }

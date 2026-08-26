@@ -38,46 +38,6 @@ class PrivateKeys extends Table with SyncMeta {
   TextColumn get name => text().unique()();
   TextColumn get key => text()();
 
-  /// The OpenSSH comment to put at the end of the public key line.
-  ///
-  /// Held here rather than rewritten into the key: the key file carries its own
-  /// copy, inside the part that gets encrypted, so changing that one means
-  /// opening the key and writing it out again — a passphrase prompt and a
-  /// rewrite of key material, to edit a label.
-  ///
-  /// Null for a key stored before this column, and for one whose comment has
-  /// never been edited. The key's own comment is read in that case, which is
-  /// what keeps an imported key showing what it arrived with.
-  TextColumn get comment => text().nullable()();
-
-  @override
-  Set<Column> get primaryKey => {id};
-}
-
-/// A BMC account, referenced by the servers whose BMC it opens.
-///
-/// A table rather than columns on `server`, which is what separates it from
-/// the SSH and monitor credentials below: those are one-to-one, this is not.
-/// BMCs are provisioned a rack at a time and answer to one directory or one
-/// factory password, so the normal case is many servers to one account —
-/// stored per server it would be typed once per machine and, on a rotation,
-/// changed once per machine.
-///
-/// The address and the pinned certificate stay on `server`. Both belong to one
-/// device: two BMCs never present the same certificate, so a fingerprint here
-/// would be the first device's, used to verify the second.
-@DataClassName('BmcCredentialRow')
-class BmcCredentials extends Table with SyncMeta {
-  @override
-  String get tableName => 'bmc_credential';
-  @override
-  bool get withoutRowId => true;
-
-  TextColumn get id => text()();
-  TextColumn get name => text().unique()();
-  TextColumn get user => text()();
-  TextColumn get pwd => text().nullable()();
-
   @override
   Set<Column> get primaryKey => {id};
 }
@@ -117,45 +77,14 @@ class Servers extends Table with SyncMeta {
   TextColumn get sshAlterUrl => text().nullable()();
   TextColumn get sshProxyCommand => text().nullable()();
 
-  /// `SshFileTransport`, by name. Null is `sftp`, which is what every row
-  /// written before the column existed meant — see `m014`.
-  TextColumn get sshFileTransport => text().nullable()();
-
-  /// Which way of reaching this server is tried first, by
-  /// `ServerTransport.name`. Null means "whichever is configured", which is
-  /// the only answer for a server that has just one — and the only shape rows
-  /// written before v18 are in, when carrying both was not possible.
-  TextColumn get preferredTransport => text().nullable()();
-
   TextColumn get monitorAddr => text().nullable()();
   TextColumn get monitorUser => text().nullable()();
   TextColumn get monitorPwd => text().nullable()();
   BoolColumn get monitorIgnoreCert => boolean().nullable()();
-  BoolColumn get monitorAllowInsecure => boolean().nullable()();
 
   TextColumn get wolMac => text().nullable()();
   TextColumn get wolIp => text().nullable()();
   TextColumn get wolPwd => text().nullable()();
-
-  /// The BMC, a side channel beside the Wake-on-LAN fields above.
-  ///
-  /// Deliberately outside the SSH/monitor constraint below: a BMC is not a way
-  /// of reaching the host, so it neither satisfies that requirement nor
-  /// conflicts with either side of it. A server may carry one alongside SSH or
-  /// alongside a monitor agent.
-  ///
-  /// [bmcCertSha256] is what the user reviewed, not what a CA said — see
-  /// `BmcCfg.certSha256`. Null means nothing has been reviewed and a
-  /// connection is refused rather than trusted.
-  TextColumn get bmcAddr => text().nullable()();
-  TextColumn get bmcCertSha256 => text().nullable()();
-
-  /// Deleting an account must not delete the servers that used it; it must
-  /// leave them with an address and nothing to log in with, which the editor
-  /// can then say. Same rule as [sshKeyId].
-  TextColumn get bmcCredId => text()
-      .nullable()
-      .references(BmcCredentials, #id, onDelete: KeyAction.setNull)();
 
   TextColumn get pveAddr => text().nullable()();
   BoolColumn get pveIgnoreCert => boolean().withDefault(const Constant(false))();
@@ -171,15 +100,8 @@ class Servers extends Table with SyncMeta {
 
   @override
   List<String> get customConstraints => [
-    // Reached over SSH, over a monitor agent, or both — but never neither.
-    //
-    // It used to be an exclusive-or. Both at once is now a configuration the
-    // user can ask for: an agent that reports status without a shell open, and
-    // sshd for the things the agent has no endpoint for, with
-    // [preferredTransport] saying which is tried first. What stays is that a
-    // server has to be reachable *somehow*; a row with neither is not a
-    // server, it is a name.
-    'CHECK (ssh_ip IS NOT NULL OR monitor_addr IS NOT NULL)',
+    // Reached over SSH or over a monitor agent, never both and never neither.
+    'CHECK ((ssh_ip IS NOT NULL) <> (monitor_addr IS NOT NULL))',
     'CHECK (ssh_port IS NULL OR ssh_port BETWEEN 1 AND 65535)',
   ];
 }
@@ -441,45 +363,6 @@ class ConnStats extends Table {
   Set<Column> get primaryKey => {id};
 }
 
-/// What each server was last seen running, so a row can show its mark before
-/// the machine has been asked again.
-///
-/// A cache and not a field of the record: the distribution is a fact about the
-/// far end, observed rather than configured, and a server the user has just
-/// added has none until it connects. Keeping it here means the pickers, the
-/// known-hosts page and the order page can all draw the right mark without
-/// holding a live status — which none of them does.
-///
-/// One row per server, keyed by the server, cascading with it: a cache entry
-/// for a server that no longer exists is a row nothing can ever read.
-///
-/// No sync columns, and deliberately not a sync root. What this device last
-/// observed is not an edit anybody made, and a peer's observation is not more
-/// authoritative than this one's — syncing it would let a stale reading from
-/// another device overwrite a fresh one here.
-@DataClassName('ServerDistRow')
-class ServerDists extends Table {
-  @override
-  String get tableName => 'server_dist';
-  @override
-  bool get withoutRowId => true;
-
-  TextColumn get serverId =>
-      text().references(Servers, #id, onDelete: KeyAction.cascade)();
-
-  /// A `Dist` name. By name, never by index — an index silently changes
-  /// meaning when a case is inserted, and this outlives the build that wrote
-  /// it. A name no build knows reads back as null, which draws the fallback.
-  TextColumn get dist => text()();
-
-  /// When it was last seen, so a reading can be aged out if that is ever
-  /// wanted. Nothing reads it yet.
-  IntColumn get updatedAt => integer()();
-
-  @override
-  Set<Column> get primaryKey => {serverId};
-}
-
 /// `data` stays JSON: a conversation is an ordered log of heterogeneous items
 /// read only ever whole, never queried by field. Columns would buy nothing and
 /// cost a migration for every new item kind.
@@ -574,13 +457,6 @@ class SyncStates extends Table {
 @DriftDatabase(
   tables: [
     PrivateKeys,
-    // Named rather than left to be pulled in by `Servers.bmcCredId`. Drift does
-    // follow that reference today, so the table is created either way, but a
-    // schema that exists only as a side effect of a foreign key disappears from
-    // fresh installs the moment the key is changed — while every migrated
-    // install keeps it, so the failure would be `no such table` on new devices
-    // alone.
-    BmcCredentials,
     Servers,
     ServerTags,
     ServerEnvs,
@@ -595,7 +471,6 @@ class SyncStates extends Table {
     ContainerHosts,
     ContainerRuntimes,
     ConnStats,
-    ServerDists,
     AgentConversations,
     AgentActiveConversations,
     Tombstones,
@@ -612,27 +487,15 @@ class AppDb extends _$AppDb {
   MigrationStrategy get migration => MigrationStrategy(
     onCreate: (m) async {
       await m.createAll();
-      for (final statement in indexStatements) {
+      for (final statement in _indexes) {
         await customStatement(statement);
       }
     },
   );
 
   /// Indexes the read patterns need, which the table definitions do not carry.
-  ///
-  /// Public because a migration that *rebuilds* a table has to put them back:
-  /// `DROP TABLE` takes its indexes with it, and Drift only runs this list on
-  /// `onCreate`, which an upgrading install never reaches. Every statement is
-  /// `IF NOT EXISTS`, so re-running the whole list is the safe way to do that
-  /// — safer than a migration naming the two it knows about, which is a list
-  /// that goes stale the next time someone adds an index to `server`.
-  static const indexStatements = [
+  static const _indexes = [
     'CREATE INDEX IF NOT EXISTS idx_server_key ON server(ssh_key_id);',
-    // Same read as `ssh_key_id`: "how many servers use this account", asked
-    // once per row of the account list and on every rebuild of the server
-    // editor. It also serves the ON DELETE SET NULL, which without it scans
-    // `server` once per deleted account.
-    'CREATE INDEX IF NOT EXISTS idx_server_bmc_cred ON server(bmc_cred_id);',
     'CREATE INDEX IF NOT EXISTS idx_server_tag_tag ON server_tag(tag);',
     'CREATE INDEX IF NOT EXISTS idx_server_jump_target ON server_jump(jump_id);',
     'CREATE INDEX IF NOT EXISTS idx_snippet_tag_tag ON snippet_tag(tag);',

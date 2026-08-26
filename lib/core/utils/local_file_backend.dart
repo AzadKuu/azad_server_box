@@ -40,23 +40,6 @@ class LocalFileBackend implements FileBackend {
   @override
   Future<FileEntry?> stat(String path) async {
     final native = _native(path);
-    // Asked without following. `FileStat.stat` follows a link and so answered
-    // for whatever it points at — reporting a symlink as its target's kind,
-    // and a link to nowhere as *absent*, which is what a caller reads as "free
-    // to create something here". [list] has always reported links as links;
-    // this is the same question and gives the same answer.
-    final type = await FileSystemEntity.type(native, followLinks: false);
-    if (type == FileSystemEntityType.notFound) return null;
-    // A link is reported as a link and nothing more. Its own size and time
-    // describe the link, the target's describe the target, and neither is an
-    // answer about this entry. The SFTP backend says the same.
-    if (type == FileSystemEntityType.link) {
-      return FileEntry(
-        name: p.basename(native),
-        kind: FileKind.link,
-        linkTarget: await _targetOf(Link(native)),
-      );
-    }
     final stat = await FileStat.stat(native);
     // `FileStat.stat` answers `notFound` both for something absent and for a
     // path whose parent cannot be traversed. Only the first is null here; the
@@ -114,29 +97,13 @@ class LocalFileBackend implements FileBackend {
   Stream<List<int>> read(String path, {int offset = 0}) =>
       File(_native(path)).openRead(offset);
 
-  /// The one part of the contract this cannot keep: replacing a file does not
-  /// carry its permission bits over.
-  ///
-  /// Not an oversight but the same fact [traits] already states. `dart:io` can
-  /// read a mode and has no way to set one, so there is nothing to do here
-  /// short of running `chmod` as a subprocess — on platforms where half of them
-  /// have no such binary, for a value the other half calls meaningless. A
-  /// backend answering false to [FileBackendTraits.permissions] promises
-  /// nothing about them in either direction.
   @override
-  Future<void> write(
-    String path,
-    Stream<List<int>> data, {
-    int? size,
-    void Function(String staging)? onStaging,
-    Stream<List<int>> Function()? replayData,
-  }) async {
+  Future<void> write(String path, Stream<List<int>> data, {int? size}) async {
     final native = _native(path);
     // Beside the destination, not in a temp directory: a rename across
     // filesystems is a copy, and this one has to be the cheap kind for the
     // atomicity to be worth anything.
-    final staging = File(stagingNameFor(native));
-    onStaging?.call(staging.path);
+    final staging = File('$native.${_stagingSuffix()}');
     try {
       final sink = staging.openWrite();
       try {
@@ -167,6 +134,10 @@ class LocalFileBackend implements FileBackend {
   @override
   Future<void> close() async {}
 
+  static var _staging = 0;
+
+  String _stagingSuffix() => '${kStagingSuffix.substring(1)}${_staging++}';
+
   /// POSIX in, whatever this platform uses out.
   ///
   /// The interface is POSIX-shaped so that a path can be handed from one
@@ -183,7 +154,9 @@ class LocalFileBackend implements FileBackend {
 
   static Future<FileEntry> _entryOf(FileSystemEntity entity) async {
     final stat = await entity.stat();
-    final kind = entity is Link ? FileKind.link : _kindOf(stat.type);
+    final kind = entity is Link
+        ? FileKind.link
+        : _kindOf(stat.type);
     return FileEntry(
       name: p.basename(entity.path),
       kind: kind,

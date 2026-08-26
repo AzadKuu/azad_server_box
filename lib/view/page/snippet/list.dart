@@ -1,13 +1,11 @@
-import 'dart:collection';
-
 import 'package:fl_lib/fl_lib.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import 'package:server_box/core/extension/context/locale.dart';
 import 'package:server_box/data/model/server/snippet.dart';
 import 'package:server_box/data/provider/snippet.dart';
 import 'package:server_box/view/page/snippet/edit.dart';
+import 'package:server_box/view/widget/empty_pane.dart';
 import 'package:server_box/view/widget/pane_settings.dart';
 
 class SnippetListPage extends ConsumerStatefulWidget {
@@ -92,9 +90,24 @@ class _SnippetListPageState extends ConsumerState<SnippetListPage>
         onTagChanged: (tag) => _tag.value = tag,
         initTag: _tag.value,
         onSearch: () => _search(filtered),
-        onAdd: () => _edit(null, split),
       ),
       body: _buildSnippetList(filtered, split),
+      // Beside a pane it is the small one the server rail uses, over a list
+      // that leaves room for it — rather than a second row of buttons under
+      // the bar, which no other pane has.
+      floatingActionButton: split
+          ? FloatingActionButton.small(
+              heroTag: 'snippetAddPane',
+              tooltip: libL10n.add,
+              onPressed: () => _edit(null, true),
+              child: const Icon(Icons.add),
+            )
+          : FloatingActionButton(
+              heroTag: 'snippetAdd',
+              tooltip: libL10n.add,
+              onPressed: () => _edit(null, false),
+              child: const Icon(Icons.add),
+            ),
     );
   }
 
@@ -122,24 +135,19 @@ class _SnippetListPageState extends ConsumerState<SnippetListPage>
     // script, which is worth the width at full width and is a smaller copy of
     // the editor when the editor is right there.
     if (split) {
-      // Flattened rather than a list of lists: the rail scrolls as one column,
-      // and a heading is a row in it like any other.
-      return ListView(
+      return ListView.builder(
         // Room at the bottom for the add button to float over, the way the
         // server rail leaves it.
         padding: const EdgeInsets.only(top: 4, bottom: 77),
-        children: [
-          for (final group in _groupByTag(filtered)) ...[
-            SideBarSection(group.label),
-            for (final snippet in group.snippets)
-              SideBarTile(
-                key: ValueKey(snippet.name),
-                title: snippet.name,
-                selected: _editing == snippet.name,
-                onTap: () => _edit(snippet, true),
-              ),
-          ],
-        ],
+        itemCount: filtered.length,
+        itemBuilder: (_, index) {
+          final snippet = filtered[index];
+          return SideBarTile(
+            title: snippet.name,
+            selected: _editing == snippet.name,
+            onTap: () => _edit(snippet, true),
+          );
+        },
       );
     }
 
@@ -153,46 +161,6 @@ class _SnippetListPageState extends ConsumerState<SnippetListPage>
       itemCount: filtered.length,
       itemBuilder: (_, index) => _buildSnippetItem(filtered[index]),
     );
-  }
-
-  /// The rail's groups, in the order they are drawn.
-  ///
-  /// One tag is its own heading. More than one goes under "n tags" instead of
-  /// appearing under each of them: a rail is an index, and one that lists the
-  /// same snippet three times is not one — and which of its tags would be the
-  /// right heading is not a question the snippet answers.
-  ///
-  /// Single tags first and in name order, then the multi-tag groups by how
-  /// many, then whatever carries no tag at all, under a heading of its own.
-  /// So the heading someone is looking for comes before the ones nobody looks
-  /// for by name, and nothing in the rail sits outside a group.
-  List<({String label, List<Snippet> snippets})> _groupByTag(
-    List<Snippet> snippets,
-  ) {
-    final byTag = SplayTreeMap<String, List<Snippet>>();
-    final byCount = SplayTreeMap<int, List<Snippet>>();
-    final untagged = <Snippet>[];
-
-    for (final snippet in snippets) {
-      final tags = snippet.tags;
-      switch (tags?.length ?? 0) {
-        case 0:
-          untagged.add(snippet);
-        case 1:
-          byTag.putIfAbsent(tags!.first, () => []).add(snippet);
-        case final count:
-          byCount.putIfAbsent(count, () => []).add(snippet);
-      }
-    }
-
-    final l10n = context.l10n;
-    return [
-      for (final entry in byTag.entries)
-        (label: entry.key, snippets: entry.value),
-      for (final entry in byCount.entries)
-        (label: l10n.nTags(entry.key), snippets: entry.value),
-      if (untagged.isNotEmpty) (label: l10n.ungrouped, snippets: untagged),
-    ];
   }
 
   /// Finds a snippet by what it is called or by what it runs.
@@ -258,14 +226,12 @@ final class _SnippetBar extends StatelessWidget implements PreferredSizeWidget {
   final String initTag;
   final void Function(String) onTagChanged;
   final VoidCallback onSearch;
-  final VoidCallback onAdd;
 
   const _SnippetBar({
     required this.tags,
     required this.initTag,
     required this.onTagChanged,
     required this.onSearch,
-    required this.onAdd,
   });
 
   @override
@@ -284,16 +250,6 @@ final class _SnippetBar extends StatelessWidget implements PreferredSizeWidget {
             text: libL10n.search,
             icon: const Icon(Icons.search, size: 20),
             onTap: onSearch,
-          ),
-          // Beside search rather than floating over the list, which is where
-          // every other page of this app puts the same action. A button that
-          // sits on top of the content also covers the last row of it, and
-          // needed two of itself — one size for a pane and another for a full
-          // width — for nothing the bar has to think about.
-          Btn.icon(
-            text: libL10n.add,
-            icon: const Icon(Icons.add, size: 20),
-            onTap: onAdd,
           ),
         ],
       ),

@@ -10,14 +10,12 @@ MonitorMetrics _$MonitorMetricsFromJson(
   Map<String, dynamic> json,
 ) => MonitorMetrics(
   timestamp: json['timestamp'] as String,
-  extendedUpdatedAt: json['extended_updated_at'] as String?,
+  extendedUpdatedAt: json['extended_updated_at'] as String,
   serverName: json['server_name'] as String,
   cpuUsage: (json['cpu_usage'] as num).toDouble(),
-  cpuCores:
-      (json['cpu_cores'] as List<dynamic>?)
-          ?.map((e) => MonitorCpuCoreTime.fromJson(e as Map<String, dynamic>))
-          .toList() ??
-      const [],
+  cpuCores: (json['cpu_cores'] as List<dynamic>)
+      .map((e) => MonitorCpuCoreTime.fromJson(e as Map<String, dynamic>))
+      .toList(),
   memory: MonitorMemoryMetrics.fromJson(json['memory'] as Map<String, dynamic>),
   swap: MonitorSwapMetrics.fromJson(json['swap'] as Map<String, dynamic>),
   disk: MonitorDiskMetrics.fromJson(json['disk'] as Map<String, dynamic>),
@@ -31,12 +29,6 @@ MonitorMetrics _$MonitorMetricsFromJson(
           .toList() ??
       const [],
   sys: json['sys'] as String?,
-  osId: json['os_id'] as String?,
-  osIdLike:
-      (json['os_id_like'] as List<dynamic>?)
-          ?.map((e) => e as String)
-          .toList() ??
-      const [],
   cpuBrand: json['cpu_brand'] as String?,
   gpus:
       (json['gpus'] as List<dynamic>?)
@@ -60,6 +52,11 @@ MonitorMetrics _$MonitorMetricsFromJson(
   diskio:
       (json['diskio'] as List<dynamic>?)
           ?.map((e) => MonitorDiskIoPiece.fromJson(e as Map<String, dynamic>))
+          .toList() ??
+      const [],
+  diskioRate:
+      (json['diskio_rate'] as List<dynamic>?)
+          ?.map((e) => MonitorDiskIoRate.fromJson(e as Map<String, dynamic>))
           .toList() ??
       const [],
   batteries:
@@ -98,8 +95,6 @@ Map<String, dynamic> _$MonitorMetricsToJson(MonitorMetrics instance) =>
       'temperature': instance.temperature,
       'temps': instance.temps,
       'sys': instance.sys,
-      'os_id': instance.osId,
-      'os_id_like': instance.osIdLike,
       'cpu_brand': instance.cpuBrand,
       'gpus': instance.gpus,
       'disk_details': instance.diskDetails,
@@ -107,6 +102,7 @@ Map<String, dynamic> _$MonitorMetricsToJson(MonitorMetrics instance) =>
       'uptime': instance.uptime,
       'conn': instance.conn,
       'diskio': instance.diskio,
+      'diskio_rate': instance.diskioRate,
       'batteries': instance.batteries,
       'sensors': instance.sensors,
       'disk_smart': instance.diskSmart,
@@ -216,7 +212,6 @@ MonitorGpuMetrics _$MonitorGpuMetricsFromJson(Map<String, dynamic> json) =>
       memoryUsed: (json['memory_used'] as num).toInt(),
       memoryTotal: (json['memory_total'] as num).toInt(),
       memoryUnit: json['memory_unit'] as String,
-      vendor: json['vendor'] as String?,
     );
 
 Map<String, dynamic> _$MonitorGpuMetricsToJson(MonitorGpuMetrics instance) =>
@@ -228,7 +223,6 @@ Map<String, dynamic> _$MonitorGpuMetricsToJson(MonitorGpuMetrics instance) =>
       'memory_used': instance.memoryUsed,
       'memory_total': instance.memoryTotal,
       'memory_unit': instance.memoryUnit,
-      'vendor': instance.vendor,
     };
 
 MonitorDiskDetail _$MonitorDiskDetailFromJson(Map<String, dynamic> json) =>
@@ -286,6 +280,20 @@ Map<String, dynamic> _$MonitorDiskIoPieceToJson(MonitorDiskIoPiece instance) =>
       'dev': instance.dev,
       'sectors_read': instance.sectorsRead,
       'sectors_write': instance.sectorsWrite,
+    };
+
+MonitorDiskIoRate _$MonitorDiskIoRateFromJson(Map<String, dynamic> json) =>
+    MonitorDiskIoRate(
+      dev: json['dev'] as String,
+      readBytesPerSec: (json['read_bytes_per_sec'] as num).toDouble(),
+      writeBytesPerSec: (json['write_bytes_per_sec'] as num).toDouble(),
+    );
+
+Map<String, dynamic> _$MonitorDiskIoRateToJson(MonitorDiskIoRate instance) =>
+    <String, dynamic>{
+      'dev': instance.dev,
+      'read_bytes_per_sec': instance.readBytesPerSec,
+      'write_bytes_per_sec': instance.writeBytesPerSec,
     };
 
 MonitorBattery _$MonitorBatteryFromJson(Map<String, dynamic> json) =>

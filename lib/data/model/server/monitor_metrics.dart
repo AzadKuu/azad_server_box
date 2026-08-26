@@ -12,22 +12,9 @@ part 'monitor_metrics.g.dart';
 @JsonSerializable(fieldRename: FieldRename.snake)
 class MonitorMetrics {
   final String timestamp;
-
-  /// When the agent last ran its slower extended cycle.
-  ///
-  /// Null on agents predating the field. Optional for the reason the whole of
-  /// this class is tolerant: the app and the agent are updated separately, and
-  /// a required field on a newly added key made every response from an older
-  /// agent fail to decode — losing the metrics that *were* there, before the
-  /// mapper's per-section tolerance could keep any of them.
-  final String? extendedUpdatedAt;
+  final String extendedUpdatedAt;
   final String serverName;
   final double cpuUsage;
-
-  /// Per-core readings, preferred over [cpuUsage] where the agent sends them.
-  ///
-  /// Empty on agents predating the field, where [cpuUsage] is the whole of
-  /// what is reported.
   final List<MonitorCpuCoreTime> cpuCores;
   final MonitorMemoryMetrics memory;
   final MonitorSwapMetrics swap;
@@ -39,14 +26,6 @@ class MonitorMetrics {
   /// field, where [temperature] is the only reading available.
   final List<MonitorTempReading> temps;
   final String? sys;
-
-  /// `/etc/os-release`'s `ID=` on the agent's own machine, which is what picks
-  /// the distribution's mark. Null on Bsd/Windows agents, which have no such
-  /// file, and on agents predating the field — where [sys] is all there is.
-  final String? osId;
-
-  /// `/etc/os-release`'s `ID_LIKE=`, closest base first. See [osId].
-  final List<String> osIdLike;
   final String? cpuBrand;
   final List<MonitorGpuMetrics> gpus;
   final List<MonitorDiskDetail> diskDetails;
@@ -54,6 +33,7 @@ class MonitorMetrics {
   final String? uptime;
   final MonitorConn? conn;
   final List<MonitorDiskIoPiece> diskio;
+  final List<MonitorDiskIoRate> diskioRate;
   final List<MonitorBattery> batteries;
   final List<MonitorSensorItem> sensors;
   final List<MonitorSmartSummary> diskSmart;
@@ -65,10 +45,10 @@ class MonitorMetrics {
 
   const MonitorMetrics({
     required this.timestamp,
-    this.extendedUpdatedAt,
+    required this.extendedUpdatedAt,
     required this.serverName,
     required this.cpuUsage,
-    this.cpuCores = const [],
+    required this.cpuCores,
     required this.memory,
     required this.swap,
     required this.disk,
@@ -76,8 +56,6 @@ class MonitorMetrics {
     this.temperature,
     this.temps = const [],
     this.sys,
-    this.osId,
-    this.osIdLike = const [],
     this.cpuBrand,
     this.gpus = const [],
     this.diskDetails = const [],
@@ -85,6 +63,7 @@ class MonitorMetrics {
     this.uptime,
     this.conn,
     this.diskio = const [],
+    this.diskioRate = const [],
     this.batteries = const [],
     this.sensors = const [],
     this.diskSmart = const [],
@@ -234,13 +213,6 @@ class MonitorGpuMetrics {
   final int memoryTotal;
   final String memoryUnit;
 
-  /// `nvidia` or `amd` — which tool reported it.
-  ///
-  /// The agent flattens its two lists into one, and the app draws them under
-  /// separate headings, so without this there is no way back. Null on agents
-  /// predating the field; [MonitorGpuMetrics.isAmd] falls back to the name.
-  final String? vendor;
-
   const MonitorGpuMetrics({
     required this.name,
     required this.usagePercent,
@@ -249,21 +221,7 @@ class MonitorGpuMetrics {
     required this.memoryUsed,
     required this.memoryTotal,
     required this.memoryUnit,
-    this.vendor,
   });
-
-  /// Whether this is an AMD card, for the two lists the status page keeps.
-  ///
-  /// The name is the fallback for an agent that sends no [vendor]: `amd-smi`
-  /// and `rocm-smi` name their cards "AMD ..." or "Radeon ...", and
-  /// `nvidia-smi` never does. A wrong guess puts the card under the other
-  /// heading; dropping it, which is what happened before, showed nothing.
-  bool get isAmd {
-    final v = vendor;
-    if (v != null && v.isNotEmpty) return v.toLowerCase() == 'amd';
-    final n = name.toLowerCase();
-    return n.contains('amd') || n.contains('radeon');
-  }
 
   factory MonitorGpuMetrics.fromJson(Map<String, dynamic> json) =>
       _$MonitorGpuMetricsFromJson(json);
@@ -328,9 +286,10 @@ class MonitorConn {
 
 /// Cumulative per-device sector counters — same shape/semantics as
 /// `sbm_parser::types::DiskIoPiece`, used to drive the app's existing
-/// `DiskIO` (`TimeSeq`) delta computation. The monitor's additional
-/// `diskio_rate` JSON field is intentionally ignored so the app's rolling
-/// speed math stays the single source of truth.
+/// `DiskIO` (`TimeSeq`) delta computation. `diskio_rate` (below) is monitor's
+/// own precomputed rate, kept only for parity with the API response; the
+/// mapper feeds `diskio` (not `diskio_rate`) into `ss.diskIO.update()` so the
+/// app's rolling speed math stays the single source of truth.
 @JsonSerializable(fieldRename: FieldRename.snake)
 class MonitorDiskIoPiece {
   final String dev;
@@ -347,6 +306,24 @@ class MonitorDiskIoPiece {
       _$MonitorDiskIoPieceFromJson(json);
 
   Map<String, dynamic> toJson() => _$MonitorDiskIoPieceToJson(this);
+}
+
+@JsonSerializable(fieldRename: FieldRename.snake)
+class MonitorDiskIoRate {
+  final String dev;
+  final double readBytesPerSec;
+  final double writeBytesPerSec;
+
+  const MonitorDiskIoRate({
+    required this.dev,
+    required this.readBytesPerSec,
+    required this.writeBytesPerSec,
+  });
+
+  factory MonitorDiskIoRate.fromJson(Map<String, dynamic> json) =>
+      _$MonitorDiskIoRateFromJson(json);
+
+  Map<String, dynamic> toJson() => _$MonitorDiskIoRateToJson(this);
 }
 
 @JsonSerializable(fieldRename: FieldRename.snake)

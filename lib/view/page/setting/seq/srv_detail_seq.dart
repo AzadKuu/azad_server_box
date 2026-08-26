@@ -1,6 +1,5 @@
 import 'package:fl_lib/fl_lib.dart';
 import 'package:flutter/material.dart';
-import 'package:server_box/core/extension/context/inset.dart';
 import 'package:server_box/core/extension/context/locale.dart';
 import 'package:server_box/data/model/app/server_detail_card.dart';
 import 'package:server_box/data/res/store.dart';
@@ -51,9 +50,7 @@ class _ServerDetailOrderPageState extends State<ServerDetailOrderPage> {
 
   @override
   Widget build(BuildContext context) {
-    // Not the bottom: the list takes that as padding of its own, so it can
-    // be scrolled through rather than cutting the page short of it.
-    final body = SafeArea(bottom: false, child: _buildBody(context));
+    final body = SafeArea(child: _buildBody());
     if (widget.embedded) return body;
     return Scaffold(
       appBar: CustomAppBar(title: Text(l10n.serverDetailOrder)),
@@ -61,10 +58,10 @@ class _ServerDetailOrderPageState extends State<ServerDetailOrderPage> {
     );
   }
 
-  Widget _buildBody(BuildContext context) {
+  Widget _buildBody() {
     return ReorderableListView.builder(
       key: const PageStorageKey('srv_detail_seq'),
-      padding: context.padBottom(const EdgeInsets.all(7)),
+      padding: const EdgeInsets.all(7),
       buildDefaultDragHandles: false,
       itemCount: _order.length,
       proxyDecorator: reorderProxyDecorator,

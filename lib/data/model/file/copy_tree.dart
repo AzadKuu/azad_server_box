@@ -115,9 +115,7 @@ Future<void> runCopy(
     final existing = await dest.stat(dir);
     if (existing != null) {
       if (!existing.isDir) {
-        throw StateError(
-          'Copy destination exists and is not a directory: $dir',
-        );
+        throw StateError('Copy destination exists and is not a directory: $dir');
       }
       continue;
     }
@@ -135,37 +133,19 @@ Future<void> runCopy(
   var transferred = 0;
   for (final item in plan.items) {
     checkCancelled();
-    final beforeItem = transferred;
-
-    Stream<List<int>> counted() {
-      var attemptBytes = 0;
-      return source.read(item.from).map((chunk) {
-        checkCancelled();
-        attemptBytes += chunk.length;
-        final logicalTransferred = beforeItem + attemptBytes;
-        if (logicalTransferred > transferred) {
-          transferred = logicalTransferred;
-          onProgress(transferred);
-        }
-        return chunk;
-      });
-    }
-
+    // Told before the write starts, so a caller whose process is about to be
+    // killed mid-file knows what to clean up. `write` removes its own staging
+    // on a normal failure; being killed is not one.
+    onStaging?.call(item.to);
+    final counted = source.read(item.from).map((chunk) {
+      checkCancelled();
+      transferred += chunk.length;
+      onProgress(transferred);
+      return chunk;
+    });
     // `write` stages beside the destination and renames, so a file that dies
     // halfway leaves no half-file under the name something else opens.
-    //
-    // The staging path comes back from `write`, which is the only place that
-    // knows it, and it arrives before any byte is written there — so a caller
-    // whose process is about to be killed mid-file knows the one file to
-    // remove. `write` removes its own leftovers when it fails; being killed
-    // is not a failure it gets to handle.
-    await dest.write(
-      item.to,
-      counted(),
-      size: item.size,
-      onStaging: onStaging,
-      replayData: counted,
-    );
+    await dest.write(item.to, counted, size: item.size);
   }
 }
 

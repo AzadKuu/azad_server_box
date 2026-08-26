@@ -25,12 +25,6 @@ pub enum MonitorError {
     
     #[error("Authentication error: {0}")]
     Auth(String),
-
-    #[error("{message}")]
-    Quota {
-        message: String,
-        retry_after_secs: u64,
-    },
     
     #[error("Monitoring error: {0}")]
     Monitoring(String),
@@ -56,7 +50,6 @@ impl ntex::web::WebResponseError for MonitorError {
     fn status_code(&self) -> ntex::http::StatusCode {
         match *self {
             MonitorError::Auth(_) => ntex::http::StatusCode::UNAUTHORIZED,
-            MonitorError::Quota { .. } => ntex::http::StatusCode::TOO_MANY_REQUESTS,
             MonitorError::Config(_) => ntex::http::StatusCode::INTERNAL_SERVER_ERROR,
             MonitorError::Parse(_) => ntex::http::StatusCode::BAD_REQUEST,
             _ => ntex::http::StatusCode::INTERNAL_SERVER_ERROR,
@@ -64,16 +57,10 @@ impl ntex::web::WebResponseError for MonitorError {
     }
 
     fn error_response(&self, _req: &ntex::web::HttpRequest) -> ntex::web::HttpResponse {
-        let mut response = ntex::web::HttpResponse::build(self.status_code());
-        if let MonitorError::Quota { retry_after_secs, .. } = self {
-            response.header(
-                ntex::http::header::RETRY_AFTER,
-                retry_after_secs.to_string(),
-            );
-        }
-        response.json(&serde_json::json!({
-            "error": self.to_string()
-        }))
+        ntex::web::HttpResponse::build(self.status_code())
+            .json(&serde_json::json!({
+                "error": self.to_string()
+            }))
     }
 }
 

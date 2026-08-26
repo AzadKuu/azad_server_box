@@ -1,21 +1,14 @@
-import 'dart:convert';
 import 'dart:ffi';
 import 'dart:io';
-import 'dart:typed_data';
 
 import 'package:archive/archive.dart';
 import 'package:crypto/crypto.dart';
 import 'package:dio/dio.dart';
 import 'package:ffi/ffi.dart';
 import 'package:fl_lib/fl_lib.dart';
-import 'package:meta/meta.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:server_box/core/utils/alpine_seed.dart';
 import 'package:server_box/core/utils/guest_path.dart';
-import 'package:server_box/core/utils/linux_seed.dart';
-import 'package:server_box/core/utils/oci_image.dart';
-import 'package:server_box/core/utils/rootfs_lifecycle.dart';
-import 'package:server_box/data/model/app/linux_distro.dart';
-import 'package:server_box/data/model/app/rootfs_manifest.dart';
 
 /// A Linux userland on iOS, and what it takes to get one.
 ///
@@ -33,73 +26,22 @@ import 'package:server_box/data/model/app/rootfs_manifest.dart';
 /// build without it is one edit away, should App Store review object — and
 /// [isAvailable] is how everything else asks, exactly as on Android.
 abstract final class IosRootfs {
-  static final _lifecycle = RootfsLifecycle();
-  static bool _mutating = false;
+  /// The same Alpine release the Android rootfs uses, so both platforms answer
+  /// with the same userland — and on both it is an ordinary unpacked tree,
+  /// since `realfs` mounts one directly.
+  static const version = '3.22.5';
 
-  static Future<T> _mutate<T>(Future<T> Function() action) =>
-      _lifecycle.run(() async {
-        _mutating = true;
-        try {
-          return await action();
-        } finally {
-          _mutating = false;
-        }
-      });
+  static String? _root;
 
-  /// The guest's `EBUSY`, which is what an unmount answers while something
-  /// still holds the mount. Negative already: `kernel/errno.h` defines the
-  /// guest's errnos that way.
-  static const _ebusy = -16;
-
-  /// Every system unpacked in the container, in the order their directories
-  /// come back.
-  ///
-  /// Kept rather than re-scanned, and synchronous, because what asks is a
-  /// widget being built. Refreshed by [scan], [install] and [removeProfile].
-  static List<LinuxProfile> get profiles => List.unmodifiable(_profiles);
-  static final _profiles = <LinuxProfile>[];
-
-  /// The one the settings point at, or the first there is.
-  ///
-  /// Falls back rather than answering null for a stored id whose directory has
-  /// since gone: something installed is a better answer than nothing.
-  static LinuxProfile? get selected {
-    if (_profiles.isEmpty) return null;
-    final id = linuxProfileId();
-    return _profiles.firstWhereOrNull((e) => e.id == id) ?? _profiles.first;
-  }
-
-  static LinuxProfile? byId(String id) =>
-      _profiles.firstWhereOrNull((e) => e.id == id);
-
-  /// The directory the systems live in, one subdirectory each, or null before
-  /// [prepare]. Nothing runs at this level — see `sbm_ish_boot`.
-  static String? _container;
-
-  /// Where the selected system's tree is, or null before [prepare].
-  ///
-  /// Computed rather than kept: which one is selected is a setting, and it
-  /// changes while the app runs.
-  static String? get root => rootOf(selected?.id);
-
-  /// Where one profile's tree is, or null before [prepare] or without an id.
-  static String? rootOf(String? id) =>
-      id == null ? null : _container?.joinPath(id);
+  /// Where the filesystem lives, or null before [prepare].
+  static String? get root => _root;
 
   /// Whether this build carries the engine.
   ///
   /// Three ways to be false: not iOS, built with the switch off, or built
   /// before the shim existed — the last of which throws on lookup rather than
   /// answering, so it is caught here and treated as the absence it is.
-  /// Asked once and kept. Every one of the three ways to be false is decided
-  /// when the app is built, so the answer cannot change while it runs — and
-  /// what reads this is a widget being built: `tab_add.dart` alone asks three
-  /// times per build, between the rail and the grid, and each ask was a call
-  /// across FFI.
-  static bool get isAvailable => _availableAnswer ??= _askAvailable();
-  static bool? _availableAnswer;
-
-  static bool _askAvailable() {
+  static bool get isAvailable {
     if (!Platform.isIOS) return false;
     final available = _available;
     if (available == null) return false;
@@ -115,152 +57,55 @@ abstract final class IosRootfs {
   ///
   /// Synchronous for the same reason Android's is: what asks is a widget being
   /// built, and a file check per frame answers one question a hundred times.
-  static bool get isReadySync => isAvailable && _profiles.isNotEmpty;
+  static bool get isReadySync => isAvailable && _installed;
+  static bool _installed = false;
 
-  /// Whether there is anything to enter at all.
+  /// Whether a filesystem is unpacked and ready to boot.
   static Future<bool> get isInstalled async {
-    await scan();
-    return _profiles.isNotEmpty;
+    final root = _root;
+    if (root == null) return false;
+    // An ordinary tree, mounted by `realfs`. What makes it a userland rather
+    // than a directory is that a shell is in it, so that is what this asks —
+    // there is no manifest to check because there is nothing but files.
+    return _installed = await File(root.joinPath('bin/busybox')).exists() &&
+        await File(root.joinPath('etc/alpine-release')).exists();
   }
 
-  /// Reads the container: one profile per subdirectory that holds a system.
-  ///
-  /// The directory listing is the list. A subdirectory that does not look
-  /// unpacked is skipped rather than repaired — half of an install is not a
-  /// profile, and `install` deletes what it could not finish.
-  static Future<void> scan() => _mutate(_scan);
+  /// Pinned and checked, like Android's — this is executable code fetched over
+  /// the network, and the digest is what makes that different from running
+  /// whatever the connection returned.
+  static const _mirror = 'https://dl-cdn.alpinelinux.org/alpine';
+  static const _branch = 'v3.22';
+  static const _url =
+      '$_mirror/$_branch/releases/aarch64/'
+      'alpine-minirootfs-$version-aarch64.tar.gz';
+  static const _sha256 =
+      '3fbc6285032ed46821b511292633d7b2a6306a2e254f590e92bdafff56cf2f70';
 
-  static Future<void> _scan() async {
-    final container = _container;
-    if (container == null) {
-      _profiles.clear();
-      return;
-    }
-    // Built beside the list rather than in it. [profiles] and [selected] are
-    // synchronous because what reads them is a widget being built, and every
-    // frame drawn between the clear and the last await used to see nothing
-    // installed — no chips, no rail rows, and `open` refusing for want of an
-    // id. Renaming one was enough to hit it.
-    final found = <LinuxProfile>[];
-    final dir = Directory(container);
-    if (!await dir.exists()) {
-      _profiles.clear();
-      return;
-    }
-    final entries = await dir.list(followLinks: false).toList();
-    entries.sort((a, b) => a.path.compareTo(b.path));
-    for (final entry in entries) {
-      if (entry is! Directory) continue;
-      final id = entry.path.split(Platform.pathSeparator).last;
-      if (id.startsWith('.')) continue;
-      final marker = File(entry.path.joinPath(LinuxProfile.marker));
-      if (!await marker.exists()) continue;
-      found.add(LinuxProfile.decode(id, await marker.readAsString()));
-    }
-    _profiles
-      ..clear()
-      ..addAll(found);
-  }
-
-  /// Downloads and unpacks a system of [distro] as a profile of its own.
-  ///
-  /// Returns what it installed. Every other profile is left alone — this is how
-  /// a second Alpine comes to sit beside the first, and why nothing here asks
-  /// whether something is already installed.
-  ///
-  /// [into] reinstalls in place, keeping the id and the label: that is what
-  /// replacing an outdated one means. Without it a new id is generated.
+  /// Downloads and unpacks the userland.
   ///
   /// Unpacked in Dart, because iOS will not start a process — no `tar`, and
   /// that refusal is the reason this platform has an interpreter at all. What
   /// `realfs` needs is only a directory tree, which is why this is possible;
   /// under `fakefs` it would have meant carrying a metadata database and the
   /// tool that writes one.
-  ///
-  /// One at a time. [_install] picks an id from the scan that opens it, so two
-  /// overlapping there are handed the same one — and then the same directory,
-  /// which the second deletes out from under the first.
-  static Future<LinuxProfile> install({
-    required LinuxDistro distro,
-    RootfsRelease? release,
-    LinuxProfile? into,
-    String? label,
-    void Function(double? progress)? onProgress,
-    CancelToken? cancel,
-  }) => _mutate(
-    () => _install(
-      distro: distro,
-      release: release,
-      into: into,
-      label: label,
-      onProgress: onProgress,
-      cancel: cancel,
-    ),
-  );
-
-  static Future<LinuxProfile> _install({
-    required LinuxDistro distro,
-    RootfsRelease? release,
-    LinuxProfile? into,
-    String? label,
+  static Future<void> install({
     void Function(double? progress)? onProgress,
     CancelToken? cancel,
   }) async {
-    final container = _container;
-    if (container == null) throw StateError('IosRootfs.prepare was not called');
-    await _scan();
-
-    if (into != null && byId(into.id) != into) {
-      throw StateError('The Linux system is no longer installed');
-    }
-
-    final id =
-        into?.id ?? LinuxProfile.nextId(distro, _profiles.map((e) => e.id));
-    final root = container.joinPath(id);
-    // Read once, so that a setting changed mid-download cannot have the digest
-    // checked against one distribution and the repositories written for
-    // another.
-    final mirror = linuxMirror(distro);
-    // Read once for the same reason the mirror is: a release chosen while a
-    // refetched manifest replaced it underneath would have the digest checked
-    // against one file and the repositories written for another.
-    final chosen = release ?? distro.preferred;
+    final root = _root;
+    if (root == null) throw StateError('IosRootfs.prepare was not called');
+    if (await isInstalled) return;
 
     final dir = Directory(root);
-    // Reinstalling in place deletes the tree, so the engine has to let go of
-    // what it mounted from it first. Only delete if detach succeeded;
-    // EBUSY means a session still holds the mount and deleting underneath
-    // it parks the engine.
-    if (into != null) {
-      if (openSessions(id) > 0) {
-        throw StateError('The Linux system is still in use');
-      }
-      final err = detach(id);
-      if (err == _ebusy) {
-        throw StateError('The Linux system is still in use');
-      }
-      if (err < 0 && err != alreadyBooted) {
-        // Non-busy detach errors still block safe deletion; rethrow as StateError
-        // so caller sees a consistent message rather than a partial delete.
-        throw StateError(
-          '${libL10n.fail}: ${libL10n.close} (${libL10n.system}: $err)',
-        );
-      }
-    }
     // A userland is complete or absent; there is no repairing half of one.
     if (await dir.exists()) await dir.delete(recursive: true);
     await dir.create(recursive: true);
 
     final archivePath = root.joinPath('rootfs.tar.gz');
     try {
-      final dio = Dio(
-        BaseOptions(
-          connectTimeout: const Duration(seconds: 30),
-          receiveTimeout: const Duration(minutes: 10),
-        ),
-      );
-      await dio.download(
-        chosen.source.urlOn(mirror, distro.defaultMirror),
+      await Dio().download(
+        _url,
         archivePath,
         cancelToken: cancel,
         // The download is most of the wait, so it owns most of the bar; the
@@ -271,45 +116,25 @@ abstract final class IosRootfs {
 
       final file = File(archivePath);
       final digest = (await sha256.bind(file.openRead()).first).toString();
-      if (digest != chosen.source.sha256) {
+      if (digest != _sha256) {
         throw StateError(
-          'The system did not match its digest and was discarded. '
-          'Expected ${chosen.source.sha256}, got $digest.',
+          'The userland did not match its digest and was discarded. '
+          'Expected $_sha256, got $digest.',
         );
       }
 
-      await _extract(file, dir, source: chosen.source, onProgress: onProgress);
+      await _extract(file, dir, onProgress: onProgress);
       // Without these `apk` reaches nothing: the guest's sockets work and an
       // address literal is fetched fine, but there is no resolver, so every
       // mirror is a "temporary error" and every package is missing.
       // Measured on a device by `integration_test/ios_load_test.dart`.
-      await seedResolvConf(root, nameservers: linuxNameservers());
-      await seedRepositories(
-        root,
-        distro: distro,
-        release: chosen,
-        mirror: mirror,
-      );
-      await seedChsh(root, force: true);
-      // Last, for the reason Android's marker is last: it is the record that
-      // this finished, so anything that threw above must not leave one.
-      final profile = LinuxProfile(
-        id: id,
-        distro: distro,
-        version: chosen.version,
-        branch: chosen.branch,
-        label: label ?? into?.label ?? distro.label,
-      );
-      await (await rootfsFileForWrite(
-        root,
-        '/${LinuxProfile.marker}',
-      )).writeAsString(profile.encode());
-      await _scan();
-      return profile;
+      await seedResolvConf(root);
+      await seedRepositories(root, mirror: _mirror, branch: _branch);
+      _installed = true;
     } catch (_) {
       // Nothing half-installed is left to be mistaken for a working one.
       if (await dir.exists()) await dir.delete(recursive: true);
-      await _scan();
+      _installed = false;
       rethrow;
     } finally {
       final leftover = File(archivePath);
@@ -317,423 +142,45 @@ abstract final class IosRootfs {
     }
   }
 
-  /// Rewrites the resolver and repository files of a system already on disk.
-  ///
-  /// Both are seeded at install and never again, so a mirror or a resolver
-  /// changed afterwards would otherwise only take effect on the next install —
-  /// which here means deleting the system and everything its package manager
-  /// put in it.
-  ///
-  /// Written for the distribution *on disk*, not the one the setting names:
-  /// with a switch pending, the repositories file apt or apk is about to read
-  /// still belongs to the tree that is there.
-  /// Every profile, not only the selected one: the resolvers are the device's
-  /// network and apply to all of them, and a mirror belongs to a distribution
-  /// so each profile of it wants the new one too.
-  static Future<void> applyNetSettings() => _mutate(_applyNetSettings);
-
-  static Future<void> _applyNetSettings() async {
-    final snapshot = List<LinuxProfile>.from(_profiles);
-    for (final profile in snapshot) {
-      if (byId(profile.id) == null) continue;
-      final root = rootOf(profile.id);
-      if (root == null) continue;
-      if (!await Directory(root).exists()) continue;
-      await seedResolvConf(
-        root,
-        nameservers: linuxNameservers(),
-        overwrite: true,
-      );
-      if (byId(profile.id) == null) continue;
-      if (!await Directory(root).exists()) continue;
-      final release = profile.branch.isEmpty
-          ? null
-          : profile.distro.info.releases.firstWhereOrNull(
-              (r) => r.branch == profile.branch,
-            );
-      if (profile.branch.isNotEmpty && release == null) continue;
-      await seedRepositories(
-        root,
-        distro: profile.distro,
-        release: release,
-        mirror: linuxMirror(profile.distro),
-      );
-    }
-  }
-
-  static Future<void> rename(LinuxProfile profile, String label) =>
-      _mutate(() async {
-        if (byId(profile.id) == null) return;
-        final root = rootOf(profile.id);
-        if (root == null) return;
-        await (await rootfsFileForWrite(
-          root,
-          '/${LinuxProfile.marker}',
-        )).writeAsString(profile.copyWith(label: label).encode());
-        await _scan();
-      });
-
-  /// Removes one system and everything in it. The others stay.
-  static Future<void> removeProfile(String id, {LinuxProfile? expected}) =>
-      _mutate(() => _removeProfile(id, expected: expected));
-
-  static Future<void> _removeProfile(
-    String id, {
-    LinuxProfile? expected,
-  }) async {
-    // A known id, before a recursive delete is built from it. `rootOf` only
-    // joins a path, so anything the caller passes becomes one.
-    final current = byId(id);
-    if (current == null) return;
-    if (expected != null && current != expected) {
-      throw StateError('The Linux system changed before it could be deleted');
-    }
-    final root = rootOf(id);
+  /// Removes the userland and everything in it.
+  static Future<void> remove() async {
+    _installed = false;
+    final root = _root;
     if (root == null) return;
-    if (await FileSystemEntity.type(root, followLinks: false) !=
-        FileSystemEntityType.directory) {
-      throw StateError('The Linux system directory is no longer available');
-    }
-    if (openSessions(id) > 0) {
-      throw StateError('The Linux system is still in use');
-    }
-    // Before the directory goes: its `/dev` is a fakefs whose database lives
-    // inside it, and the engine keeps the name attached until told otherwise.
-    //
-    // And only if that worked. Deleting the tree under a mount that is still
-    // live takes the database with it, and the next thing the engine reads
-    // through that mount is a sqlite I/O error — which it answers with
-    // `die()`, parking whichever thread asked. Seen on a device as the whole
-    // app freezing a few seconds after a system was deleted.
-    // Retried, because the usual reason this fails is that it was asked too
-    // soon. Closing a terminal hangs its process up; the shell then has to be
-    // scheduled, take the signal and exit before the pty it held stops
-    // counting against `/dev/pts`, and deleting the system is one tap later.
-    // Measured on a device: the first attempt answers `_EBUSY` and names
-    // `/alpine/dev/pts`.
-    //
-    // Waiting here rather than inside the engine keeps it off the main
-    // isolate: `detach` is a blocking call, and looping it in C would hold
-    // both the app and `attached_lock` for as long as it took.
-    //
-    // Retrying is only worth it for the one error that time fixes. `detach`
-    // answers `_EBUSY` (-16) while something still holds a mount, and anything
-    // else — a name it will not accept, a machine that was never booted — will
-    // say the same thing on the tenth attempt as on the first. Ten identical
-    // failures then became "still in use", which was how deleting a system
-    // that had been installed but never opened became impossible.
-    var err = detach(id);
-    for (var i = 0; err == _ebusy && i < 10; i++) {
-      await Future<void>.delayed(const Duration(milliseconds: 200));
-      err = detach(id);
-    }
-    if (err < 0) {
-      // Says which, rather than naming a cause it does not know. The number
-      // reaches here from two errno namespaces — the guest's for an unmount,
-      // the host's for a rejected name — so this cannot claim to read it.
-      // No advice attached any more. It used to say to restart the app, which
-      // was true while a session's terminal was released only when its task
-      // was reaped and nothing reaped one — `close_session` gives it up at
-      // hangup now (ShellBox #27), so a system that is genuinely busy has
-      // something running in it rather than something left over from a
-      // terminal that is already closed.
-      throw StateError(
-        err == _ebusy
-            ? 'The Linux system is still in use'
-            : 'The Linux system could not be detached ($err)',
-      );
-    }
-    // Remove from cache before the recursive delete so a concurrent
-    // applyNetSettings mid-iteration skips this profile and does not
-    // recreate its repository file after the tree was removed.
-    _profiles.removeWhere((e) => e.id == id);
     final dir = Directory(root);
     if (await dir.exists()) await dir.delete(recursive: true);
-    await _scan();
   }
-
-  /// Puts the downloaded rootfs on disk, whichever shape it came in.
-  ///
-  /// [LinuxDistro.compression] and [LinuxDistro.layout] are two axes because
-  /// they are two decisions: what decompresses the download, and whether what
-  /// falls out is the filesystem or an image describing one.
-  /// Visible so a test can unpack a real distribution's tarball and look at
-  /// what landed. Hard links, symbolic links and modes are all things whose
-  /// failure looks like a working install until something tries to run.
-  @visibleForTesting
-  static Future<void> extractForTest(
-    File archiveFile,
-    Directory into, {
-    required RootfsSource source,
-    void Function(double? progress)? onProgress,
-  }) => _extract(archiveFile, into, source: source, onProgress: onProgress);
 
   static Future<void> _extract(
     File archiveFile,
     Directory into, {
-    required RootfsSource source,
     void Function(double? progress)? onProgress,
   }) async {
-    final stat = await archiveFile.stat();
-    const maxArchiveSize = 1024 * 1024 * 1024; // 1 GB
-    if (stat.size > maxArchiveSize) {
-      throw StateError('Rootfs archive too large (${stat.size} bytes)');
-    }
     final bytes = await archiveFile.readAsBytes();
-    final outerDecoder = TarDecoder();
-    final outer = outerDecoder.decodeBytes(
-      decompressRootfs(bytes, source.compression),
-    );
+    final archive = TarDecoder().decodeBytes(GZipDecoder().decodeBytes(bytes));
 
-    switch (source.layout) {
-      case LinuxRootfsLayout.plain:
-        await _unpackTar(outer, outerDecoder, into, onProgress: onProgress);
-      case LinuxRootfsLayout.oci:
-        // In order, and each over the last: a later layer's copy of a path
-        // replaces an earlier one's, and its whiteouts delete what earlier
-        // layers put there.
-        for (final layer in ociLayers(outer)) {
-          final decoder = TarDecoder();
-          await _unpackTar(
-            decoder.decodeBytes(ociLayerTar(layer)),
-            decoder,
-            into,
-            applyWhiteouts: true,
-            onProgress: onProgress,
-          );
-        }
-    }
-  }
-
-  /// Which entries were hard links, by name, with what they point at.
-  ///
-  /// The tar reader hands a hard link and a symbolic link to the caller in the
-  /// same shape — it sets `symbolicLink` from the header's link name for both,
-  /// because both carry one — so the only way to tell them apart is the type
-  /// flag, which lives on the decoder's own entries rather than on the archive
-  /// it builds.
-  ///
-  /// Getting this wrong is not a broken file, it is a link pointing nowhere. A
-  /// hard link's target is a path from the root of the archive; read as a
-  /// symbolic link it resolves relative to the link's own directory instead.
-  /// Ubuntu 26.04 ships uutils coreutils as one binary with 115 hard links to
-  /// it, so `/usr/bin/ls` became a symlink to a symlink to nothing and the
-  /// shell answered `ls: not found` in a system that had `ls`.
-  static Map<String, String> _hardLinks(TarDecoder decoder) {
-    final links = <String, String>{};
-    for (final file in decoder.files) {
-      if (file.typeFlag != TarFile.hardLink) continue;
-      final target = file.nameOfLinkedFile;
-      if (target == null || target.isEmpty) continue;
-      links[_tarPath(file.filename)] = _tarPath(target);
-    }
-    return links;
-  }
-
-  /// `0700`. What a directory needs whatever the archive says, since the guest
-  /// runs as one unprivileged host uid and nothing in it is root.
-  static const _ownerRwx = 0x1c0;
-
-  /// A tar entry's name without the `./` a great many archives prefix it with.
-  static String _tarPath(String name) =>
-      name.startsWith('./') ? name.substring(2) : name;
-
-  /// The components [name] names inside the root, or null where it escapes.
-  ///
-  /// Empty is neither: it is the archive's own root, and the two have to be
-  /// told apart. `tar czf` writes a `./` member first and almost every rootfs
-  /// tarball therefore starts with one — read as an escape, that refused the
-  /// whole archive on its first entry and no Linux system could be installed
-  /// at all.
-  static List<String>? _safeTarParts(String name) {
-    final sanitized = _tarPath(name);
-    if (sanitized.startsWith('/')) return null;
-    // Lexical check: no segment may be '..' that escapes the root.
-    final parts = <String>[];
-    for (final seg in sanitized.split('/')) {
-      if (seg.isEmpty || seg == '.') continue;
-      if (seg == '..') {
-        if (parts.isEmpty) return null;
-        parts.removeLast();
-      } else {
-        parts.add(seg);
-      }
-    }
-    return parts;
-  }
-
-  /// [name] is the directory being extracted into, so there is nothing to
-  /// write for it and nothing unsafe about it.
-  static bool _isTarRoot(String name) => _safeTarParts(name)?.isEmpty ?? false;
-
-  /// [name] can be written somewhere under the root. False for an escape and
-  /// for the root itself, which names no member.
-  static bool _isSafeTarEntry(String name) {
-    final parts = _safeTarParts(name);
-    return parts != null && parts.isNotEmpty;
-  }
-
-  static bool _hasTarLinkAncestor(List<String> parts, Set<String> links) {
-    for (var i = 1; i < parts.length; i++) {
-      if (links.contains(parts.take(i).join('/'))) return true;
-    }
-    return false;
-  }
-
-  /// Resolves an archive member one component at a time without ever asking
-  /// the host filesystem to traverse a symlinked parent.
-  static Future<String> _safeTarTarget(Directory into, String name) async {
-    final parts = _safeTarParts(name);
-    if (parts == null) throw StateError('Unsafe tar entry: $name');
-    var parent = into.path;
-    for (final segment in parts.take(parts.length - 1)) {
-      parent = parent.joinPath(segment);
-      switch (await FileSystemEntity.type(parent, followLinks: false)) {
-        case FileSystemEntityType.notFound:
-          await Directory(parent).create();
-          break;
-        case FileSystemEntityType.directory:
-          break;
-        case FileSystemEntityType.link:
-          throw StateError('Tar entry has a symlinked parent: $name');
-        default:
-          throw StateError('Tar entry has a non-directory parent: $name');
-      }
-    }
-    return parent.joinPath(parts.last);
-  }
-
-  static Future<void> _removeTarTarget(String path) async {
-    switch (await FileSystemEntity.type(path, followLinks: false)) {
-      case FileSystemEntityType.notFound:
-        return;
-      case FileSystemEntityType.directory:
-        await Directory(path).delete(recursive: true);
-        return;
-      case FileSystemEntityType.link:
-        await Link(path).delete();
-        return;
-      default:
-        await File(path).delete();
-        return;
-    }
-  }
-
-  static Future<void> _unpackTar(
-    Archive archive,
-    TarDecoder decoder,
-    Directory into, {
-    bool applyWhiteouts = false,
-    void Function(double? progress)? onProgress,
-  }) async {
-    final hardLinks = _hardLinks(decoder);
-    final symbolicLinks = <String>{};
-    for (final entry in archive) {
-      if (!entry.isSymbolicLink) continue;
-      final parts = _safeTarParts(entry.name);
-      if (parts != null && parts.isNotEmpty) symbolicLinks.add(parts.join('/'));
-    }
-    // What this layer writes, which is what an opaque marker spares. Built up
-    // front because the archive is not obliged to put the marker before the
-    // entries it applies to, so "has it been written yet" is not the same
-    // question as "does this layer write it".
-    final written = applyWhiteouts
-        ? ociLayerPaths(archive.map((e) => e.name))
-        : const <String>{};
-    // Applied after everything is written, because an archive may name a link
-    // before the file it points at. Ours is sorted and does not, but upstream's
-    // ordering is upstream's business.
-    final pendingHardLinks = <String, String>{};
-    final pendingSymlinks = <String, String>{};
     var done = 0;
     for (final entry in archive) {
       done++;
       if (done % 200 == 0) {
         onProgress?.call(0.9 + (done / archive.length) * 0.1);
       }
-      // The archive's own root, which is already there — it is what everything
-      // else is being written into.
-      if (_isTarRoot(entry.name)) continue;
-      if (!_isSafeTarEntry(entry.name)) {
-        throw StateError('${libL10n.invalid}: ${libL10n.path} (${entry.name})');
-      }
-      final entryParts = _safeTarParts(entry.name)!;
-      if (_hasTarLinkAncestor(entryParts, symbolicLinks)) {
-        throw StateError('${libL10n.invalid}: ${libL10n.path} (${entry.name})');
-      }
-      final path = await _safeTarTarget(into, entry.name);
-
-      if (applyWhiteouts) {
-        final mark = ociWhiteout(entry.name.split('/').last);
-        if (mark != null) {
-          final parent = Directory(File(path).parent.path);
-          final directory = ociParent(entry.name);
-          if (mark.opaque) {
-            if (await parent.exists()) {
-              await for (final child in parent.list(followLinks: false)) {
-                // Only what the layers below put here. A sibling this layer
-                // writes stays: the marker hides what is underneath it, and
-                // deleting the layer's own contents would empty a directory
-                // the layer exists to fill.
-                final name = child.path.split(Platform.pathSeparator).last;
-                final sibling = directory.isEmpty ? name : '$directory/$name';
-                if (written.contains(sibling)) continue;
-                await child.delete(recursive: true);
-              }
-            }
-          } else {
-            final target = parent.path.joinPath(mark.deletes!);
-            await _removeTarTarget(target);
-          }
-          continue;
-        }
-      }
+      final path = into.path.joinPath(entry.name);
 
       // Links as links, never followed. Under `realfs` a guest symlink is
       // resolved inside the guest, so `/bin/sh -> /bin/busybox` means the
       // guest's busybox; written as a copy of whatever the host has at that
       // path it is the wrong file, and skipped it is no file — which is how an
       // earlier attempt booted with no `/bin/sh` to run.
-      // Hard links first: the reader marks them symbolic, so asking whether
-      // this is a symlink would answer yes for both.
-      final hardTarget = hardLinks[_tarPath(entry.name)];
-      if (hardTarget != null) {
-        if (!_isSafeTarEntry(hardTarget)) {
-          throw StateError('${libL10n.invalid}: ${libL10n.path} ($hardTarget)');
-        }
-        if (_hasTarLinkAncestor(_safeTarParts(hardTarget)!, symbolicLinks)) {
-          throw StateError('${libL10n.invalid}: ${libL10n.path} ($hardTarget)');
-        }
-        pendingHardLinks[_tarPath(entry.name)] = hardTarget;
-        continue;
-      }
-
       if (entry.isSymbolicLink) {
-        pendingSymlinks[_tarPath(entry.name)] = entry.symbolicLink!;
+        final link = Link(path);
+        await link.parent.create(recursive: true);
+        if (await link.exists()) await link.delete();
+        await link.create(entry.symbolicLink!);
         continue;
       }
       if (entry.isDirectory) {
-        final type = await FileSystemEntity.type(path, followLinks: false);
-        if (type != FileSystemEntityType.directory &&
-            type != FileSystemEntityType.notFound) {
-          await _removeTarTarget(path);
-        }
-        await Directory(path).create();
-        // The tarball's mode, with owner rwx forced on. `realfs` hands the
-        // host's mode straight to the guest, and the host process is this app
-        // rather than root — so uid 0 in the guest buys nothing, and Rocky's
-        // 17 directories at 0555 (`/usr/bin` and `/usr/lib` among them) are
-        // ones a package manager cannot create its temp files in. That is the
-        // difference between an image that can install packages here and one
-        // that cannot.
-        //
-        // Only that difference, though. Dropping the mode entirely also drops
-        // the bits that say something a single-uid guest still reads: `/tmp`
-        // is 1777 and becomes 0755, and every `--verify` a package manager
-        // offers then reports the directories as altered — which is the same
-        // complaint stripping locales would have caused, and the reason
-        // `shellbox-rootfs` does not strip them.
-        chmodGuestFile(path, (entry.mode & 0xfff) | _ownerRwx);
+        await Directory(path).create(recursive: true);
         continue;
       }
       if (!entry.isFile) {
@@ -742,10 +189,7 @@ abstract final class IosRootfs {
         continue;
       }
       final file = File(path);
-      if (await FileSystemEntity.type(path, followLinks: false) !=
-          FileSystemEntityType.notFound) {
-        await _removeTarTarget(path);
-      }
+      await file.parent.create(recursive: true);
       await file.writeAsBytes(entry.readBytes() ?? const []);
       // The mode the tarball recorded. It matters more here than under
       // `fakefs`: `realfs` reports the host's mode to the guest, so a busybox
@@ -753,61 +197,26 @@ abstract final class IosRootfs {
       //
       // Through libc rather than `chmod(1)`: iOS refuses to start a process,
       // which is the same refusal that put an interpreter on this platform.
-      chmodGuestFile(path, entry.mode & 0xfff);
-    }
-
-    for (final entry in pendingHardLinks.entries) {
-      final path = await _safeTarTarget(into, entry.key);
-      final pendingSymlink = pendingSymlinks[entry.value];
-      if (pendingSymlink != null) {
-        await _removeTarTarget(path);
-        await Link(path).create(pendingSymlink);
-        continue;
-      }
-      final target = await _safeTarTarget(into, entry.value);
-      if (await FileSystemEntity.type(target, followLinks: false) !=
-          FileSystemEntityType.file) {
-        throw StateError(
-          '${libL10n.invalid}: ${libL10n.file} (${entry.value})',
-        );
-      }
-      await _removeTarTarget(path);
-      if (linkGuestFile(target, path)) continue;
-      // A symlink is the fallback, not the intent: same file, one more
-      // indirection, and it costs nothing where a copy would cost a gigabyte.
-      // Relative to the link's own directory, which is what a symlink means
-      // and what reading the hard link as one got wrong in the first place.
-      final rel = _relativeTo(File(path).parent.path, target);
-      final link = Link(path);
-      await link.create(rel);
-    }
-
-    // Last, so a link in this layer cannot become the parent through which a
-    // later regular file or hard-link fallback is written.
-    for (final entry in pendingSymlinks.entries) {
-      final path = await _safeTarTarget(into, entry.key);
-      await _removeTarTarget(path);
-      await Link(path).create(entry.value);
+      _chmod(path, entry.mode & 0xfff);
     }
   }
 
-  /// [target] as a path from [from], both absolute.
-  static String _relativeTo(String from, String target) {
-    final fromParts = from.split(Platform.pathSeparator)
-      ..removeWhere((e) => e.isEmpty);
-    final toParts = target.split(Platform.pathSeparator)
-      ..removeWhere((e) => e.isEmpty);
-    var shared = 0;
-    while (shared < fromParts.length &&
-        shared < toParts.length &&
-        fromParts[shared] == toParts[shared]) {
-      shared++;
+  /// `chmod`, which `dart:io` does not have and this cannot do without.
+  static void _chmod(String path, int mode) {
+    final chmod = _chmodC;
+    if (chmod == null || mode == 0) return;
+    final pointer = path.toNativeUtf8();
+    try {
+      chmod(pointer.cast(), mode);
+    } finally {
+      malloc.free(pointer);
     }
-    return [
-      ...List.filled(fromParts.length - shared, '..'),
-      ...toParts.sublist(shared),
-    ].join('/');
   }
+
+  static final _chmodC = _look(
+    'chmod',
+    (p) => p.lookupFunction<Int Function(Pointer<Char>, Uint16), int Function(Pointer<Char>, int)>('chmod'),
+  );
 
   /// The host path a guest path names, or null when it names nothing inside.
   ///
@@ -816,40 +225,22 @@ abstract final class IosRootfs {
   /// really is `<root>/etc` on the host. See [resolveWithinRoot] for what has
   /// to be refused — which is the same on both.
   static Future<String?> hostPathOf(String guest, {bool forWrite = false}) {
-    final root = IosRootfs.root;
+    final root = _root;
     if (root == null) return Future.value();
     return resolveWithinRoot(root, guest, forWrite: forWrite);
   }
 
   /// Locates where the filesystem would be. Call once, before anything asks.
-  ///
-  /// The container is `linux/`, holding one subdirectory per system. Releases
-  /// before this unpacked a single tree directly at `alpine/`, and nothing
-  /// moves it: such an install reads as absent and is offered fresh.
-  ///
-  /// TODO(migration residue; remove once no install predates the container):
-  /// the old `alpine/` tree is left on disk where nothing can reach or delete
-  /// it. Deliberate only because none of this has shipped — a released build
-  /// would have to move it or remove it.
   static Future<void> prepare() async {
     if (!Platform.isIOS) return;
-    _container = (await getApplicationSupportDirectory()).path.joinPath(
-      'linux',
-    );
-    await _mutate(() async {
-      await _scan();
-      for (final profile in _profiles) {
-        final root = rootOf(profile.id);
-        if (root == null) continue;
-        // A system unpacked before [install] seeded a resolver has none, and
-        // nothing else would ever give it one. Writes only when absent, so a
-        // guest pointed at its owner's own resolver keeps it.
-        await seedResolvConf(root, nameservers: linuxNameservers());
-        // Repairs a system unpacked before either existed, and carries a fix to
-        // the script itself into one already installed.
-        await seedChsh(root);
-      }
-    });
+    final root = _root =
+        (await getApplicationSupportDirectory()).path.joinPath('alpine');
+    if (!await isInstalled) return;
+    // A userland unpacked before [install] seeded a resolver has none, and
+    // nothing else would ever give it one: [install] returns early for a tree
+    // that is already there, so every existing install would have stayed
+    // without DNS. Writes only when the file is absent.
+    await seedResolvConf(root);
   }
 
   /// What [boot] answers when the machine is already up — `-EEXIST`.
@@ -865,80 +256,13 @@ abstract final class IosRootfs {
   /// One machine per app process, because the engine keeps its kernel state in
   /// globals — but a machine runs as many processes as it is asked to, which
   /// is what [open] is for.
-  static int boot({String? profileId}) {
+  static int boot() {
     final boot = _boot;
-    final container = _container;
-    final id = profileId ?? selected?.id;
-    final root = rootOf(id);
-    if (_mutating ||
-        boot == null ||
-        container == null ||
-        id == null ||
-        root == null ||
-        FileSystemEntity.typeSync(root, followLinks: false) !=
-            FileSystemEntityType.directory ||
-        byId(id) == null) {
-      return -1;
-    }
-    final pointer = container.toNativeUtf8();
-    final profile = id.toNativeUtf8();
+    final root = _root;
+    if (boot == null || root == null) return -1;
+    final pointer = root.toNativeUtf8();
     try {
-      return boot(pointer.cast(), profile.cast());
-    } finally {
-      malloc.free(pointer);
-      malloc.free(profile);
-    }
-  }
-
-  /// Mounts a system's filesystems, so a session can be opened in it.
-  ///
-  /// [open] does this itself; this exists for attaching one ahead of time.
-  /// Unmounts a system's filesystems, so a later [attach] mounts afresh.
-  ///
-  /// Negative on failure, `-EBUSY` (-16) while a session still holds them —
-  /// the caller closes those first. Logged rather than thrown: a delete the
-  /// user asked for goes ahead either way, and what is left is a mount that
-  /// outlives the tree until the app restarts.
-  /// How many terminals are open in [profileId].
-  ///
-  /// Asked before offering to delete a system. Detaching one hangs up whatever
-  /// is running in it — right as a last resort, wrong as a surprise: a shell
-  /// someone left a half-typed command in is not something to close on their
-  /// behalf without saying so.
-  ///
-  /// The engine's count rather than a tally of the app's own backends, because
-  /// this is the same list that decides whether the unmount can succeed. A
-  /// session the app had lost track of would still hold the filesystem.
-  static int openSessions(String profileId) {
-    final sessions = _sessions;
-    if (sessions == null) return 0;
-    final pointer = profileId.toNativeUtf8();
-    try {
-      return sessions(pointer.cast());
-    } finally {
-      malloc.free(pointer);
-    }
-  }
-
-  static int detach(String profileId) {
-    final detach = _detach;
-    if (detach == null) return -1;
-    final pointer = profileId.toNativeUtf8();
-    try {
-      final err = detach(pointer.cast());
-      if (err < 0) Loggers.app.warning('sbm_ish_detach($profileId) = $err');
-      return err;
-    } finally {
-      malloc.free(pointer);
-    }
-  }
-
-  static int attach(String profileId) {
-    final attach = _attach;
-    if (attach == null) return -1;
-    final pointer = profileId.toNativeUtf8();
-    try {
-      return attach(pointer.cast());
+      return boot(pointer.cast());
     } finally {
       malloc.free(pointer);
     }
@@ -949,142 +273,52 @@ abstract final class IosRootfs {
   /// [command] null or empty gives an interactive shell. Sessions do not share
   /// a console, so a terminal and a one-shot command cannot land on each
   /// other's output.
-  ///
-  /// [shell] is what runs it, empty meaning `/bin/sh`. The guest has no `login`
-  /// and nothing in it reads `/etc/passwd`, so this is the only thing that
-  /// decides — see `linuxShell()`.
-  static int open({
-    String? command,
-    String shell = '',
-    String? profileId,
-    Map<String, String>? environment,
-    int columns = 80,
-    int rows = 25,
-  }) {
+  static int open({String? command, int columns = 80, int rows = 25}) {
     final open = _open;
-    final id = profileId ?? selected?.id;
-    final root = rootOf(id);
-    if (_mutating ||
-        open == null ||
-        id == null ||
-        root == null ||
-        FileSystemEntity.typeSync(root, followLinks: false) !=
-            FileSystemEntityType.directory ||
-        byId(id) == null) {
-      return -1;
-    }
-    final environmentBytes = _environmentBlock(environment);
-    final profile = id.toNativeUtf8();
-    final shellPointer = shell.toNativeUtf8();
+    if (open == null) return -1;
     final pointer = (command ?? '').toNativeUtf8();
-    final environmentPointer = malloc<Uint8>(environmentBytes.length);
-    environmentPointer
-        .asTypedList(environmentBytes.length)
-        .setAll(0, environmentBytes);
     try {
-      return open(
-        profile.cast(),
-        shellPointer.cast(),
-        pointer.cast(),
-        environmentPointer.cast(),
-        columns,
-        rows,
-      );
+      return open(pointer.cast(), columns, rows);
     } finally {
-      malloc.free(profile);
-      malloc.free(shellPointer);
       malloc.free(pointer);
-      malloc.free(environmentPointer);
     }
-  }
-
-  static Uint8List _environmentBlock(Map<String, String>? environment) {
-    final merged = <String, String>{
-      'TERM': 'xterm-256color',
-      'HOME': '/root',
-      'PATH': '/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin',
-      ...?environment,
-    };
-    final bytes = BytesBuilder(copy: false);
-    for (final entry in merged.entries) {
-      if (entry.key.isEmpty ||
-          entry.key.contains('=') ||
-          entry.key.contains('\u0000') ||
-          entry.value.contains('\u0000')) {
-        throw ArgumentError.value(entry.key, 'environment', 'invalid entry');
-      }
-      bytes
-        ..add(utf8.encode('${entry.key}=${entry.value}'))
-        ..addByte(0);
-    }
-    bytes.addByte(0);
-    return bytes.takeBytes();
   }
 
   /// What [session] has printed, waiting up to [timeout] for the first byte.
   ///
   /// Null once it has ended and its output is drained; empty when it simply
   /// had nothing to say yet. A caller has to tell those apart.
-  ///
-  /// Bytes rather than a `String`, because that is what a console emits and
-  /// the lengths it emits them in are its own — a character can arrive across
-  /// two calls. This used to answer `String.fromCharCodes`, which reads every
-  /// byte as one code unit, and the terminal then encoded that back to UTF-8:
-  /// each byte of a multi-byte character became two. Nothing outside ASCII
-  /// survived it, the tty's echo of what was typed included, so typing a
-  /// Chinese character into the terminal showed mojibake before any command
-  /// had run.
-  static Uint8List? read(
+  static String? read(
     int session, {
     Duration timeout = const Duration(milliseconds: 200),
+    int limit = 8192,
   }) {
     final read = _read;
     if (read == null) return null;
-    final buffer = _readBuffer;
-    final count = read(
-      session,
-      buffer.cast(),
-      _readLimit,
-      timeout.inMilliseconds,
-    );
-    // -EBUSY: a guest thread died holding the output lock. Told apart from
-    // the session having ended, because the answer is different — that one
-    // is over, this one is broken.
-    if (count == -16) throw StateError('The guest stopped holding its lock');
-    if (count < 0) return null;
-    if (count == 0) return _empty;
-    return Uint8List.fromList(buffer.asTypedList(count));
-  }
-
-  static const _readLimit = 8192;
-  static final _empty = Uint8List(0);
-
-  /// Allocated once and kept.
-  ///
-  /// A terminal reads on a timer, so this was 8 KB malloc'd and freed on every
-  /// frame of every open session, for the whole life of the session — paid
-  /// even while the shell sat at a prompt with nothing to say. Only ever
-  /// touched from the isolate that calls [read], and its contents are copied
-  /// out before the call returns, so nothing outlives the next one.
-  static final Pointer<Uint8> _readBuffer = malloc<Uint8>(_readLimit);
-
-  /// Types [input] at [session].
-  ///
-  /// Bytes, for the reason [read] answers in them. Decoding a terminal's byte
-  /// stream to a `String` on the way in only to encode it again cannot be
-  /// lossless for anything that is not already whole valid UTF-8 — a
-  /// multi-byte character split across two keystrokes' worth of input among
-  /// them.
-  static int write(int session, List<int> input) {
-    final write = _write;
-    if (write == null) return -1;
-    if (input.isEmpty) return 0;
-    final buffer = malloc<Uint8>(input.length);
+    final buffer = malloc<Uint8>(limit);
     try {
-      buffer.asTypedList(input.length).setAll(0, input);
-      return write(session, buffer.cast(), input.length);
+      final count = read(session, buffer.cast(), limit, timeout.inMilliseconds);
+      // -EBUSY: a guest thread died holding the output lock. Told apart from
+      // the session having ended, because the answer is different — that one
+      // is over, this one is broken.
+      if (count == -16) throw StateError('The guest stopped holding its lock');
+      if (count < 0) return null;
+      if (count == 0) return '';
+      return String.fromCharCodes(buffer.asTypedList(count));
     } finally {
       malloc.free(buffer);
+    }
+  }
+
+  /// Types [input] at [session].
+  static int write(int session, String input) {
+    final write = _write;
+    if (write == null) return -1;
+    final pointer = input.toNativeUtf8();
+    try {
+      return write(session, pointer.cast(), pointer.length);
+    } finally {
+      malloc.free(pointer);
     }
   }
 
@@ -1114,10 +348,7 @@ abstract final class IosRootfs {
       ? DynamicLibrary.process()
       : null;
 
-  static T? _look<T extends Function>(
-    String name,
-    T Function(DynamicLibrary) f,
-  ) {
+  static T? _look<T extends Function>(String name, T Function(DynamicLibrary) f) {
     final process = _process;
     if (process == null) return null;
     try {
@@ -1129,97 +360,34 @@ abstract final class IosRootfs {
 
   static final _available = _look(
     'sbm_ish_available',
-    (p) =>
-        p.lookupFunction<Bool Function(), bool Function()>('sbm_ish_available'),
+    (p) => p.lookupFunction<Bool Function(), bool Function()>('sbm_ish_available'),
   );
   static final _boot = _look(
     'sbm_ish_boot',
-    (p) =>
-        p.lookupFunction<
-          Int Function(Pointer<Char>, Pointer<Char>),
-          int Function(Pointer<Char>, Pointer<Char>)
-        >('sbm_ish_boot'),
-  );
-  static final _attach = _look(
-    'sbm_ish_attach',
-    (p) =>
-        p.lookupFunction<
-          Int Function(Pointer<Char>),
-          int Function(Pointer<Char>)
-        >('sbm_ish_attach'),
-  );
-  static final _sessions = _look(
-    'sbm_ish_sessions',
-    (p) =>
-        p.lookupFunction<
-          Int Function(Pointer<Char>),
-          int Function(Pointer<Char>)
-        >('sbm_ish_sessions'),
-  );
-  static final _detach = _look(
-    'sbm_ish_detach',
-    (p) =>
-        p.lookupFunction<
-          Int Function(Pointer<Char>),
-          int Function(Pointer<Char>)
-        >('sbm_ish_detach'),
+    (p) => p.lookupFunction<Int Function(Pointer<Char>), int Function(Pointer<Char>)>('sbm_ish_boot'),
   );
   static final _open = _look(
     'sbm_ish_open',
-    (p) =>
-        p.lookupFunction<
-          Int Function(
-            Pointer<Char>,
-            Pointer<Char>,
-            Pointer<Char>,
-            Pointer<Char>,
-            Int,
-            Int,
-          ),
-          int Function(
-            Pointer<Char>,
-            Pointer<Char>,
-            Pointer<Char>,
-            Pointer<Char>,
-            int,
-            int,
-          )
-        >('sbm_ish_open'),
+    (p) => p.lookupFunction<Int Function(Pointer<Char>, Int, Int), int Function(Pointer<Char>, int, int)>('sbm_ish_open'),
   );
   static final _read = _look(
     'sbm_ish_read',
-    (p) =>
-        p.lookupFunction<
-          Int Function(Int, Pointer<Char>, Int, Int),
-          int Function(int, Pointer<Char>, int, int)
-        >('sbm_ish_read'),
+    (p) => p.lookupFunction<Int Function(Int, Pointer<Char>, Int, Int), int Function(int, Pointer<Char>, int, int)>('sbm_ish_read'),
   );
   static final _write = _look(
     'sbm_ish_write',
-    (p) =>
-        p.lookupFunction<
-          Int Function(Int, Pointer<Char>, Int),
-          int Function(int, Pointer<Char>, int)
-        >('sbm_ish_write'),
+    (p) => p.lookupFunction<Int Function(Int, Pointer<Char>, Int), int Function(int, Pointer<Char>, int)>('sbm_ish_write'),
   );
   static final _resize = _look(
     'sbm_ish_resize',
-    (p) =>
-        p.lookupFunction<
-          Void Function(Int, Int, Int),
-          void Function(int, int, int)
-        >('sbm_ish_resize'),
+    (p) => p.lookupFunction<Void Function(Int, Int, Int), void Function(int, int, int)>('sbm_ish_resize'),
   );
   static final _exitCode = _look(
     'sbm_ish_exit_code',
-    (p) => p.lookupFunction<Int Function(Int), int Function(int)>(
-      'sbm_ish_exit_code',
-    ),
+    (p) => p.lookupFunction<Int Function(Int), int Function(int)>('sbm_ish_exit_code'),
   );
   static final _close = _look(
     'sbm_ish_close',
-    (p) => p.lookupFunction<Void Function(Int), void Function(int)>(
-      'sbm_ish_close',
-    ),
+    (p) => p.lookupFunction<Void Function(Int), void Function(int)>('sbm_ish_close'),
   );
 }

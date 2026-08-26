@@ -1,7 +1,6 @@
 import 'package:fl_lib/fl_lib.dart';
 import 'package:get_it/get_it.dart';
 import 'package:server_box/data/store/agent_conversation.dart';
-import 'package:server_box/data/store/bmc_credential.dart';
 import 'package:server_box/data/store/connection_stats.dart';
 import 'package:server_box/data/store/container.dart';
 import 'package:server_box/data/store/entity_store.dart';
@@ -10,7 +9,6 @@ import 'package:server_box/data/store/migrations/m003_hive_to_sqlite.dart';
 import 'package:server_box/data/store/port_forward.dart';
 import 'package:server_box/data/store/private_key.dart';
 import 'package:server_box/data/store/server.dart';
-import 'package:server_box/data/store/server_dist.dart';
 import 'package:server_box/data/store/setting.dart';
 import 'package:server_box/data/store/snippet.dart';
 import 'package:server_box/data/store/tables.dart';
@@ -22,7 +20,6 @@ abstract final class Stores {
   static ServerStore get server => getIt<ServerStore>();
   static ContainerStore get container => getIt<ContainerStore>();
   static PrivateKeyStore get key => getIt<PrivateKeyStore>();
-  static BmcCredentialStore get bmcCredential => getIt<BmcCredentialStore>();
   static SnippetStore get snippet => getIt<SnippetStore>();
   static HistoryStore get history => getIt<HistoryStore>();
   static AgentConversationStore get agentConversation =>
@@ -30,10 +27,6 @@ abstract final class Stores {
   static ConnectionStatsStore get connectionStats =>
       getIt<ConnectionStatsStore>();
   static PortForwardStore get portForward => getIt<PortForwardStore>();
-
-  /// What each server was last seen running. A cache of an observation, not a
-  /// record anyone edits — see [ServerDistStore].
-  static ServerDistStore get serverDist => getIt<ServerDistStore>();
 
   /// The key-value stores whose contents count as something the user changed.
   ///
@@ -48,8 +41,7 @@ abstract final class Stores {
   ///
   /// `container` is absent because its rows are children of `server`: changing
   /// a container host stamps the server that owns it.
-  static List<EntityStore> get _entityStores =>
-      [server, key, bmcCredential, snippet, portForward];
+  static List<EntityStore> get _entityStores => [server, key, snippet, portForward];
 
   static Future<void> init() async {
     getIt.registerLazySingleton<SettingStore>(() => SettingStore.instance);
@@ -58,16 +50,10 @@ abstract final class Stores {
     getIt.registerLazySingleton<PrivateKeyStore>(
       () => PrivateKeyStore.instance,
     );
-    getIt.registerLazySingleton<BmcCredentialStore>(
-      () => BmcCredentialStore.instance,
-    );
     getIt.registerLazySingleton<SnippetStore>(() => SnippetStore.instance);
     getIt.registerLazySingleton<HistoryStore>(() => HistoryStore.instance);
     getIt.registerLazySingleton<AgentConversationStore>(
       () => AgentConversationStore.instance,
-    );
-    getIt.registerLazySingleton<ServerDistStore>(
-      () => ServerDistStore.instance,
     );
     getIt.registerLazySingleton<ConnectionStatsStore>(
       () => ConnectionStatsStore.instance,
@@ -95,11 +81,6 @@ abstract final class Stores {
     for (final store in _entityStores) {
       store.dropCache();
     }
-    // And the dist cache, for the same reason. It is not an `EntityStore` and
-    // so not in that list, but it is the same singleton holding the same kind
-    // of copy — and its `put` short-circuits on what the cache says, so a
-    // stale one would also stop the correct reading ever being written.
-    serverDist.dropCache();
 
     await Future.wait([
       ..._kvStores.map((store) => store.init()),
@@ -115,6 +96,10 @@ abstract final class Stores {
     await HiveImport.runIfNeeded();
 
     await setting.removeRetiredKeys();
+
+    // Migrate sshConnectionMode from old int values to bool
+    setting.migrateSshConnectionMode();
+    await setting.migrateHomeTabsAgent();
   }
 
   static int get lastModTime {

@@ -4,32 +4,6 @@ import 'package:server_box/data/model/app/error.dart';
 
 part 'ssh_credential.g.dart';
 
-/// How this app moves file contents to and from a server over SSH.
-///
-/// A property of the *host*, which is why it is stored per server rather than
-/// as an app setting: one machine in someone's list may be a NAS running a
-/// current OpenSSH and the next an OpenWrt router whose firmware has no SFTP
-/// subsystem at all.
-///
-/// Not probed. Opening an SFTP session and falling back on failure would work
-/// for the case it is aimed at and be wrong for every other kind of failure —
-/// a link that dropped, an account that was locked — where the fallback can
-/// only fail a second time, more slowly, and leave the user reading the wrong
-/// error. The user knows which their device is; the app asks once.
-enum SshFileTransport {
-  /// The SFTP subsystem. One channel, random access, and a protocol that
-  /// answers metadata questions itself, so it is what everything that can use
-  /// it should use.
-  sftp,
-
-  /// `scp` for the bytes and a shell for everything else.
-  ///
-  /// For a host with no SFTP subsystem to offer (#1288). Slower and coarser —
-  /// no random access, a channel per operation — but it needs nothing of the
-  /// server that running a command does not already prove.
-  scp,
-}
-
 /// Everything needed to reach a server over SSH.
 ///
 /// A peer of [MonitorHttpCredential], not the default: a server may carry
@@ -57,13 +31,9 @@ final class SshCredential {
   /// names one. Read when the connection is made, never copied into the app.
   ///
   /// Only ever set by `~/.ssh/config` import, which is desktop-only — there is
-  /// no such file to point at on a phone. This remains the first path for
-  /// compatibility with older data and UI code; [identityFiles] preserves the
-  /// full ordered OpenSSH list when more than one directive applies.
+  /// no such file to point at on a phone. At most one of this and [keyId] is
+  /// set; both being null means password or keyboard-interactive.
   final String? keyPath;
-
-  /// Ordered `IdentityFile` paths. Null in legacy data and for stored keys.
-  final List<String>? identityFiles;
 
   /// Fallback `user@host:port` tried when [ip] is unreachable
   final String? alterUrl;
@@ -74,23 +44,10 @@ final class SshCredential {
   /// [resolvedJumpIds] so failover candidates are included.
   final String? jumpId;
 
-  /// Ordered jump-server candidates.
+  /// Ordered jump-server candidates. At most the first two are used.
   final List<String>? jumpIds;
 
   final String? proxyCommand;
-
-  /// Which protocol carries file contents to and from this host.
-  ///
-  /// Defaulted rather than nullable: every record written before this existed
-  /// was written by a build that only had SFTP, so "unset" and "SFTP" are the
-  /// same answer and there is nothing for a reader to decide.
-  @JsonKey(
-    defaultValue: SshFileTransport.sftp,
-    // A value this build does not know is a value from a build that had more
-    // of them, and reading a backup should not throw over one.
-    unknownEnumValue: SshFileTransport.sftp,
-  )
-  final SshFileTransport fileTransport;
 
   /// Carry the SSH byte stream over this server's `monitor` agent instead of
   /// connecting to [ip]:[port] directly, for hosts whose SSH port isn't
@@ -108,12 +65,10 @@ final class SshCredential {
     this.pwd,
     this.keyId,
     this.keyPath,
-    this.identityFiles,
     this.alterUrl,
     this.jumpId,
     this.jumpIds,
     this.proxyCommand,
-    this.fileTransport = SshFileTransport.sftp,
   });
 
   factory SshCredential.fromJson(Map<String, dynamic> json) =>
@@ -121,7 +76,7 @@ final class SshCredential {
 
   Map<String, dynamic> toJson() => _$SshCredentialToJson(this);
 
-  /// [jumpIds] first, falling back
+  /// [jumpIds] first (at most two are ever used for failover), falling back
   /// to the legacy single [jumpId] only when that list yields nothing.
   List<String> get resolvedJumpIds {
     final ids = <String>[];
@@ -132,24 +87,10 @@ final class SshCredential {
 
     for (final id in jumpIds ?? const <String>[]) {
       add(id);
+      if (ids.length >= 2) break;
     }
     if (ids.isEmpty) add(jumpId);
     return ids;
-  }
-
-  List<String> get resolvedIdentityFiles {
-    if (keyId != null) return const [];
-    final paths = <String>[];
-    void add(String? path) {
-      if (path == null || path.isEmpty || paths.contains(path)) return;
-      paths.add(path);
-    }
-
-    for (final path in identityFiles ?? const <String>[]) {
-      add(path);
-    }
-    if (paths.isEmpty) add(keyPath);
-    return paths;
   }
 
   String? get firstJumpId {
@@ -174,26 +115,10 @@ final class SshCredential {
   /// only as long as it does — so the shape of these strings is free to change.
   String? get keyRef {
     final id = keyId;
-    if (id != null) return keyRefForId(id);
-    final refs = keyRefs;
-    return refs.isEmpty ? null : refs.first;
+    if (id != null) return 'id:$id';
+    final path = keyPath;
+    return path == null ? null : 'path:$path';
   }
-
-  List<String> get keyRefs {
-    final id = keyId;
-    if (id != null) return [keyRefForId(id)];
-    return [for (final path in resolvedIdentityFiles) 'path:$path'];
-  }
-
-  /// The same reference for a stored key named by its id alone.
-  ///
-  /// A function because two places have to arrive at the same string and never
-  /// did: a connection unlocks under [keyRef], while the key editor invalidated
-  /// and warmed the cache under the bare id. Editing an encrypted key therefore
-  /// left the decrypted copy a connection was holding untouched, so the next
-  /// connection authenticated with the key that had just been replaced — and
-  /// the passphrase verified on save warmed an entry nothing ever read.
-  static String keyRefForId(String id) => 'id:$id';
 
   /// Parses [alterUrl] into its (ip, user, port) parts. Throws [SSHErr] on any
   /// malformed input rather than guessing — the value is user-entered and a
@@ -229,12 +154,10 @@ final class SshCredential {
     Object? pwd = _unset,
     Object? keyId = _unset,
     Object? keyPath = _unset,
-    Object? identityFiles = _unset,
     Object? alterUrl = _unset,
     Object? jumpId = _unset,
     Object? jumpIds = _unset,
     Object? proxyCommand = _unset,
-    SshFileTransport? fileTransport,
   }) {
     return SshCredential(
       ip: ip ?? this.ip,
@@ -243,16 +166,14 @@ final class SshCredential {
       pwd: pwd == _unset ? this.pwd : pwd as String?,
       keyId: keyId == _unset ? this.keyId : keyId as String?,
       keyPath: keyPath == _unset ? this.keyPath : keyPath as String?,
-      identityFiles: identityFiles == _unset
-          ? this.identityFiles
-          : identityFiles as List<String>?,
       alterUrl: alterUrl == _unset ? this.alterUrl : alterUrl as String?,
       jumpId: jumpId == _unset ? this.jumpId : jumpId as String?,
-      jumpIds: jumpIds == _unset ? this.jumpIds : (jumpIds as List<String>?),
+      jumpIds: jumpIds == _unset
+          ? this.jumpIds
+          : (jumpIds as List<String>?),
       proxyCommand: proxyCommand == _unset
           ? this.proxyCommand
           : proxyCommand as String?,
-      fileTransport: fileTransport ?? this.fileTransport,
     );
   }
 
@@ -264,7 +185,7 @@ final class SshCredential {
         user == other.user &&
         pwd == other.pwd &&
         keyId == other.keyId &&
-        listEquals(resolvedIdentityFiles, other.resolvedIdentityFiles) &&
+        keyPath == other.keyPath &&
         proxyCommand == other.proxyCommand &&
         // Changing how the socket is obtained needs a reconnect just as much
         // as changing the address does
@@ -275,11 +196,7 @@ final class SshCredential {
   bool operator ==(Object other) {
     return other is SshCredential &&
         isSameAs(other) &&
-        alterUrl == other.alterUrl &&
-        // Not in [isSameAs], which answers "must this reconnect": the same
-        // session carries either protocol, so switching costs a new channel
-        // and nothing more. It is still a change, which is what this answers.
-        fileTransport == other.fileTransport;
+        alterUrl == other.alterUrl;
   }
 
   @override
@@ -289,19 +206,11 @@ final class SshCredential {
     user,
     pwd,
     keyId,
-    Object.hashAll(resolvedIdentityFiles),
+    keyPath,
     alterUrl,
-    // [resolvedJumpIds], as [isSameAs] compares them, and not the two raw
-    // fields it is derived from. Old storage and an import write [jumpId]
-    // while everything since writes [jumpIds], so the same single jump server
-    // has two spellings — which `==` calls equal and this used to hash
-    // differently, breaking the one thing hashing has to promise. A credential
-    // put into a `Set` under one spelling was then not found under the other,
-    // and `SshFileRef` hashes a whole `Spi`, so a transfer's identity rests on
-    // this.
-    Object.hashAll(resolvedJumpIds),
+    jumpId,
+    Object.hashAll(jumpIds ?? const []),
     proxyCommand,
-    fileTransport,
   );
 }
 

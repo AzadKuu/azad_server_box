@@ -4,13 +4,14 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:server_box/core/extension/context/locale.dart';
 import 'package:server_box/core/utils/monitor_file_backend.dart';
 import 'package:server_box/data/model/file/file_ref.dart';
+import 'package:server_box/data/model/server/connect_credential.dart';
 import 'package:server_box/data/model/server/server_private_info.dart';
-import 'package:server_box/data/model/server/system.dart';
 import 'package:server_box/data/provider/server/single.dart';
 import 'package:server_box/data/res/store.dart';
 import 'package:server_box/view/page/storage/file_browser.dart';
 import 'package:server_box/view/page/storage/sftp.dart';
 import 'package:server_box/view/page/storage/show_transfers.dart';
+import 'package:server_box/view/widget/page_issue.dart';
 
 /// A server's files, whichever way they are reached.
 ///
@@ -80,17 +81,9 @@ class _MonitorFilePageState extends ConsumerState<_MonitorFilePage> {
   @override
   void initState() {
     super.initState();
-    // The agent itself, not whichever transport leads. This page is only
-    // reached when there is no byte stream to browse over, but saying so here
-    // costs nothing and cannot be made wrong by a change to that branch.
-    final monitor = _spi.monitor;
-    if (monitor == null) {
-      throw StateError('${_spi.name} has no monitor agent to browse');
-    }
-    final system = ref.read(serverProvider(_spi.id)).status.system;
+    final credential = ServerConnectCredential.fromSpi(_spi);
     _backend = MonitorFileBackend(
-      monitor,
-      permissions: system != SystemType.windows,
+      (credential as ServerConnectCredentialMonitorHttp).monitor,
     );
   }
 
@@ -149,8 +142,7 @@ class _MonitorFilePageState extends ConsumerState<_MonitorFilePage> {
         actionsSink: widget.args.actionsSink,
         onPathChanged: _onPathChanged,
         extraActions: (_) => [
-          IconButton(
-            tooltip: libL10n.mission,
+          IconButton(tooltip: libL10n.mission, 
             icon: const Icon(Icons.downloading),
             onPressed: () => showTransfers(context),
           ),

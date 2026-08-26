@@ -4,7 +4,9 @@
 //! Each test names the Go semantics it covers; see the threshold.rs module comment for the two deliberate divergences (Go-side bugs).
 
 use server_box_monitor::core::config::Config;
-use server_box_monitor::monitoring::parse_disk_metrics;
+use server_box_monitor::monitoring::{
+    parse_disk_metrics, DiskMetrics, MemoryMetrics, NetworkMetrics, SwapMetrics, SystemMetrics,
+};
 use server_box_monitor::monitoring::push::PushRateLimiter;
 use server_box_monitor::monitoring::size::Size;
 use server_box_monitor::monitoring::threshold::{CompareType, Threshold, ThresholdType};
@@ -127,8 +129,7 @@ fn test_go_config_json_normalize() {
             {"type": "net", "threshold": ">10m/s", "matcher": "eth0-in"}
         ],
         "pushes": [
-            {"type": "webhook", "name": "QQ Group", "iface": {"url": "http://localhost:5700", "method": "POST", "body": {"message": "{{name}} {{msg}}"}, "code": 202, "body_regex": "accepted"}},
-            {"type": "server_chan", "name": "ServerChan", "iface": {"sckey": "SCT123", "title": "{{name}}", "desp": "{{msg}}", "code": 201}}
+            {"type": "webhook", "name": "QQ Group", "iface": {"url": "http://localhost:5700", "method": "POST"}}
         ]
     }"#;
     let mut config: Config = serde_json::from_str(json).unwrap();
@@ -147,20 +148,13 @@ fn test_go_config_json_normalize() {
     assert_eq!(rules[1].matcher, "eth0-in");
 
     let pushes = config.get_push();
-    assert_eq!(pushes.len(), 2);
+    assert_eq!(pushes.len(), 1);
     assert_eq!(pushes[0].push_type, "webhook");
     assert_eq!(pushes[0].name, "QQ Group");
     assert_eq!(
         pushes[0].config.get("url").and_then(|v| v.as_str()),
         Some("http://localhost:5700")
     );
-    assert!(pushes[0].config.get("body").is_some());
-    assert_eq!(pushes[0].config.get("legacy_go_format").and_then(|v| v.as_bool()), Some(true));
-    assert_eq!(pushes[0].config.get("expected_http_status").and_then(|v| v.as_integer()), Some(202));
-    assert_eq!(pushes[1].push_type, "serverchan");
-    assert_eq!(pushes[1].config.get("legacy_go_format").and_then(|v| v.as_bool()), Some(true));
-    assert_eq!(pushes[1].config.get("sc_key").and_then(|v| v.as_str()), Some("SCT123"));
-    assert_eq!(pushes[1].config.get("expected_http_status").and_then(|v| v.as_integer()), Some(201));
 }
 
 /// Go res.go defaults: interval 7s, rate "1/1m". `name` intentionally
@@ -185,15 +179,7 @@ fn test_go_config_defaults() {
 /// Go initRateLimiter: falls back to the default rate limit when rate parsing fails
 #[test]
 fn test_go_rate_invalid_falls_back_to_default() {
-    for bad in [
-        "abc",
-        "1",
-        "x/1m",
-        "1/xx",
-        "1/1w",
-        "1/18446744073709551615m",
-        "1/18446744073709551615h",
-    ] {
+    for bad in ["abc", "1", "x/1m", "1/xx", "1/1w"] {
         let mut config: Config = serde_json::from_str(&format!(r#"{{"rate": "{}"}}"#, bad)).unwrap();
         config.normalize().unwrap();
         assert_eq!(
@@ -267,11 +253,71 @@ fn test_parse_disk_go_fixture() {
 
 // ---------- /status endpoint: web/web.go + web/base.go ----------
 
+fn sample_metrics() -> SystemMetrics {
+    SystemMetrics {
+        timestamp: chrono::Utc::now(),
+        extended_updated_at: chrono::Utc::now(),
+        server_name: "Server 1".to_string(),
+        cpu_usage: 36.6,
+        cpu_cores: vec![],
+        memory: MemoryMetrics {
+            total: 40 * 1024 * 1024 * 1024,
+            used: 26 * 1024 * 1024 * 1024,
+            free: 14 * 1024 * 1024 * 1024,
+            usage_percent: 65.0,
+        },
+        swap: SwapMetrics { total: 0, used: 0, usage_percent: 0.0 },
+        disk: DiskMetrics {
+            total: 41 * 1024 * 1024 * 1024,
+            used: 27 * 1024 * 1024 * 1024,
+            free: 14 * 1024 * 1024 * 1024,
+            usage_percent: 65.8,
+        },
+        network: NetworkMetrics {
+            rx_bytes: 3 * 1024,
+            tx_bytes: 7,
+        },
+        temperature: None,
+        temps: vec![],
+        sys: None,
+        cpu_brand: None,
+        gpus: vec![],
+        disk_details: vec![],
+        ifaces: vec![],
+        uptime: None,
+        conn: None,
+        diskio: vec![],
+        diskio_rate: vec![],
+        batteries: vec![],
+        sensors: vec![],
+        disk_smart: vec![],
+        custom_cmds: vec![],
+        amd_cache: vec![],
+    }
+}
 
-// The Go-compat `GET /status` shape is gone: it answered preformatted strings
-// and no history, which is why nothing built on it could ever draw a trend.
-// The two tests that pinned that shape went with it; `watch_token_scope.rs`
-// pins the endpoints that took over.
-//
-// The `Size` formatting they exercised is still covered above, since it is
-// what the app's own parser reads.
+/// Go web.Status: {"name","cpu","mem","net","disk"}, cpu "%.1f%%", others "used/total" in Size format
+#[test]
+fn test_status_response_go_shape() {
+    let metrics = sample_metrics();
+    let data = server_box_monitor::api::server::go_status_data(Some(&metrics), "Server 1");
+
+    assert_eq!(data["name"], "Server 1");
+    assert_eq!(data["cpu"], "36.6%");
+    assert_eq!(data["mem"], "26.0g / 40.0g");
+    assert_eq!(data["net"], "3.0k / 7.0b");
+    assert_eq!(data["disk"], "27.0g / 41.0g");
+    // Exactly the same 5 fields as Go, no more, no less
+    assert_eq!(data.as_object().unwrap().len(), 5);
+}
+
+/// Fields are empty strings before metrics are ready; name comes from config
+#[test]
+fn test_status_response_no_metrics() {
+    let data = server_box_monitor::api::server::go_status_data(None, "my-server");
+    assert_eq!(data["name"], "my-server");
+    assert_eq!(data["cpu"], "");
+    assert_eq!(data["mem"], "");
+    assert_eq!(data["net"], "");
+    assert_eq!(data["disk"], "");
+}

@@ -22,10 +22,10 @@ import 'package:server_box/data/provider/server/selection.dart';
 import 'package:server_box/data/provider/server/single.dart';
 import 'package:server_box/data/res/build_data.dart';
 import 'package:server_box/data/res/store.dart';
+import 'package:server_box/view/page/server/connection_stats.dart';
 import 'package:server_box/view/page/server/detail/view.dart';
 import 'package:server_box/view/page/server/edit/edit.dart';
 import 'package:server_box/view/page/setting/entry.dart';
-import 'package:server_box/view/widget/dist_icon.dart';
 import 'package:server_box/view/widget/pane_settings.dart';
 import 'package:server_box/view/widget/percent_circle.dart';
 import 'package:server_box/view/widget/server_power.dart';
@@ -58,11 +58,9 @@ class _ServerPageState extends ConsumerState<ServerPage>
         AutomaticKeepAliveClientMixin,
         AfterLayoutMixin,
         TickerProviderStateMixin {
-  double _textFactorDouble = 1.0;
+  late double _textFactorDouble;
   final ValueNotifier<double> _offsetNotifier = ValueNotifier(1);
-  TextScaler _textFactor = TextScaler.linear(1.0);
-  PageController? _landscapeController;
-  String? _landscapeSeenId;
+  late TextScaler _textFactor;
 
   final _cardsStatus = <String, _CardNotifier>{};
   late final ValueNotifier<Set<String>> _tags;
@@ -119,11 +117,6 @@ class _ServerPageState extends ConsumerState<ServerPage>
     _tag.dispose();
     _tags.dispose();
     _offsetNotifier.dispose();
-    _landscapeController?.dispose();
-    for (final n in _cardsStatus.values) {
-      n.dispose();
-    }
-    _cardsStatus.clear();
     super.dispose();
   }
 
@@ -141,32 +134,11 @@ class _ServerPageState extends ConsumerState<ServerPage>
   }
 
   @override
-  void deactivate() {
-    _timer?.cancel();
-    _timer = null;
-    super.deactivate();
-  }
-
-  @override
-  void activate() {
-    super.activate();
-    _startAvoidJitterTimer();
-  }
-
-  void _pruneCardNotifiers(Set<String> aliveIds) {
-    final toRemove = _cardsStatus.keys.where((id) => !aliveIds.contains(id)).toList();
-    for (final id in toRemove) {
-      _cardsStatus.remove(id)?.dispose();
-    }
-  }
-
-  @override
   Widget build(BuildContext context) {
     super.build(context);
     // Listen to provider changes and update the ValueNotifier
     ref.listen(serversProvider, (previous, next) {
       _tags.value = next.tags;
-      _pruneCardNotifiers(next.servers.keys.toSet());
     });
     return OrientationBuilder(
       builder: (_, orientation) {
@@ -212,7 +184,10 @@ class _ServerPageState extends ConsumerState<ServerPage>
   }
 
   Widget _buildPortrait() {
+    // Watch serverOrder, tags, and servers to ensure filtered view rebuilds
+    // when individual server tags change without affecting the global tag set
     final serverOrder = ref.watch(serversProvider.select((s) => s.serverOrder));
+    ref.watch(serversProvider.select((s) => s.tags));
     final servers = ref.watch(serversProvider.select((s) => s.servers));
     final selected = ref.watch(serverSelectionProvider);
     final selectedSpi = selected == null ? null : servers[selected];
@@ -254,11 +229,9 @@ class _ServerPageState extends ConsumerState<ServerPage>
   }
 
   Widget _buildBodySmall({required List<String> filtered}) {
-    // The same mark the terminal, file and snippet tabs show with nothing
-    // open. A tab with no servers in it is the one place a new install starts,
-    // and it said "Empty" — a word for a list that could have had something in
-    // it, on a page where the thing to do is the button floating over it.
-    if (filtered.isEmpty) return const EmptyPane(icon: BoxIcons.bx_server);
+    if (filtered.isEmpty) {
+      return Center(child: Text(libL10n.empty, textAlign: TextAlign.center));
+    }
 
     // Cards are as tall as what they have to say — a server that has not
     // connected is one line, one that has is several charts. Splitting them
@@ -279,7 +252,7 @@ class _ServerPageState extends ConsumerState<ServerPage>
 
   Widget _buildEachServerCard(ServerState srv) {
     final card = CardX(
-      key: ValueKey(srv.spi.id),
+      key: Key(srv.spi.id + _tag.value),
       // A context from inside the built tree, so the tap can ask whether a
       // detail pane is on screen. The state's own context is an ancestor of
       // the layout that installs the scope, and the lookup only goes up.

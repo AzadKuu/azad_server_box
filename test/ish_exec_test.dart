@@ -1,4 +1,3 @@
-import 'package:fl_lib/fl_lib.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:server_box/core/utils/ish_exec.dart';
 
@@ -23,10 +22,7 @@ void main() {
   test('the streams are separated before anything runs', () {
     final wrapped = wrap('echo hi');
 
-    expect(
-      wrapped.split('\n').first,
-      "exec >'/tmp/a.out' 2>'/tmp/a.err' </dev/null",
-    );
+    expect(wrapped.split('\n').first, "exec >'/tmp/a.out' 2>'/tmp/a.err' </dev/null");
     expect(wrapped, endsWith('echo hi'));
   });
 
@@ -54,19 +50,6 @@ void main() {
     // One statement per line, so nothing above escaped into the script.
     final lines = wrapped.split('\n');
     expect(lines.where((l) => l.startsWith('export ')), hasLength(1));
-  });
-
-  test('an environment name cannot add shell syntax', () {
-    expect(
-      () => wrap('true', env: {'SAFE; touch /tmp/unwanted #': 'x'}),
-      throwsA(
-        isA<ArgumentError>().having(
-          (error) => error.message,
-          'message',
-          allOf(contains(libL10n.invalid), contains(libL10n.name)),
-        ),
-      ),
-    );
   });
 
   test('several values are exported before the script', () {

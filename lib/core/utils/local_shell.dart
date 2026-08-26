@@ -17,13 +17,7 @@ import 'package:server_box/data/model/server/shell_backend.dart';
 /// Android the shell is whatever toybox provides — see [isSupported], which is
 /// the only thing a caller should ask.
 class LocalShellBackend implements ShellBackend {
-  LocalShellBackend({this.inRootfs = false, this.profileId});
-
-  /// Which installed system, when [inRootfs], or null for the selected one.
-  ///
-  /// proot is a host process per session, so two backends with different ids
-  /// are two systems running at once and nothing has to coordinate them.
-  final String? profileId;
+  LocalShellBackend({this.inRootfs = false});
 
   /// Whether shells start inside the Linux userland rather than the platform's
   /// own. Only Android has one — see [AndroidRootfs].
@@ -105,25 +99,14 @@ class LocalShellBackend implements ShellBackend {
     required int height,
     Map<String, String>? environment,
   }) async {
-    final guest = inRootfs
-        ? await AndroidRootfs.enter(profileId: profileId)
-        : null;
-    if (inRootfs && guest == null) {
-      throw StateError('The selected Linux system is no longer available.');
-    }
-    try {
-      return _start(
-        guest?.executable ?? shellPath,
-        arguments: guest?.arguments ?? const [],
-        width: width,
-        height: height,
-        environment: environment,
-        onDone: guest?.release,
-      );
-    } catch (_) {
-      guest?.release();
-      rethrow;
-    }
+    final guest = inRootfs ? AndroidRootfs.enter() : null;
+    return _start(
+      guest?.executable ?? shellPath,
+      arguments: guest?.arguments ?? const [],
+      width: width,
+      height: height,
+      environment: environment,
+    );
   }
 
   @override
@@ -133,29 +116,18 @@ class LocalShellBackend implements ShellBackend {
     required int height,
     Map<String, String>? environment,
   }) async {
-    final guest = inRootfs
-        ? await AndroidRootfs.enter(command: command, profileId: profileId)
-        : null;
-    if (inRootfs && guest == null) {
-      throw StateError('The selected Linux system is no longer available.');
-    }
-    try {
-      return _start(
-        guest?.executable ?? shellPath,
-        arguments:
-            guest?.arguments ??
-            // `/C` on Windows, where `cmd` spells the same idea differently and
-            // taking the POSIX form would run nothing at all.
-            [Platform.isWindows ? '/C' : '-c', command],
-        width: width,
-        height: height,
-        environment: environment,
-        onDone: guest?.release,
-      );
-    } catch (_) {
-      guest?.release();
-      rethrow;
-    }
+    final guest = inRootfs ? AndroidRootfs.enter(command: command) : null;
+    return _start(
+      guest?.executable ?? shellPath,
+      arguments:
+          guest?.arguments ??
+          // `/C` on Windows, where `cmd` spells the same idea differently and
+          // taking the POSIX form would run nothing at all.
+          [Platform.isWindows ? '/C' : '-c', command],
+      width: width,
+      height: height,
+      environment: environment,
+    );
   }
 
   _LocalShellSession _start(
@@ -164,7 +136,6 @@ class LocalShellBackend implements ShellBackend {
     required int width,
     required int height,
     Map<String, String>? environment,
-    void Function()? onDone,
   }) {
     if (_closed) {
       throw StateError('This local shell backend is closed');
@@ -191,12 +162,7 @@ class LocalShellBackend implements ShellBackend {
       ),
     );
     _sessions.add(session);
-    unawaited(
-      session.done.whenComplete(() {
-        _sessions.remove(session);
-        onDone?.call();
-      }),
-    );
+    unawaited(session.done.whenComplete(() => _sessions.remove(session)));
     return session;
   }
 

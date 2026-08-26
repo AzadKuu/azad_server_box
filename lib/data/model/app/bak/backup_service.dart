@@ -21,9 +21,7 @@ class BackupService {
         Toast.success(libL10n.success);
       }
     } catch (e, s) {
-      if (context.mounted) {
-        context.showErrDialog(e, s, libL10n.backup);
-      }
+      context.showErrDialog(e, s, libL10n.backup);
     }
   }
 
@@ -38,9 +36,7 @@ class BackupService {
       return;
     }
 
-    if (context.mounted) {
-      await restoreFromText(context, text);
-    }
+    await restoreFromText(context, text);
   }
 
   /// Handle restore from text with decryption support
@@ -52,44 +48,29 @@ class BackupService {
     if (!isEncrypted) {
       try {
         final (backup, err) = await context.showLoadingDialog(
-          fn: () => _decodeOnIsolate(text, null),
+          fn: () => Computer.shared.start(MergeableUtils.fromJsonString, text),
         );
-        if (err != null) {
-          if (context.mounted) {
-            context.showErrDialog(err, null, libL10n.restore);
-          }
-          return;
-        }
-        if (backup == null) {
-          if (context.mounted) {
-            context.showErrDialog(
-              '${libL10n.empty}: ${libL10n.backup}',
-              null,
-              libL10n.restore,
-            );
-          }
-          return;
-        }
+        if (err != null || backup == null) return;
 
-        if (!context.mounted) return;
         await _confirmAndRestore(context, backup);
       } catch (e, s) {
         Loggers.app.warning('Import backup failed', e, s);
-        if (context.mounted) context.showErrDialog(e, s, libL10n.restore);
+        context.showErrDialog(e, s, libL10n.restore);
       }
       return;
     }
 
     // Try with saved password first
     final savedPassword = await SecureStoreProps.bakPwd.read();
-    if (!context.mounted) return;
     if (savedPassword != null && savedPassword.isNotEmpty) {
       try {
         final (backup, err) = await context.showLoadingDialog(
-          fn: () => _decodeOnIsolate(text, savedPassword),
+          fn: () => Computer.shared.start(
+            (args) => MergeableUtils.fromJsonString(args.$1, args.$2),
+            (text, savedPassword),
+          ),
         );
         if (err == null && backup != null) {
-          if (!context.mounted) return;
           await _confirmAndRestore(context, backup);
           return;
         }
@@ -104,59 +85,25 @@ class BackupService {
 
     // Prompt for password with retry logic
     while (true) {
-      if (!context.mounted) return;
       password = await _showPasswordDialog(
         context,
         title: libL10n.pwd,
         hint: l10n.backupEncrypted,
       );
-      if (!context.mounted) return;
       if (password == null) return; // User cancelled
 
       try {
         final (backup, err) = await context.showLoadingDialog(
-          fn: () => _decodeOnIsolate(text, password),
+          fn: () => Computer.shared.start(
+            (args) => MergeableUtils.fromJsonString(args.$1, args.$2),
+            (text, password),
+          ),
         );
-        if (!context.mounted) return;
-        if (err != null) {
-          final msg = err.toString().toLowerCase();
-          if (msg.contains('incorrect password') ||
-              msg.contains('failed to decrypt')) {
-            final retry = await context.showRoundDialog<bool>(
-              title: l10n.backupPasswordWrong,
-              child: Text(l10n.backupPasswordWrong),
-              actions: [
-                TextButton(
-                  onPressed: () => context.popDialog(false),
-                  child: Text(libL10n.cancel),
-                ),
-                TextButton(
-                  onPressed: () => context.popDialog(true),
-                  child: Text(libL10n.retry),
-                ),
-              ],
-            );
-            if (retry != true) return;
-            continue;
-          }
-          if (context.mounted) {
-            context.showErrDialog(err, null, libL10n.restore);
-          }
-          return;
-        }
-        if (backup == null) {
-          context.showErrDialog(
-            '${libL10n.empty}: ${libL10n.backup}',
-            null,
-            libL10n.restore,
-          );
-          return;
-        }
+        if (err != null || backup == null) continue;
 
         await _confirmAndRestore(context, backup);
         return;
       } catch (e) {
-        if (!context.mounted) return;
         if (e.toString().contains('incorrect password') ||
             e.toString().contains('Failed to decrypt')) {
           final retry = await context.showRoundDialog<bool>(
@@ -177,9 +124,7 @@ class BackupService {
           continue; // Try again
         } else {
           // Other error, show and exit
-          if (context.mounted) {
-            context.showErrDialog(e, null, libL10n.restore);
-          }
+          context.showErrDialog(e, null, libL10n.restore);
           return;
         }
       }
@@ -191,7 +136,6 @@ class BackupService {
     BuildContext context,
     (dynamic, String) backup,
   ) async {
-    if (!context.mounted) return;
     await context.showRoundDialog(
       title: libL10n.restore,
       child: Text(
@@ -205,29 +149,14 @@ class BackupService {
           onTap: () async {
             try {
               await backup.$1.merge(force: true);
-              if (!context.mounted) return;
               context.popDialog();
             } catch (e, s) {
-              if (!context.mounted) return;
               context.popDialog();
               context.showErrDialog(e, s, libL10n.restore);
             }
           },
         ),
       ],
-    );
-  }
-
-  static Future<(dynamic, String)?> _decodeOnIsolate(
-    String text,
-    String? password,
-  ) {
-    if (password == null) {
-      return Computer.shared.start(MergeableUtils.fromJsonString, text);
-    }
-    return Computer.shared.start(
-      (args) => MergeableUtils.fromJsonString(args.$1, args.$2),
-      (text, password),
     );
   }
 

@@ -26,11 +26,17 @@ class AppLocalizationsRu extends AppLocalizations {
 
   @override
   String get askAiEndpointTip =>
-      'Домен или полный URL. Путь дополняется по выбранному протоколу.';
+      'Укажите базовый URL сервиса или полный эндпойнт Chat Completions либо Responses. ServerBox дополнит путь в соответствии с выбранным протоколом.';
 
   @override
   String get askAiProtocolTip =>
-      'Авто пробует Responses, затем Chat Completions.';
+      '«Авто» использует Responses для официального эндпойнта OpenAI и Chat Completions для совместимых провайдеров.';
+
+  @override
+  String get askAiProtocolChatCompletions => 'Chat Completions';
+
+  @override
+  String get askAiProtocolResponses => 'Responses';
 
   @override
   String get askAiCommandInserted => 'Команда вставлена в терминал';
@@ -51,15 +57,25 @@ class AppLocalizationsRu extends AppLocalizations {
   String get askAiNoResponse => 'Нет ответа';
 
   @override
+  String get askAiAgentTitle => 'SSH-агент';
+
+  @override
   String get askAiAgentWelcome => 'Что сделаем на этом сервере?';
+
+  @override
+  String get askAiAgentWelcomeTip =>
+      'Попросите диагностику или задачу. Агент предлагает по одной команде и ждёт вашей проверки, прежде чем что-то менять.';
 
   @override
   String get askAiAgentPromptHint =>
       'Попросите агента что-нибудь проверить или починить…';
 
   @override
+  String get askAiAgentSend => 'Отправить агенту';
+
+  @override
   String get askAiAnalyzeSelectionPrompt =>
-      'Проанализируй выделенный вывод терминала и объясни, что произошло';
+      'Проанализируйте выделенный вывод терминала, объясните, что произошло, и предложите самый безопасный следующий шаг, если нужно действие.';
 
   @override
   String get askAiTerminalContext => 'Контекст терминала';
@@ -72,7 +88,7 @@ class AppLocalizationsRu extends AppLocalizations {
 
   @override
   String get askAiReviewBeforeContinuing =>
-      'Сначала проверьте или отклоните текущее предложение';
+      'Сначала проверьте или отклоните предложенную команду';
 
   @override
   String get askAiApproveRun => 'Одобрить и выполнить';
@@ -103,7 +119,7 @@ class AppLocalizationsRu extends AppLocalizations {
 
   @override
   String get askAiHighRiskConfirmBody =>
-      'Команда может внести изменения, которые трудно отменить. Проверьте внимательно.';
+      'Эта команда может удалить данные, остановить службы или оказаться трудно обратимой. Внимательно проверьте её перед запуском.';
 
   @override
   String get askAiNoCommandOutput => 'Команда завершилась без вывода.';
@@ -121,18 +137,18 @@ class AppLocalizationsRu extends AppLocalizations {
 
   @override
   String get askAiAutoRunSafeCommandsTip =>
-      'Выполняется, только если и модель, и локальная проверка считают команду только для чтения';
+      'Автоматический запуск только тогда, когда и модель, и локальные проверки безопасности считают команду доступной только для чтения. Команды, изменяющие систему, по-прежнему требуют проверки.';
 
   @override
   String get askAiSendOnEnter => 'Enter отправляет';
 
   @override
   String get askAiSendOnEnterTip =>
-      'Enter отправляет, Shift+Enter — новая строка. Выкл.: Enter — новая строка, Cmd/Ctrl+Enter отправляет.';
+      'Enter отправляет сообщение, Shift+Enter переносит строку. Если выключено, наоборот: Enter переносит строку, а отправляет Cmd/Ctrl+Enter.';
 
   @override
   String get askAiApiKeyOptional =>
-      'Оставьте пустым для локального или без аутентификации';
+      'Необязательно для локальных эндпойнтов и эндпойнтов без аутентификации';
 
   @override
   String get askAiHistory => 'История диалогов';
@@ -141,13 +157,13 @@ class AppLocalizationsRu extends AppLocalizations {
   String get askAiNewConversation => 'Новый диалог';
 
   @override
-  String get askAiNoHistory => 'Сохранённых бесед пока нет';
+  String get askAiNoHistory => 'Для этого сервера нет сохранённых диалогов';
 
   @override
   String get askAiNoHistoryMessages => 'Сообщений пока нет';
 
   @override
-  String get askAiUntitledConversation => 'Без названия';
+  String get askAiUntitledConversation => 'Новый диалог';
 
   @override
   String get askAiRenameConversation => 'Переименовать диалог';
@@ -157,7 +173,7 @@ class AppLocalizationsRu extends AppLocalizations {
 
   @override
   String get askAiDeleteConversationTip =>
-      'Удаляет её с этого устройства. Отменить нельзя.';
+      'Диалог будет удалён с этого устройства без возможности восстановления.';
 
   @override
   String get askAiClearHistoryTitle =>
@@ -165,18 +181,21 @@ class AppLocalizationsRu extends AppLocalizations {
 
   @override
   String get askAiClearHistoryTip =>
-      'Все сохранённые беседы агента для этого сервера будут удалены.';
+      'Все диалоги агента, сохранённые для этого сервера, будут удалены с этого устройства.';
 
   @override
   String get askAiRestoredReview =>
-      'Команда взята из истории. Проверьте её снова';
+      'Восстановлено из истории. Проверьте ещё раз перед запуском; сама команда никогда не выполнится.';
+
+  @override
+  String get agentTitle => 'Агент';
 
   @override
   String get agentWelcome => 'Что сделаем на ваших серверах?';
 
   @override
   String get agentWelcomeTip =>
-      'Пусть агент разберётся с проблемой или выполнит задачу';
+      'Попросите диагностику или эксплуатационную задачу. Агент использует текущее состояние ServerBox и предлагает по одному действию на проверку.';
 
   @override
   String get agentPromptHint =>
@@ -200,6 +219,9 @@ class AppLocalizationsRu extends AppLocalizations {
 
   @override
   String get agentToolWriteFile => 'Запись файла';
+
+  @override
+  String get agentToolServerBox => 'ServerBox';
 
   @override
   String get agentToolFailed => 'Не удалось выполнить инструмент.';
@@ -226,7 +248,7 @@ class AppLocalizationsRu extends AppLocalizations {
 
   @override
   String get agentSshConnectTip =>
-      'Агенту нужно SSH-подключение. Введите пароль здесь';
+      'Агент хочет открыть SSH-подключение. Введите пароль здесь, а не в диалоге: там он сохранится и будет отправлен модели.';
 
   @override
   String get agentAdHocSessions => 'Временные подключения';
@@ -236,14 +258,17 @@ class AppLocalizationsRu extends AppLocalizations {
 
   @override
   String get agentSaveServerTip =>
-      'Этот хост и введённый пароль сохраняются на этом устройстве';
+      'Этот хост и введённый пароль будут сохранены на этом устройстве.';
 
   @override
   String get agentMonitorOptional => 'Агент monitor (необязательно)';
 
   @override
+  String get atLeastOneTab => 'Должна быть выбрана хотя бы одна вкладка';
+
+  @override
   String get authFailTip =>
-      'Не удалось пройти аутентификацию. Проверьте данные';
+      'Аутентификация не удалась, пожалуйста, проверьте, правильны ли пароль/ключ/хост/пользователь и т.д.';
 
   @override
   String get autoBackupConflict =>
@@ -285,75 +310,12 @@ class AppLocalizationsRu extends AppLocalizations {
   String get backupPasswordWrong => 'Неверный пароль резервной копии';
 
   @override
-  String get connectAll => 'Подключить все';
-
-  @override
-  String get disconnectAll => 'Отключить все';
-
-  @override
-  String get distIcon => 'Значки дистрибутивов';
-
-  @override
-  String get distIconConsent =>
-      'Только чтобы обозначить дистрибутив, который может работать на сервере.';
-
-  @override
-  String get distIconIntroLegal =>
-      'Знак говорит лишь о том, что это устройство прочитало с удалённой системы; эти сведения могут быть неверными или устаревшими и не обозначают ни производную сборку, ни пересборку, ни какую-либо конкретную версию. Если определить не удалось, рисуется обычный значок.\n\nКаждый знак является товарным знаком своего владельца и используется здесь только для указания на систему, которую он обозначает.';
-
-  @override
-  String get distIconTip =>
-      'Показывать рядом с каждым сервером небольшой значок системы, которая на нём предположительно работает';
-
-  @override
-  String get distNameMap => 'Сопоставление имён';
-
-  @override
-  String get distNameMapTip =>
-      'Только для дистрибутива, у которого файл там, где вы размещаете знаки, называется иначе. Ключ — имя, которое использует это приложение, значение — имя, которое нужно загрузить. Оставьте пустым, пока ни один знак не пропадает.';
-
-  @override
-  String get logoUrl => 'Адрес логотипа';
-
-  @override
-  String get logoUrlTip =>
-      'Большое изображение вверху страницы сервера, в его собственных цветах.';
-
-  @override
-  String get markUrl => 'Адрес знака';
-
-  @override
-  String get markUrlTip =>
-      'Маленький знак рядом с именем сервера в списках. Пусто — не показывать.\n\nЭто не то же изображение, что логотип';
-
-  @override
-  String get navTabMenuTip =>
-      'Нажмите и удерживайте вкладку — или щёлкните правой кнопкой — чтобы подключить или отключить всё сразу.';
-
-  @override
-  String nTags(Object count) {
-    return 'Тегов: $count';
-  }
-
-  @override
   String get remoteBackupPasswordRequired =>
       'Для удалённых резервных копий требуется непустой пароль резервного копирования';
 
   @override
   String get monitorHttpsRequired =>
-      'Удалённому агенту monitor нужен HTTPS, если для него не разрешён HTTP.';
-
-  @override
-  String get monitorAllowInsecureHttp => 'Разрешить HTTP';
-
-  @override
-  String get monitorAllowInsecureHttpTip =>
-      'Только в доверенной частной сети, которая сама шифрует транспорт, например Tailscale';
-
-  @override
-  String monitorHttpTip(String url) {
-    return 'Читать состояние этого сервера через HTTP API агента **monitor**, а не выполняя команды по SSH.\n\nАгент нужно сначала установить на сервер; от него зависят графики, приложение для часов и виджеты.\n\n[Как установить monitor]($url)';
-  }
+      'Для удалённых агентов мониторинга требуется HTTPS; HTTP разрешён только для loopback-адресов.';
 
   @override
   String get backupTip =>
@@ -397,10 +359,6 @@ class AppLocalizationsRu extends AppLocalizations {
   @override
   String get bgRunTip =>
       'Этот переключатель означает, что программа будет пытаться работать в фоновом режиме, но фактическое выполнение зависит от того, включено ли разрешение. Для нативного Android отключите «Оптимизацию батареи» для этого приложения, для MIUI измените контроль активности на «Нет ограничений».';
-
-  @override
-  String get bgRunNeedsNotification =>
-      'Для работы в фоне нужно постоянное уведомление, а у приложения нет разрешения на уведомления. Нажмите, чтобы разрешить.';
 
   @override
   String get clearAllStatsContent =>
@@ -491,14 +449,6 @@ class AppLocalizationsRu extends AppLocalizations {
   String get discoverySettings => 'Настройки обнаружения';
 
   @override
-  String get distro => 'Дистрибутив';
-
-  @override
-  String distroSwitchTip(Object from, Object to) {
-    return 'Заменить $from на $to. Всё, что установлено внутри $from, будет удалено, а вместо него будет загружен и распакован $to.';
-  }
-
-  @override
   String get diskHealth => 'Состояние диска';
 
   @override
@@ -536,7 +486,7 @@ class AppLocalizationsRu extends AppLocalizations {
       'Эта опция лишь включает функцию; фактическое применение зависит от ширины устройства';
 
   @override
-  String get editVirtKeys => 'Виртуальные клавиши';
+  String get editVirtKeys => 'Редактировать виртуальные клавиши';
 
   @override
   String get editorHighlightTip =>
@@ -571,10 +521,11 @@ class AppLocalizationsRu extends AppLocalizations {
   String get fileDirGone => 'Этой папки больше нет';
 
   @override
-  String get fileDirGoneTip => 'Он удалён или переименован';
+  String get fileDirGoneTip =>
+      'Она удалена или переименована. Используйте панель внизу, чтобы вернуться, перейти в домашнюю папку или в другое место.';
 
   @override
-  String get fullScreen => 'Полный экран';
+  String get fullScreen => 'Полноэкранный режим';
 
   @override
   String get fullScreenJitter => 'Вибрация в полноэкранном режиме';
@@ -585,6 +536,9 @@ class AppLocalizationsRu extends AppLocalizations {
   @override
   String get fullScreenTip =>
       'Следует ли включить полноэкранный режим, когда устройство поворачивается в альбомный режим? Эта опция применяется только к вкладке сервера.';
+
+  @override
+  String get githubGist => 'GitHub Gist';
 
   @override
   String get githubGistIdOptional => 'ID Gist (необязательно)';
@@ -606,6 +560,9 @@ class AppLocalizationsRu extends AppLocalizations {
       'Настройте, какие вкладки появляются на главной странице и их порядок';
 
   @override
+  String get homeWidgetUrlConfig => 'Конфигурация URL виджета домашнего экрана';
+
+  @override
   String get ignoreCert => 'Игнорировать сертификат';
 
   @override
@@ -613,70 +570,29 @@ class AppLocalizationsRu extends AppLocalizations {
 
   @override
   String get macDmgBody =>
-      'App Store требует запускать это приложение в песочнице, а из песочницы нельзя открыть терминал. Версия DMG может.\n\nВерсия из App Store может перестать обновляться.';
+      'App Store требует, чтобы приложение работало в песочнице, а процесс в песочнице не может открыть псевдотерминал. Поэтому в сборке из App Store нет терминала на этом Mac и нельзя выполнить здесь сниппет или команду агента. Сборка DMG — то же приложение, подписанное без песочницы, и умеет и то и другое.\n\nСборка из App Store продолжает работать и обновляться. Позже обновления могут прекратиться.\n\nДанные у сборок лежат в разных местах. Сборка DMG копирует их при первом запуске, так что серверы, ключи и история переезжают вместе с вами. Если не выйдет, она об этом скажет, и можно перенести файл резервной копии («Резервная копия» в настройках).';
 
   @override
   String get macDmgImportDenied =>
-      'macOS не дал прочитать данные предыдущей версии';
+      'macOS не разрешил читать данные ранее установленной сборки. Дайте полный доступ к диску и откройте приложение заново или экспортируйте там резервную копию и восстановите её здесь.';
 
   @override
-  String get macDmgImported => 'Данные предыдущей версии импортированы';
+  String get macDmgImported =>
+      'Данные ранее установленной сборки импортированы.';
 
   @override
   String get macDmgImportFailed =>
-      'Не удалось прочитать данные предыдущей версии';
+      'Не удалось прочитать данные ранее установленной сборки. Экспортируйте там резервную копию и восстановите её здесь.';
 
   @override
   String get macDmgTip =>
-      'Локальный терминал и запуск сниппетов локально (версия DMG)';
+      'Терминал на этом Mac и запуск сниппетов на нём есть только в сборке DMG.';
 
   @override
   String get macDmgTitle => 'Сборка DMG';
 
   @override
   String get showHiddenFiles => 'Показывать скрытые файлы';
-
-  @override
-  String get sshKeyAlgorithm => 'Алгоритм';
-
-  @override
-  String get sshKeyComment => 'Комментарий';
-
-  @override
-  String get sshKeyGenerate => 'Создать пару ключей';
-
-  @override
-  String get sshKeyGenerating => 'Создание…';
-
-  @override
-  String sshKeyLockedFmt(String name) {
-    return 'Закрытый ключ [$name] не разблокирован.';
-  }
-
-  @override
-  String get sshKeyPassphraseTip =>
-      'Необязательно. Ключ с парольной фразой хранится в зашифрованном виде, и она запрашивается при первом использовании ключа.';
-
-  @override
-  String get sshKeyPassphraseWrong => 'Неверная парольная фраза.';
-
-  @override
-  String get sshKeyPublicKey => 'Открытый ключ';
-
-  @override
-  String get sshKeyPublicKeyTip =>
-      'Добавьте эту строку в ~/.ssh/authorized_keys на сервере.';
-
-  @override
-  String get sshKeyRecommended => 'Рекомендуется';
-
-  @override
-  String sshKeyUnlockTip(String name) {
-    return 'Введите парольную фразу закрытого ключа [$name].';
-  }
-
-  @override
-  String get ungrouped => 'Без группы';
 
   @override
   String get unused => 'Не используется';
@@ -697,7 +613,8 @@ class AppLocalizationsRu extends AppLocalizations {
   String get unusedTaggedImages => 'Неиспользуемые с тегами';
 
   @override
-  String get pruneDanglingImagesTip => 'Удаляет только висячие образы.';
+  String get pruneDanglingImagesTip =>
+      'Удаляет только висячие образы (слои без тегов).';
 
   @override
   String get pruneUnusedImagesTip =>
@@ -748,16 +665,6 @@ class AppLocalizationsRu extends AppLocalizations {
       'Промежуточный сервер и ProxyCommand нельзя использовать вместе.';
 
   @override
-  String get noConnectionMethod => 'Настройте SSH, агент monitor или оба';
-
-  @override
-  String get preferredTransport => 'Сначала пробовать';
-
-  @override
-  String get preferredTransportTip =>
-      'Откуда читается статус и какое соединение команда откроет первым. Второе остаётся доступным.';
-
-  @override
   String get keepForeground => 'Пожалуйста, держите приложение в фокусе!';
 
   @override
@@ -784,14 +691,6 @@ class AppLocalizationsRu extends AppLocalizations {
       'Когда параметр включен, ввод проходит через обычный IME, что на некоторых системах позволяет избежать запросов защищенной клавиатуры в терминале.';
 
   @override
-  String get linuxShellTip =>
-      'С какой оболочки запускается терминал. Пусто — вернуть /bin/sh.';
-
-  @override
-  String get linuxNetTip =>
-      'DNS-серверы. Пусто — вернуть значения по умолчанию';
-
-  @override
   String madeWithLove(Object myGithub) {
     return 'Создано с ❤️ by $myGithub';
   }
@@ -807,9 +706,6 @@ class AppLocalizationsRu extends AppLocalizations {
   String mismatchSystem(Object system) {
     return 'Несоответствующая система: $system';
   }
-
-  @override
-  String get mirror => 'Зеркало';
 
   @override
   String get needRestart => 'Требуется перезапуск приложения';
@@ -832,6 +728,9 @@ class AppLocalizationsRu extends AppLocalizations {
 
   @override
   String get noPromptAgain => 'Больше не спрашивать';
+
+  @override
+  String get onlyOneLine => 'Отображать только в одной строке (прокручивается)';
 
   @override
   String get openLastPath => 'Открыть последний путь';
@@ -859,100 +758,8 @@ class AppLocalizationsRu extends AppLocalizations {
   }
 
   @override
-  String get bmcPowerOnAction => 'Включить';
-
-  @override
-  String get bmcShutdown => 'Выключить';
-
-  @override
-  String get bmcForceOff => 'Принудительно выключить';
-
-  @override
-  String get restart => 'Перезапустить';
-
-  @override
-  String get bmcPowerCycle => 'Полный перезапуск питания';
-
-  @override
-  String bmcPowerConfirm(String server, String resetType) {
-    return 'Отправить на $server? Сервису будет послано «$resetType»';
-  }
-
-  @override
-  String get bmcPowerDone => 'Состояние питания изменилось';
-
-  @override
-  String get bmcPowerAccepted =>
-      'Принято, но состояние питания не изменилось. Мягкая операция зависит от ОС';
-
-  @override
-  String get bmcPowerUnsupported =>
-      'Эта служба ничего не допускает для этого действия';
-
-  @override
-  String get bmcUnauthorized => 'BMC отклонил учётную запись';
-
-  @override
-  String get bmcAccountMissing => 'Для этого BMC не задана учётная запись';
-
-  @override
-  String get bmcPowerOn => 'Включён';
-
-  @override
-  String get bmcPowerOff => 'Выключен';
-
-  @override
-  String get bmcCertRejected =>
-      'Сертификат отклонён — проверьте его в настройках сервера';
-
-  @override
-  String get bmcNotAService => 'По этому адресу нет службы Redfish';
-
-  @override
-  String get bmcNoSystem => 'Служба не сообщает ни об одной системе';
-
-  @override
-  String get bmcSensorsTruncated => 'Показаны только первые датчики';
-
-  @override
-  String get bmcMultipleSystems => 'Показана только первая система';
-
-  @override
-  String get bmcTip =>
-      'BMC — отдельный компьютер на материнской плате, доступный тогда, когда операционная система хоста недоступна. Настроенный здесь, он сообщает состояние питания и показания аппаратных датчиков, пока сервер выключен или завис. Требуется Redfish, он есть у большинства серверного оборудования примерно с 2016 года.';
-
-  @override
-  String get bmcCert => 'Сертификат';
-
-  @override
-  String get bmcCertPinned => 'Проверен и закреплён';
-
-  @override
-  String get bmcCertUnreviewed =>
-      'Ещё не проверен — нажмите, чтобы посмотреть сертификат';
-
-  @override
-  String get bmcCertReview =>
-      'Самоподписанный сертификат. Сверьте его перед принятием. Дальше доверяется только он.';
-
-  @override
-  String get bmcCertChanged => 'Сертификат не совпадает. Проверьте.';
-
-  @override
-  String get bmcCertExpired => 'Просрочен.';
-
-  @override
-  String bmcCertWas(String fingerprint) {
-    return 'Принят ранее: $fingerprint';
-  }
-
-  @override
-  String get bmcAddrInvalid =>
-      'Адрес BMC должен быть URL, например https://10.0.0.9';
-
-  @override
   String get proxyCommandSandboxed =>
-      'Эта сборка работает в песочнице: команда получает пустой home, не ваш, поэтому всё, что читает ~/.ssh, падает. Версия DMG — нет.';
+      'Эта сборка работает в песочнице: команда видит пустой домашний каталог вместо вашего, поэтому всё, что читает ~/.ssh (ssh -W, cloudflared), завершается ошибкой — чаще всего тайм-аутом с именем не того хоста. Команды, использующие только сеть, работают. В сборке DMG песочницы нет.';
 
   @override
   String privateKeyFileUnreadable(String path, String reason) {
@@ -1059,18 +866,8 @@ class AppLocalizationsRu extends AppLocalizations {
   String get remotePath => 'Удаленный путь';
 
   @override
-  String rootfsUpdateTip(
-    Object distro,
-    Object installed,
-    Object latest,
-    Object pm,
-  ) {
-    return 'Установлен $distro $installed, доступен $latest. Обновление заменит весь контейнер: данные $pm будут потеряны';
-  }
-
-  @override
-  String linuxSystemInUse(Object name) {
-    return 'Закройте терминалы на $name, прежде чем удалять';
+  String rootfsUpdateTip(Object installed, Object latest) {
+    return 'Установлен Alpine $installed, доступна версия $latest. Обновление загрузит его заново и заменит контейнер: всё, что было установлено внутри через apk, будет потеряно. Если пропустить, текущий контейнер продолжит работать.';
   }
 
   @override
@@ -1078,8 +875,8 @@ class AppLocalizationsRu extends AppLocalizations {
       'Пользовательское окружение Linux на этом устройстве';
 
   @override
-  String rootfsInstallTip(Object distro, Object version, Object size) {
-    return 'Скачивает $distro $version (около $size МБ) и распаковывает на устройстве.';
+  String rootfsInstallTip(Object version) {
+    return 'Загрузить Alpine Linux $version (около 3 МБ) и распаковать на этом устройстве. Это даёт приложению оболочку с пакетным менеджером; её можно удалить в любой момент.';
   }
 
   @override
@@ -1090,7 +887,7 @@ class AppLocalizationsRu extends AppLocalizations {
 
   @override
   String get serverFilesUnavailableTip =>
-      'Нужен SSH к этому серверу или установленный server_box_monitor с включённым файловым API.';
+      'Доступно через SSH этого сервера или через агент monitor с включённым файловым API.';
 
   @override
   String get back => 'Назад';
@@ -1100,6 +897,9 @@ class AppLocalizationsRu extends AppLocalizations {
 
   @override
   String get homeDir => 'Домашняя папка';
+
+  @override
+  String get selectItem => 'Выбрать';
 
   @override
   String selected(Object count) {
@@ -1124,14 +924,14 @@ class AppLocalizationsRu extends AppLocalizations {
 
   @override
   String get shareServerRiskTip =>
-      'Этот QR-код содержит настройки подключения открытым текстом. Любой, кто его отсканирует или сфотографирует, сможет подключиться.';
+      'Этот QR-код содержит настройки подключения к серверу в открытом виде, включая пароли. Любой, кто его отсканирует или сфотографирует, сможет подключиться к этому серверу.';
 
   @override
   String get sftpDlPrepare => 'Подготовка подключения...';
 
   @override
   String get sftpEditorTip =>
-      'Пусто — встроенный редактор. Например `vim` (лучше брать из `EDITOR`).';
+      'Если пусто, используйте встроенный редактор файлов приложения. Если значение указано, используйте редактор удаленного сервера, например, `vim` (рекомендуется автоматически определять согласно `EDITOR`).';
 
   @override
   String get sftpRmrDirSummary =>
@@ -1141,22 +941,17 @@ class AppLocalizationsRu extends AppLocalizations {
   String get sftpSSHConnected => 'SFTP подключен...';
 
   @override
+  String get sftp => 'SFTP';
+
+  @override
   String get sftpShowFoldersFirst => 'Показывать папки в начале';
-
-  @override
-  String get sftpUnavailableUseScp =>
-      'Если у этого хоста нет подсистемы SFTP, как у многих встраиваемых устройств, переключите передачу файлов на SCP в настройках сервера.';
-
-  @override
-  String get sshFileTransportTip =>
-      'SFTP подходит для любого современного устройства. SCP — для старого или встраиваемого хоста, у SSH-сервера которого нет подсистемы SFTP: ему нужна команда `scp` и оболочка, в которой есть и обычные файловые утилиты (`find`, `stat`, `mv`, `chmod`).';
 
   @override
   String get specifyDev => 'Указать устройство';
 
   @override
   String get specifyDevTip =>
-      'Сетевой трафик по умолчанию считается по всем устройствам; укажите одно здесь';
+      'Например, статистика сетевого трафика по умолчанию относится ко всем устройствам. Здесь вы можете указать конкретное устройство.';
 
   @override
   String get tempIsCelsiusTip =>
@@ -1217,13 +1012,24 @@ class AppLocalizationsRu extends AppLocalizations {
   }
 
   @override
+  String sshHostKeyFingerprintMd5Base64(Object fingerprint) {
+    return 'Отпечаток (MD5 Base64): $fingerprint';
+  }
+
+  @override
+  String sshHostKeyFingerprintMd5Hex(Object fingerprint) {
+    return 'Отпечаток (SHA256): $fingerprint';
+  }
+
+  @override
   String get sshHostKeyType => 'Тип ключа хоста SSH';
 
   @override
-  String get sshKnownHostKeys => 'Известные хосты';
+  String get sshKnownHostKeys => 'Известные ключи хостов';
 
   @override
-  String get sshKnownHostKeysTip => 'Ключи хостов, принятые этим приложением';
+  String get sshKnownHostKeysTip =>
+      'Ключи хостов, принятые этим приложением. Удалите один, чтобы при следующем подключении спросили снова.';
 
   @override
   String sshHostKeyNewDesc(Object serverName) {
@@ -1282,8 +1088,11 @@ class AppLocalizationsRu extends AppLocalizations {
       'Включить тему, макет, редактор, терминал и другие настройки устройства в автоматическую синхронизацию.';
 
   @override
+  String get system => 'Система';
+
+  @override
   String get termFontSizeTip =>
-      'Эта настройка повлияет на размер терминала (ширина и высота). Вы можете масштабировать страницу терминала, чтобы изменить размер шрифта текущей сессии.';
+      'Эта настройка повлияет на размер терминала (ширина и высота). Вы можете масштабировать страницу терминала, чтобы调整 размер шрифта текущей сессии.';
 
   @override
   String get textScalerTip =>
@@ -1328,49 +1137,6 @@ class AppLocalizationsRu extends AppLocalizations {
   String get virtKeyHelpSFTP => 'Открыть текущий путь в SFTP.';
 
   @override
-  String get virtKeyHelpSnippet =>
-      'Выбрать сниппет и выполнить его в этом терминале.';
-
-  @override
-  String get virtKeyHelpTmux => 'Переключение между сессиями и окнами tmux.';
-
-  @override
-  String get virtKeyIntroActions => 'Быстрые действия';
-
-  @override
-  String get virtKeyIntroActionsTip =>
-      'Эти клавиши ничего не вводят, а открывают нужное. Удерживайте клавишу, чтобы прочитать, что она делает.';
-
-  @override
-  String get virtKeyIntroCustomizeTip =>
-      'В настройках терминала их можно переставить или скрыть те, которыми вы не пользуетесь.';
-
-  @override
-  String get virtKeyIntroModifiers => 'Модификаторы';
-
-  @override
-  String get virtKeyIntroModifiersTip =>
-      'Нажмите одну, чтобы включить, затем букву на клавиатуре. Она действует ровно на одну клавишу.';
-
-  @override
-  String get virtKeyIntroNav => 'Перемещение курсора';
-
-  @override
-  String get virtKeyIntroNavTip =>
-      'Эти клавиши двигают курсор. Удерживайте стрелку, чтобы повторять её.';
-
-  @override
-  String get virtKeyIntroSelect =>
-      'Пока в терминале есть что прокручивать, перетаскивание вбок выделяет текст.';
-
-  @override
-  String get virtKeyRows => 'Строк показывать сразу';
-
-  @override
-  String get virtKeyRowsTip =>
-      'Остальные — на отдельной странице, пролистываемой вбок.';
-
-  @override
   String get waitConnection => 'Пожалуйста, дождитесь установки соединения';
 
   @override
@@ -1408,7 +1174,7 @@ class AppLocalizationsRu extends AppLocalizations {
       'Обнаружена эмуляция Podman Docker. Пожалуйста, переключитесь на Podman в настройках.';
 
   @override
-  String get betaTip =>
+  String get portForwardBeta =>
       'Функция ещё в бета-тестировании. Её работа не гарантируется.';
 
   @override
@@ -1540,6 +1306,9 @@ class AppLocalizationsRu extends AppLocalizations {
       'Уже выполняется другая операция с контейнером';
 
   @override
+  String get systemd => 'Systemd';
+
+  @override
   String processCount(int count) {
     String _temp0 = intl.Intl.pluralLogic(
       count,
@@ -1577,18 +1346,17 @@ class AppLocalizationsRu extends AppLocalizations {
 
   @override
   String get watchServersTip =>
-      'Часы сами обращаются к monitor, поэтому доступны только серверы с ним.';
+      'Часы сами обращаются к агенту monitor этих серверов, поэтому выбрать можно только серверы с настроенным monitor.';
 
   @override
   String get watchNoMonitorServer =>
       'Ни на одном сервере не настроен агент monitor';
 
   @override
-  String get legacyStatusGoneTitle => 'URL-адреса статуса больше не работают';
+  String get watchLegacyUrls => 'Устаревшие URL статуса';
 
   @override
-  String get legacyStatusGoneBody =>
-      'Приложение для часов и виджеты читали адрес `/status`, введённый вручную. Эта конечная точка удалена: она возвращала только текущие значения текстом, поэтому графики были невозможны.\n\nТеперь они читают аутентифицированный API агента monitor, строят графики и синхронизируются с приложением сами. Настройте сервер в приложении один раз — часы и виджеты подхватят его.';
+  String get accessoryWidgetServer => 'Сервер для виджета экрана блокировки';
 
   @override
   String get systemdMissing => 'На этом сервере нет systemd';
@@ -1641,50 +1409,14 @@ class AppLocalizationsRu extends AppLocalizations {
 
   @override
   String get agentLocalExecTip =>
-      'Позволяет агенту работать на машине, где запущен ServerBox. Даже команды только для чтения проверяются';
+      'Позволяет Агенту работать на машине, где запущен ServerBox, а не только на серверах. Здесь ничего не выполняется без присмотра: каждая команда требует проверки.';
 
   @override
   String get agentLocalExecRootfsTip =>
-      'Позволяет агенту работать локально, в пределах контейнера Linux, установленного ServerBox';
+      'Позволяет Агенту работать на этом устройстве, внутри контейнера Alpine Linux, который устанавливает ServerBox. Он не видит файловую систему самого устройства, данные приложения и ваши файлы. Каждая команда по-прежнему требует проверки.';
 
   @override
   String macDmgImportedPartly(String path) {
     return 'Данные ранее установленной сборки импортированы. Загруженные файлы остались в $path.';
   }
-
-  @override
-  String get bmcAccount => 'Учётная запись';
-
-  @override
-  String get bmcAccountUnset =>
-      'Не выбрана — нажмите, чтобы выбрать или создать';
-
-  @override
-  String bmcAccountShared(int count) {
-    return 'Используется на $count серверах';
-  }
-
-  @override
-  String get bmcAccounts => 'Учётные записи BMC';
-
-  @override
-  String get bmcAccountSharedTip => 'Изменение здесь затронет их все.';
-
-  @override
-  String bmcAccountInUse(int count) {
-    return 'Её используют $count серверов. Адрес останется, учётная запись — нет.';
-  }
-
-  @override
-  String get bmcStaleWrite =>
-      'BMC изменился во время записи. Повторите попытку.';
-
-  @override
-  String get send => 'Отправить';
-
-  @override
-  String get privacyBlur => 'Приватность в фоне';
-
-  @override
-  String get privacyBlurTip => 'Скрывать содержимое приложения в переключателе';
 }

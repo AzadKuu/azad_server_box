@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:computer/computer.dart';
 import 'package:fl_lib/fl_lib.dart';
@@ -8,23 +9,20 @@ import 'package:flutter_displaymode/flutter_displaymode.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:hive_ce_flutter/hive_flutter.dart';
 import 'package:logging/logging.dart';
-import 'package:path_provider/path_provider.dart';
 import 'package:server_box/app.dart';
 import 'package:server_box/core/chan.dart';
 import 'package:server_box/core/service/watch_sync.dart';
-import 'package:server_box/core/service/widget_sync.dart';
 import 'package:server_box/core/sync.dart';
+import 'package:server_box/core/utils/ohos_ime.dart';
 import 'package:server_box/core/utils/rootfs.dart';
-import 'package:server_box/core/utils/rootfs_manifest_source.dart';
 import 'package:server_box/core/utils/sandbox_import.dart';
 import 'package:server_box/data/model/app/menu/server_func.dart';
 import 'package:server_box/data/model/app/server_detail_card.dart';
-import 'package:server_box/data/model/server/dist_license.dart';
 import 'package:server_box/data/res/build_data.dart';
 import 'package:server_box/data/res/misc.dart';
 import 'package:server_box/data/res/store.dart';
 import 'package:server_box/data/ssh/session_manager.dart';
-import 'package:server_box/data/store/migrations/all.dart';
+import 'package:server_box/data/store/migrations/m004_kv_to_tables.dart';
 import 'package:server_box/data/store/schema.dart';
 import 'package:server_box/hive/hive_registrar.g.dart';
 import 'package:server_box/hive/legacy_adapters.dart';
@@ -95,27 +93,37 @@ Future<void> _runInZone(Future<void> Function() body) async {
 
   await runZonedGuarded(
     body,
-    (e, s) => Loggers.app.warning('Zone error', e, s),
+    (e, s) {
+      print('=== ZONE ERROR ===');
+      print(e);
+      print(s);
+      Loggers.app.warning('Zone error', e, s);
+    },
     zoneSpecification: zoneSpec,
   );
 }
 
 Future<void> _initApp() async {
+  print('init: ensureInitialized');
   WidgetsFlutterBinding.ensureInitialized();
 
   // Shared parsing library (sbm_parser FFI, see the shared-parser design)
+  print('init: RustLib.init');
   await RustLib.init();
-  // Before anything can open the licence page. Cheap: the callback only runs
-  // when that page asks for it.
-  registerDistMarkLicenses();
+  print('init: _initData');
   await _initData();
+  print('init: _setupDebug');
   _setupDebug();
+  print('init: _initWindow');
   await _initWindow();
 
+  print('init: _doPlatformRelated');
   await _doPlatformRelated();
 
   // Initialize platform session notifications and Live Activities.
+  print('init: TermSessionManager');
   await TermSessionManager.init();
+  print('init: done');
 }
 
 Future<void> _initData() async {
@@ -136,16 +144,6 @@ Future<void> _initData() async {
     dirs: const {PathDir.img, PathDir.font},
   );
 
-  // `extended_image` caches under `getTemporaryDirectory()` and makes its own
-  // folder there with a plain `create()`, no `recursive`. On macOS that
-  // directory is `~/Library/Caches/<bundle id>`, which nothing has to have
-  // made yet — a fresh install, or a machine whose caches were swept. Every
-  // image then failed with `PathNotFoundException` and no fallback, which is
-  // what a server logo turning into an error in the log was.
-  //
-  // TODO: drop once extended_image_library creates its folder recursively.
-  await (await getTemporaryDirectory()).create(recursive: true);
-
   // Only so `HiveImport` can read the boxes an upgrading install still has.
   // Nothing writes Hive any more.
   //
@@ -153,8 +151,8 @@ Future<void> _initData() async {
   // `HiveImport`, once no supported install can still be on Hive.
   await Hive.initFlutter();
   Hive.registerAdapters();
-  // Reads every released server-record layout. The generated adapters no
-  // longer own the frozen type IDs because nothing writes Hive any more.
+  // Reads pre-v3 server records, which the generated SpiAdapter no longer
+  // understands (it owns a new typeId and the nested layout).
   registerHiveLegacyAdapters();
 
   await PrefStore.shared.init(); // Call this before accessing any store
@@ -213,6 +211,25 @@ Future<void> _doPlatformRelated() async {
     }
   }
 
+  // 鸿蒙首次启动：用系统偏好语言设置 locale（否则首启默认英语）
+  if (Platform.operatingSystem == 'ohos') {
+    final savedLocale = Stores.setting.locale.fetch();
+    if (savedLocale.isEmpty) {
+      try {
+        final lang = await OhosIme.getPreferredLanguage();
+        if (lang != null && lang.isNotEmpty) {
+          final code = OhosIme.ohosLangToLocaleCode(lang);
+          if (code != null) {
+            Stores.setting.locale.put(code);
+            Loggers.app.info('OHOS locale set from system: $code (raw: $lang)');
+          }
+        }
+      } catch (e, s) {
+        Loggers.app.warning('Failed to get OHOS preferred language', e, s);
+      }
+    }
+  }
+
   // Where the Linux userland is, and whether there is one — proot and an
   // unpacked rootfs on Android, the engine and its filesystem on iOS. A few
   // file checks, and the terminal tab reads the answer while building.
@@ -222,38 +239,12 @@ Future<void> _doPlatformRelated() async {
     Loggers.app.warning('Failed to locate the Linux rootfs', e, s);
   }
 
-  // Which releases are installable is data that moves on the distributions'
-  // schedule, so it is fetched rather than compiled in. Not awaited: what
-  // `prepare` just adopted already works, and this only ever replaces it with
-  // something newer that verified.
-  //
-  // Gated on the build carrying an engine at all. Most do not — iOS ships with
-  // the switch off and Android needs a proot this repository does not contain —
-  // and a request per launch for a feature that cannot be used is one nobody
-  // asked for.
-  if (Rootfs.isAvailable) {
-    unawaited(RootfsManifestSource.refresh());
-  }
-
   // The watch app used to learn about servers only while the user sat on the
   // iOS settings page. Pushing at launch is what makes a freshly installed or
   // restored watch configure itself.
   if (isIOS) {
     unawaited(WatchSync.instance.init());
-  }
-
-  // Same reasoning, for the home-screen widgets: the list they offer on their
-  // configuration screen is whatever this last published, and the container
-  // holding it goes away with the app — so a reinstall has to re-publish
-  // before a widget can be configured at all.
-  if (isIOS || isAndroid) {
-    unawaited(WidgetSync.instance.init());
-  }
-
-  // Both platforms keep their own copy of this, which a reinstall or a restored
-  // backup leaves disagreeing with the settings store.
-  if (isIOS || isAndroid) {
-    unawaited(MethodChans.setPrivacyBlur(Stores.setting.privacyBlur.fetch()));
+    unawaited(MethodChans.syncAccessoryWidgetUrl());
   }
 
   final serversCount = Stores.server.keys().length;
@@ -264,18 +255,6 @@ Future<void> _doPlatformRelated() async {
 
 // It may contains some async heavy funcs.
 Future<void> _doDbMigrate() async {
-  // Storage layout first: it must finish before anything decodes a record as
-  // its current type. Throws SchemaTooNewException when the data was written
-  // by a newer build — that must not be swallowed, since continuing would let
-  // this build overwrite records whose shape it doesn't understand.
-  //
-  // First in this function, and not after the feature bump below, because that
-  // refusal is only worth anything if nothing has been written yet. Run second,
-  // it left `autoAddNewCards`, `autoAddNewFuncs` and a rewritten `lastVer`
-  // behind on a database it then declined to touch — so a downgrade destroyed
-  // exactly the settings the refusal exists to protect.
-  await SchemaVersion.migrate(kSchemaMigrations);
-
   final lastVer = Stores.setting.lastVer.fetch();
   const newVer = BuildData.build;
   // It's only the version upgrade trigger logic.
@@ -285,6 +264,17 @@ Future<void> _doDbMigrate() async {
     ServerFuncBtn.autoAddNewFuncs(lastVer, newVer);
     Stores.setting.lastVer.put(newVer);
   }
+
+  // Storage layout first: it must finish before anything decodes a record as
+  // its current type. Throws SchemaTooNewException when the data was written
+  // by a newer build — that must not be swallowed, since continuing would let
+  // this build overwrite records whose shape it doesn't understand.
+  //
+  // The list is empty as of v4: `HiveImport` brings every install straight to
+  // `current` while copying, because a pre-v3 record only exists as a Hive
+  // value and that is the one pass that reads one. The call stays for the
+  // downgrade check it performs, and for the next step that does exist.
+  await SchemaVersion.migrate(const [KvToTablesMigration()]);
 
   // No app-level fixups follow. `migrateIds` and `migrateIdentityFilePaths`
   // both scanned every server on every launch to repair a record only an
@@ -307,7 +297,7 @@ Future<void> _initWindow() async {
   WindowFrameConfig.setShowCaption(hideTitleBar);
   await SystemUIs.initDesktopWindow(
     hideTitleBar: hideTitleBar,
-    size: windowState?.size ?? Size(1323, 817),
+    size: windowState?.size ?? Size(947, 487),
     position: windowState?.position,
     listener: WindowStateListener(windowStateProp),
   );

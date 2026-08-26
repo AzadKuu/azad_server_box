@@ -2,6 +2,7 @@ import 'package:fl_lib/fl_lib.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:responsive_framework/responsive_framework.dart';
+import 'package:server_box/core/extension/context/locale.dart';
 import 'package:server_box/data/model/app/tab.dart';
 import 'package:server_box/data/provider/ai/agent_session.dart';
 import 'package:server_box/data/provider/ai/agent_shell.dart';
@@ -12,8 +13,8 @@ import 'package:server_box/view/page/agent/view.dart';
 ///
 /// Mounted by the home page above its `PageView` rather than inside any tab,
 /// because the point of it is to not belong to one. What it shows is the same
-/// [globalAgentSessionProvider] the Agent tab shows — this is a second window
-/// onto one conversation, not a second conversation.
+/// [agentSessionProvider] the Agent tab shows — this is a second window onto
+/// one conversation, not a second conversation.
 ///
 /// Two renderings: a panel you drag around a desktop window, and a pill that
 /// clings to the edge of a phone and opens upwards. Same content in both.
@@ -105,7 +106,7 @@ class _WindowButtons extends ConsumerWidget {
       mainAxisSize: MainAxisSize.min,
       children: [
         IconButton(
-          tooltip: collapsed ? 'Agent' : libL10n.fold,
+          tooltip: collapsed ? context.l10n.agentTitle : libL10n.fold,
           visualDensity: VisualDensity.compact,
           onPressed: collapsed ? shell.expand : shell.collapse,
           // A chevron is a thin glyph in a wide box: at the size the solid
@@ -269,7 +270,7 @@ class _DesktopShellState extends ConsumerState<_DesktopShell> {
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
-                  'Agent',
+                  context.l10n.agentTitle,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: theme.textTheme.titleSmall?.copyWith(
@@ -416,7 +417,7 @@ class _PhoneShellState extends ConsumerState<_PhoneShell>
     final padding = MediaQuery.paddingOf(context);
     const margin = AgentShellGeometry.margin;
     final working = ref.watch(
-      globalAgentSessionProvider.select((session) => session.isWorking),
+      agentSessionProvider.select((session) => session.isWorking),
     );
 
     final travel = AgentShellGeometry.pillTravelFor(
@@ -593,7 +594,7 @@ class _PhoneShellState extends ConsumerState<_PhoneShell>
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
-                    'Agent',
+                    context.l10n.agentTitle,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: theme.textTheme.titleSmall?.copyWith(

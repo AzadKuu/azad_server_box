@@ -10,8 +10,6 @@
 		1498D2341E8E89220040F4C2 /* GeneratedPluginRegistrant.m in Sources */ = {isa = PBXBuildFile; fileRef = 1498D2331E8E89220040F4C2 /* GeneratedPluginRegistrant.m */; };
 		3B3967161E833CAA004F5970 /* AppFrameworkInfo.plist in Resources */ = {isa = PBXBuildFile; fileRef = 3B3967151E833CAA004F5970 /* AppFrameworkInfo.plist */; };
 		4A2DCD6B2E4B127100CF68B7 /* LiveActivityManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A2DCD692E4B127100CF68B7 /* LiveActivityManager.swift */; };
-		4A2DCD712E4B127100CF68B7 /* DynamicIslandBrand.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A2DCD722E4B127100CF68B7 /* DynamicIslandBrand.swift */; };
-		4A2DCD732E4B127100CF68B7 /* PrivacyBlur.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A2DCD742E4B127100CF68B7 /* PrivacyBlur.swift */; };
 		4A2DCD6C2E4B127100CF68B7 /* TerminalLiveActivityAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A2DCD6A2E4B127100CF68B7 /* TerminalLiveActivityAttributes.swift */; };
 		4A2DCD6F2E4B128100CF68B7 /* TerminalLiveActivity.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A2DCD6D2E4B128100CF68B7 /* TerminalLiveActivity.swift */; };
 		4A2DCD702E4B128100CF68B7 /* TerminalLiveActivityAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A2DCD6E2E4B128100CF68B7 /* TerminalLiveActivityAttributes.swift */; };
@@ -27,9 +25,9 @@
 		E33A3E392A626DCD009744AB /* SwiftUI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = E33A3E382A626DCD009744AB /* SwiftUI.framework */; };
 		E33A3E3C2A626DCE009744AB /* StatusWidgetBundle.swift in Sources */ = {isa = PBXBuildFile; fileRef = E33A3E3B2A626DCE009744AB /* StatusWidgetBundle.swift */; };
 		E33A3E402A626DCE009744AB /* StatusWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = E33A3E3F2A626DCE009744AB /* StatusWidget.swift */; };
-		FA7C40000000000000000095 /* WidgetIntent.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA7C40000000000000000094 /* WidgetIntent.swift */; };
-		FA7C40000000000000000097 /* WidgetMonitorClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA7C40000000000000000096 /* WidgetMonitorClient.swift */; };
 		E33A3E492A626DD0009744AB /* StatusWidgetExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = E33A3E352A626DCD009744AB /* StatusWidgetExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		E37C48EA2B9C30EE00E542D2 /* StatusWidget.intentdefinition in Sources */ = {isa = PBXBuildFile; fileRef = E37C48ED2B9C30EE00E542D2 /* StatusWidget.intentdefinition */; };
+		E37C48EB2B9C30EE00E542D2 /* StatusWidget.intentdefinition in Sources */ = {isa = PBXBuildFile; fileRef = E37C48ED2B9C30EE00E542D2 /* StatusWidget.intentdefinition */; };
 		E39515CA2AB5AD62003602C1 /* WatchEndApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = E39515C92AB5AD62003602C1 /* WatchEndApp.swift */; };
 		E39515CC2AB5AD62003602C1 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E39515CB2AB5AD62003602C1 /* ContentView.swift */; };
 		E39515D42AB5AD64003602C1 /* ServerBox.app in Embed Watch Content */ = {isa = PBXBuildFile; fileRef = E39515C72AB5AD62003602C1 /* ServerBox.app */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
@@ -41,8 +39,6 @@
 		E39A76B02AB9A2F70067C641 /* Info-Profile.plist in Resources */ = {isa = PBXBuildFile; fileRef = E39A76AD2AB9A2F70067C641 /* Info-Profile.plist */; };
 		E3AE8AEA2AB601DB000A6459 /* Utils.swift in Sources */ = {isa = PBXBuildFile; fileRef = E3AE8AE92AB601DB000A6459 /* Utils.swift */; };
 		E3AE8AEB2AB601DB000A6459 /* Utils.swift in Sources */ = {isa = PBXBuildFile; fileRef = E3AE8AE92AB601DB000A6459 /* Utils.swift */; };
-		FA7C40000000000000000092 /* WidgetStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA7C40000000000000000091 /* WidgetStore.swift */; };
-		FA7C40000000000000000093 /* WidgetStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA7C40000000000000000091 /* WidgetStore.swift */; };
 		E3DB67ED2A31FE200027B8CB /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = E3DB67EB2A31FE200027B8CB /* LaunchScreen.storyboard */; };
 		F0A1B2C31A2B3C4D5E6F0005 /* Localizable.strings in Resources */ = {isa = PBXBuildFile; fileRef = F0A1B2C31A2B3C4D5E6F0001 /* Localizable.strings */; };
 		F0A1B2C31A2B3C4D5E6F1005 /* Localizable.strings in Resources */ = {isa = PBXBuildFile; fileRef = F0A1B2C31A2B3C4D5E6F1001 /* Localizable.strings */; };
@@ -130,8 +126,6 @@
 		1498D2331E8E89220040F4C2 /* GeneratedPluginRegistrant.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = GeneratedPluginRegistrant.m; sourceTree = "<group>"; };
 		3B3967151E833CAA004F5970 /* AppFrameworkInfo.plist */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; name = AppFrameworkInfo.plist; path = Flutter/AppFrameworkInfo.plist; sourceTree = "<group>"; };
 		4A2DCD692E4B127100CF68B7 /* LiveActivityManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveActivityManager.swift; sourceTree = "<group>"; };
-		4A2DCD722E4B127100CF68B7 /* DynamicIslandBrand.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DynamicIslandBrand.swift; sourceTree = "<group>"; };
-		4A2DCD742E4B127100CF68B7 /* PrivacyBlur.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PrivacyBlur.swift; sourceTree = "<group>"; };
 		4A2DCD6A2E4B127100CF68B7 /* TerminalLiveActivityAttributes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalLiveActivityAttributes.swift; sourceTree = "<group>"; };
 		4A2DCD6D2E4B128100CF68B7 /* TerminalLiveActivity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalLiveActivity.swift; sourceTree = "<group>"; };
 		4A2DCD6E2E4B128100CF68B7 /* TerminalLiveActivityAttributes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalLiveActivityAttributes.swift; sourceTree = "<group>"; };
@@ -154,9 +148,18 @@
 		E33A3E382A626DCD009744AB /* SwiftUI.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = SwiftUI.framework; path = System/Library/Frameworks/SwiftUI.framework; sourceTree = SDKROOT; };
 		E33A3E3B2A626DCE009744AB /* StatusWidgetBundle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StatusWidgetBundle.swift; sourceTree = "<group>"; };
 		E33A3E3F2A626DCE009744AB /* StatusWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StatusWidget.swift; sourceTree = "<group>"; };
-		FA7C40000000000000000094 /* WidgetIntent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WidgetIntent.swift; sourceTree = "<group>"; };
-		FA7C40000000000000000096 /* WidgetMonitorClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WidgetMonitorClient.swift; sourceTree = "<group>"; };
 		E33A3E442A626DD0009744AB /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		E37C48EC2B9C30EE00E542D2 /* Base */ = {isa = PBXFileReference; lastKnownFileType = file.intentdefinition; name = Base; path = Base.lproj/StatusWidget.intentdefinition; sourceTree = "<group>"; };
+		E37C48F02B9C5E0C00E542D2 /* en */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = en; path = en.lproj/StatusWidget.strings; sourceTree = "<group>"; };
+		E37C48F22B9C5E0D00E542D2 /* zh-Hans */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "zh-Hans"; path = "zh-Hans.lproj/StatusWidget.strings"; sourceTree = "<group>"; };
+		E37C48F42B9C5E1000E542D2 /* zh-Hant */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "zh-Hant"; path = "zh-Hant.lproj/StatusWidget.strings"; sourceTree = "<group>"; };
+		E37C48F62B9C5E1500E542D2 /* fr */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = fr; path = fr.lproj/StatusWidget.strings; sourceTree = "<group>"; };
+		E37C48F82B9C5E1700E542D2 /* de */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = de; path = de.lproj/StatusWidget.strings; sourceTree = "<group>"; };
+		E37C48FA2B9C5E1700E542D2 /* id */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = id; path = id.lproj/StatusWidget.strings; sourceTree = "<group>"; };
+		E37C48FC2B9C5E1800E542D2 /* ja */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = ja; path = ja.lproj/StatusWidget.strings; sourceTree = "<group>"; };
+		E37C48FE2B9C5E1800E542D2 /* pt-BR */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "pt-BR"; path = "pt-BR.lproj/StatusWidget.strings"; sourceTree = "<group>"; };
+		E37C49002B9C5E1900E542D2 /* ru */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = ru; path = ru.lproj/StatusWidget.strings; sourceTree = "<group>"; };
+		E37C49022B9C5E1900E542D2 /* es */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = es; path = es.lproj/StatusWidget.strings; sourceTree = "<group>"; };
 		E39515C72AB5AD62003602C1 /* ServerBox.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = ServerBox.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		E39515C92AB5AD62003602C1 /* WatchEndApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchEndApp.swift; sourceTree = "<group>"; };
 		E39515CB2AB5AD62003602C1 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
@@ -168,7 +171,6 @@
 		E39A76AC2AB9A2F70067C641 /* Info-Release.plist */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; path = "Info-Release.plist"; sourceTree = "<group>"; };
 		E39A76AD2AB9A2F70067C641 /* Info-Profile.plist */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; path = "Info-Profile.plist"; sourceTree = "<group>"; };
 		E3AE8AE92AB601DB000A6459 /* Utils.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Utils.swift; sourceTree = "<group>"; };
-		FA7C40000000000000000091 /* WidgetStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WidgetStore.swift; sourceTree = "<group>"; };
 		E3D26BC22B99637800D83425 /* zh-Hant */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "zh-Hant"; path = "zh-Hant.lproj/Main.strings"; sourceTree = "<group>"; };
 		E3D26BC32B99637900D83425 /* zh-Hant */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "zh-Hant"; path = "zh-Hant.lproj/LaunchScreen.strings"; sourceTree = "<group>"; };
 		E3D26BC42B99637F00D83425 /* fr */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = fr; path = fr.lproj/Main.strings; sourceTree = "<group>"; };
@@ -315,11 +317,8 @@
 				1498D2321E8E86230040F4C2 /* GeneratedPluginRegistrant.h */,
 				4A2DCD692E4B127100CF68B7 /* LiveActivityManager.swift */,
 				4A2DCD6A2E4B127100CF68B7 /* TerminalLiveActivityAttributes.swift */,
-				4A2DCD722E4B127100CF68B7 /* DynamicIslandBrand.swift */,
-				4A2DCD742E4B127100CF68B7 /* PrivacyBlur.swift */,
 				1498D2331E8E89220040F4C2 /* GeneratedPluginRegistrant.m */,
 				E3AE8AE92AB601DB000A6459 /* Utils.swift */,
-				FA7C40000000000000000091 /* WidgetStore.swift */,
 				74858FAE1ED2DC5600515810 /* AppDelegate.swift */,
 				74858FAD1ED2DC5600515810 /* Runner-Bridging-Header.h */,
 			);
@@ -344,8 +343,7 @@
 				4A2DCD6D2E4B128100CF68B7 /* TerminalLiveActivity.swift */,
 				4A2DCD6E2E4B128100CF68B7 /* TerminalLiveActivityAttributes.swift */,
 				E33A3E3F2A626DCE009744AB /* StatusWidget.swift */,
-				FA7C40000000000000000094 /* WidgetIntent.swift */,
-				FA7C40000000000000000096 /* WidgetMonitorClient.swift */,
+				E37C48ED2B9C30EE00E542D2 /* StatusWidget.intentdefinition */,
 				FA7C40000000000000000008 /* StatusWidget.entitlements */,
 				E33A3E442A626DD0009744AB /* Info.plist */,
 			);
@@ -386,7 +384,6 @@
 			isa = PBXNativeTarget;
 			buildConfigurationList = 97C147051CF9000F007C117D /* Build configuration list for PBXNativeTarget "Runner" */;
 			buildPhases = (
-				F3A15C792F6E1D8B00A1C002 /* Build Linux Engine */,
 				9740EEB61CF901F6004384FC /* Run Script */,
 				97C146EA1CF9000F007C117D /* Sources */,
 				97C146EB1CF9000F007C117D /* Frameworks */,
@@ -583,21 +580,6 @@
 			shellPath = /bin/sh;
 			shellScript = "/bin/sh \"$FLUTTER_ROOT/packages/flutter_tools/bin/xcode_backend.sh\" embed_and_thin";
 		};
-		F3A15C792F6E1D8B00A1C002 /* Build Linux Engine */ = {
-			isa = PBXShellScriptBuildPhase;
-			alwaysOutOfDate = 1;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			inputPaths = (
-			);
-			name = "Build Linux Engine";
-			outputPaths = (
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-			shellPath = /bin/sh;
-			shellScript = "\"${PROJECT_DIR}/../scripts/ensure-ish-libs.sh\"\n";
-		};
 		9740EEB61CF901F6004384FC /* Run Script */ = {
 			isa = PBXShellScriptBuildPhase;
 			alwaysOutOfDate = 1;
@@ -636,13 +618,11 @@
 			files = (
 				74858FAF1ED2DC5600515810 /* AppDelegate.swift in Sources */,
 				1498D2341E8E89220040F4C2 /* GeneratedPluginRegistrant.m in Sources */,
+				E37C48EA2B9C30EE00E542D2 /* StatusWidget.intentdefinition in Sources */,
 				E3AE8AEA2AB601DB000A6459 /* Utils.swift in Sources */,
-				FA7C40000000000000000092 /* WidgetStore.swift in Sources */,
 				5B1A0002200001000000ISH0 /* sbm_ish.c in Sources */,
 				4A2DCD6B2E4B127100CF68B7 /* LiveActivityManager.swift in Sources */,
 				4A2DCD6C2E4B127100CF68B7 /* TerminalLiveActivityAttributes.swift in Sources */,
-				4A2DCD712E4B127100CF68B7 /* DynamicIslandBrand.swift in Sources */,
-				4A2DCD732E4B127100CF68B7 /* PrivacyBlur.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -651,13 +631,11 @@
 			buildActionMask = 2147483647;
 			files = (
 				E33A3E402A626DCE009744AB /* StatusWidget.swift in Sources */,
-				FA7C40000000000000000095 /* WidgetIntent.swift in Sources */,
-				FA7C40000000000000000097 /* WidgetMonitorClient.swift in Sources */,
+				E37C48EB2B9C30EE00E542D2 /* StatusWidget.intentdefinition in Sources */,
 				4A2DCD6F2E4B128100CF68B7 /* TerminalLiveActivity.swift in Sources */,
 				4A2DCD702E4B128100CF68B7 /* TerminalLiveActivityAttributes.swift in Sources */,
 				E33A3E3C2A626DCE009744AB /* StatusWidgetBundle.swift in Sources */,
 				E3AE8AEB2AB601DB000A6459 /* Utils.swift in Sources */,
-				FA7C40000000000000000093 /* WidgetStore.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -721,6 +699,24 @@
 				E3D26BD22B9966EC00D83425 /* ja */,
 			);
 			name = Main.storyboard;
+			sourceTree = "<group>";
+		};
+		E37C48ED2B9C30EE00E542D2 /* StatusWidget.intentdefinition */ = {
+			isa = PBXVariantGroup;
+			children = (
+				E37C48EC2B9C30EE00E542D2 /* Base */,
+				E37C48F02B9C5E0C00E542D2 /* en */,
+				E37C48F22B9C5E0D00E542D2 /* zh-Hans */,
+				E37C48F42B9C5E1000E542D2 /* zh-Hant */,
+				E37C48F62B9C5E1500E542D2 /* fr */,
+				E37C48F82B9C5E1700E542D2 /* de */,
+				E37C48FA2B9C5E1700E542D2 /* id */,
+				E37C48FC2B9C5E1800E542D2 /* ja */,
+				E37C48FE2B9C5E1800E542D2 /* pt-BR */,
+				E37C49002B9C5E1900E542D2 /* ru */,
+				E37C49022B9C5E1900E542D2 /* es */,
+			);
+			name = StatusWidget.intentdefinition;
 			sourceTree = "<group>";
 		};
 		E3DB67EB2A31FE200027B8CB /* LaunchScreen.storyboard */ = {
@@ -847,7 +843,7 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0.1491;
-				PRODUCT_BUNDLE_IDENTIFIER = com.lollipopkit.toolbox;
+				PRODUCT_BUNDLE_IDENTIFIER = org.azadkuu.azadhub;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_OBJC_BRIDGING_HEADER = "Runner/Runner-Bridging-Header.h";
 				SWIFT_VERSION = 5.0;
@@ -983,7 +979,7 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0.1491;
-				PRODUCT_BUNDLE_IDENTIFIER = com.lollipopkit.toolbox;
+				PRODUCT_BUNDLE_IDENTIFIER = org.azadkuu.azadhub;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_OBJC_BRIDGING_HEADER = "Runner/Runner-Bridging-Header.h";
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
@@ -1011,7 +1007,7 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0.1491;
-				PRODUCT_BUNDLE_IDENTIFIER = com.lollipopkit.toolbox;
+				PRODUCT_BUNDLE_IDENTIFIER = org.azadkuu.azadhub;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_OBJC_BRIDGING_HEADER = "Runner/Runner-Bridging-Header.h";
 				SWIFT_VERSION = 5.0;
@@ -1039,7 +1035,7 @@
 				INFOPLIST_FILE = StatusWidget/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = StatusWidget;
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
-				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -1048,7 +1044,7 @@
 				MARKETING_VERSION = 1.0.1491;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
-				PRODUCT_BUNDLE_IDENTIFIER = com.lollipopkit.toolbox.StatusWidget;
+				PRODUCT_BUNDLE_IDENTIFIER = org.azadkuu.azadhub.StatusWidget;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
@@ -1079,7 +1075,7 @@
 				INFOPLIST_FILE = StatusWidget/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = StatusWidget;
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
-				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -1087,7 +1083,7 @@
 				);
 				MARKETING_VERSION = 1.0.1491;
 				MTL_FAST_MATH = YES;
-				PRODUCT_BUNDLE_IDENTIFIER = com.lollipopkit.toolbox.StatusWidget;
+				PRODUCT_BUNDLE_IDENTIFIER = org.azadkuu.azadhub.StatusWidget;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
 				SWIFT_EMIT_LOC_STRINGS = YES;
@@ -1116,7 +1112,7 @@
 				INFOPLIST_FILE = StatusWidget/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = StatusWidget;
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
-				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -1124,7 +1120,7 @@
 				);
 				MARKETING_VERSION = 1.0.1491;
 				MTL_FAST_MATH = YES;
-				PRODUCT_BUNDLE_IDENTIFIER = com.lollipopkit.toolbox.StatusWidget;
+				PRODUCT_BUNDLE_IDENTIFIER = org.azadkuu.azadhub.StatusWidget;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
 				SWIFT_EMIT_LOC_STRINGS = YES;
@@ -1153,7 +1149,7 @@
 				GCC_C_LANGUAGE_STANDARD = gnu11;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown";
-				INFOPLIST_KEY_WKCompanionAppBundleIdentifier = com.lollipopkit.toolbox;
+				INFOPLIST_KEY_WKCompanionAppBundleIdentifier = org.azadkuu.azadhub;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -1161,7 +1157,7 @@
 				MARKETING_VERSION = 1.0.1491;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
-				PRODUCT_BUNDLE_IDENTIFIER = com.lollipopkit.toolbox.WatchEnd;
+				PRODUCT_BUNDLE_IDENTIFIER = org.azadkuu.azadhub.WatchEnd;
 				PRODUCT_NAME = ServerBox;
 				SDKROOT = watchos;
 				SKIP_INSTALL = YES;
@@ -1171,7 +1167,7 @@
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = 4;
-				WATCHOS_DEPLOYMENT_TARGET = 10.0;
+				WATCHOS_DEPLOYMENT_TARGET = 9.0;
 			};
 			name = Debug;
 		};
@@ -1195,14 +1191,14 @@
 				GCC_C_LANGUAGE_STANDARD = gnu11;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown";
-				INFOPLIST_KEY_WKCompanionAppBundleIdentifier = com.lollipopkit.toolbox;
+				INFOPLIST_KEY_WKCompanionAppBundleIdentifier = org.azadkuu.azadhub;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0.1491;
 				MTL_FAST_MATH = YES;
-				PRODUCT_BUNDLE_IDENTIFIER = com.lollipopkit.toolbox.WatchEnd;
+				PRODUCT_BUNDLE_IDENTIFIER = org.azadkuu.azadhub.WatchEnd;
 				PRODUCT_NAME = ServerBox;
 				SDKROOT = watchos;
 				SKIP_INSTALL = YES;
@@ -1210,7 +1206,7 @@
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = 4;
-				WATCHOS_DEPLOYMENT_TARGET = 10.0;
+				WATCHOS_DEPLOYMENT_TARGET = 9.0;
 			};
 			name = Release;
 		};
@@ -1234,14 +1230,14 @@
 				GCC_C_LANGUAGE_STANDARD = gnu11;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown";
-				INFOPLIST_KEY_WKCompanionAppBundleIdentifier = com.lollipopkit.toolbox;
+				INFOPLIST_KEY_WKCompanionAppBundleIdentifier = org.azadkuu.azadhub;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0.1491;
 				MTL_FAST_MATH = YES;
-				PRODUCT_BUNDLE_IDENTIFIER = com.lollipopkit.toolbox.WatchEnd;
+				PRODUCT_BUNDLE_IDENTIFIER = org.azadkuu.azadhub.WatchEnd;
 				PRODUCT_NAME = ServerBox;
 				SDKROOT = watchos;
 				SKIP_INSTALL = YES;
@@ -1249,7 +1245,7 @@
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = 4;
-				WATCHOS_DEPLOYMENT_TARGET = 10.0;
+				WATCHOS_DEPLOYMENT_TARGET = 9.0;
 			};
 			name = Profile;
 		};
@@ -1281,7 +1277,7 @@
 				MARKETING_VERSION = 1.0.1466;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
-				PRODUCT_BUNDLE_IDENTIFIER = com.lollipopkit.toolbox.WatchEnd.WatchWidget;
+				PRODUCT_BUNDLE_IDENTIFIER = org.azadkuu.azadhub.WatchEnd.WatchWidget;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = watchos;
 				SKIP_INSTALL = YES;
@@ -1291,7 +1287,7 @@
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = 4;
-				WATCHOS_DEPLOYMENT_TARGET = 10.0;
+				WATCHOS_DEPLOYMENT_TARGET = 9.0;
 			};
 			name = Debug;
 		};
@@ -1322,7 +1318,7 @@
 				);
 				MARKETING_VERSION = 1.0.1466;
 				MTL_FAST_MATH = YES;
-				PRODUCT_BUNDLE_IDENTIFIER = com.lollipopkit.toolbox.WatchEnd.WatchWidget;
+				PRODUCT_BUNDLE_IDENTIFIER = org.azadkuu.azadhub.WatchEnd.WatchWidget;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = watchos;
 				SKIP_INSTALL = YES;
@@ -1330,7 +1326,7 @@
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = 4;
-				WATCHOS_DEPLOYMENT_TARGET = 10.0;
+				WATCHOS_DEPLOYMENT_TARGET = 9.0;
 			};
 			name = Release;
 		};
@@ -1361,7 +1357,7 @@
 				);
 				MARKETING_VERSION = 1.0.1466;
 				MTL_FAST_MATH = YES;
-				PRODUCT_BUNDLE_IDENTIFIER = com.lollipopkit.toolbox.WatchEnd.WatchWidget;
+				PRODUCT_BUNDLE_IDENTIFIER = org.azadkuu.azadhub.WatchEnd.WatchWidget;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = watchos;
 				SKIP_INSTALL = YES;
@@ -1369,7 +1365,7 @@
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = 4;
-				WATCHOS_DEPLOYMENT_TARGET = 10.0;
+				WATCHOS_DEPLOYMENT_TARGET = 9.0;
 			};
 			name = Profile;
 		};

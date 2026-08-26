@@ -8,12 +8,13 @@ import 'package:server_box/data/model/server/server_private_info.dart';
 import 'package:server_box/data/provider/app/session_requests.dart';
 import 'package:server_box/data/provider/server/all.dart';
 import 'package:server_box/data/res/store.dart';
+import 'package:server_box/view/page/server/edit/edit.dart';
 import 'package:server_box/view/page/storage/file_pane.dart';
 import 'package:server_box/view/page/storage/local.dart';
 import 'package:server_box/view/page/storage/send_to.dart';
 import 'package:server_box/view/page/storage/server_file.dart';
 import 'package:server_box/view/page/storage/sftp.dart';
-import 'package:server_box/view/widget/dist_icon.dart';
+import 'package:server_box/view/widget/empty_pane.dart';
 import 'package:server_box/view/widget/pane_settings.dart';
 
 /// Every open file browser, one tab each, plus a picker at the head of the
@@ -202,7 +203,7 @@ class _FileTabPageState extends ConsumerState<FileTabPage>
           sessions: _sessions,
           searching: _railSearching,
           onSearchDone: () => setStateSafe(() => _railSearching = false),
-          actions: [_searchBtn(inRail: true)],
+          actions: [_searchBtn(inRail: true), _addBtn],
           onLocal: _openLocal,
           onServer: _openRemote,
           onSelect: _sessions.select,
@@ -305,22 +306,18 @@ class _FileTabPageState extends ConsumerState<FileTabPage>
 
   PreferredSizeWidget get _tabBar => PreferredSizeListenBuilder(
     listenable: _sessions,
-    // The wrapper is what the `Scaffold` measures, so it has to be told;
-    // its own default is a full toolbar.
-    preferSize: const Size.fromHeight(SessionTabBar.height),
     builder: () => SessionTabBar(
       names: _sessions.names,
       index: _sessions.index,
       leadingIcon: MingCute.folder_fill,
       onTap: _sessions.select,
       onClose: _close,
-      detailOf: _sessionPath,
       // One widget that follows whichever session is showing, rather than a
       // list the bar would have to rebuild itself to keep current.
       sessionActions: [_SessionActions(sessions: _sessions)],
       // The same two the rail carries. On one screen the picker is a tab
       // rather than a column, and these act on what it lists.
-      leadingActions: [_searchBtn(inRail: false)],
+      leadingActions: [_searchBtn(inRail: false), _addBtn],
     ),
   );
 
@@ -331,11 +328,6 @@ class _FileTabPageState extends ConsumerState<FileTabPage>
       actions: [_SessionActions(sessions: _sessions)],
     ),
   );
-
-  /// What a session's row in the sheet says under the name: where that browser
-  /// is. Two tabs on one server are told apart by this and by nothing else.
-  String? _sessionPath(int index) =>
-      _sessions.tabs.elementAtOrNull(index - 1)?.data.path;
 }
 
 extension _Sessions on _FileTabPageState {
@@ -422,11 +414,7 @@ extension _Sessions on _FileTabPageState {
     var restored = 0;
     for (final entry in entries) {
       if (entry is! Map) continue;
-      // Tested rather than cast: `as String?` throws on a value that is neither
-      // and takes every remaining tab with it, which is what reading each entry
-      // on its own is meant to avoid.
-      final rawPath = entry['path'];
-      final path = rawPath is String ? rawPath : null;
+      final path = entry['path'] as String?;
       final serverId = entry['serverId'];
       // A record written before `kind` existed says nothing, and local was
       // implied by the absence of a server. Both shapes read the same way.
@@ -437,14 +425,9 @@ extension _Sessions on _FileTabPageState {
         _openLocal(initialPath: path, select: false);
       } else {
         final spi = servers[serverId];
-        // Only "the server is gone". It used to also require `_canBrowse`,
-        // which for a monitor server is the agent's own answer and is false
-        // until the first poll comes back — so restoring on the first frame
-        // dropped those tabs, and the `_save()` below then wrote the shortened
-        // list back and lost them for good. `ServerFilePage` already says so
-        // when a server genuinely cannot serve files, which is the right place
-        // for an answer that arrives later than this.
-        if (spi == null) continue;
+        // A server can be deleted, or switched to a connection that cannot
+        // carry SFTP, while a tab on it is still remembered.
+        if (spi == null || !_canBrowse(ref, spi)) continue;
         _openRemote(spi, initialPath: path, select: false);
       }
       restored++;
@@ -473,6 +456,13 @@ extension _Actions on _FileTabPageState {
     },
   );
 
+  /// A server this app does not know about yet cannot be browsed, and the rail
+  /// is where someone looking for it would look.
+  Widget get _addBtn => Btn.icon(text: libL10n.add, 
+    icon: const Icon(Icons.add, size: 18),
+    onTap: () => ServerEditPage.route.go(context),
+  );
+
   void _showSearch() {
     showSearch(
       context: context,
@@ -493,7 +483,6 @@ extension _Actions on _FileTabPageState {
           ];
         },
         builder: (ctx, spi) => ListTile(
-          leading: distIcon(spi.id),
           title: Text(spi.name),
           subtitle: Text(spi.displayAddr),
           trailing: const Icon(Icons.chevron_right),
@@ -544,10 +533,6 @@ class _PickPage extends ConsumerWidget {
           if (state.servers[id] case final spi? when _canBrowse(ref, spi))
             CardTile(
               key: ValueKey(id),
-              // The mark where the generic icon was, and the generic icon
-              // still behind it: `distIcon` answers null when marks are off,
-              // and `icon` is what that falls through to.
-              leading: distIcon(spi.id, size: 24),
               icon: Icons.dns,
               title: spi.name,
               subtitle: spi.displayAddr,
@@ -640,7 +625,6 @@ class _SideBar extends ConsumerWidget {
             if (state.servers[id] case final spi? when _canBrowse(ref, spi))
               SideBarTile(
                 key: ValueKey(id),
-                leading: distIcon(spi.id, size: 22),
                 title: spi.name,
                 onTap: () => onServer(spi),
               ),
@@ -770,7 +754,6 @@ class _RailSearchState extends ConsumerState<_RailSearch> {
                   itemCount: found.length,
                   itemBuilder: (_, i) => SideBarTile(
                     key: ValueKey(found[i].id),
-                    leading: distIcon(found[i].id, size: 22),
                     title: found[i].name,
                     onTap: () => widget.onPick(found[i]),
                   ),

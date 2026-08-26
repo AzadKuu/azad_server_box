@@ -15,7 +15,10 @@ T _$identity<T>(T value) => value;
 /// @nodoc
 mixin _$SshDiscoveryResult {
 
- String get ip; int get port; String? get banner;
+ String get ip; int get port; String? get banner;/// TODO: delete. Nothing sets or reads it — a sweep is picked from one
+/// host at a time now, so which rows are ticked was never state the model
+/// had to carry. Kept for one release so a persisted report still parses.
+ bool get isSelected;
 /// Create a copy of SshDiscoveryResult
 /// with the given fields replaced by the non-null parameter values.
 @JsonKey(includeFromJson: false, includeToJson: false)
@@ -28,16 +31,16 @@ $SshDiscoveryResultCopyWith<SshDiscoveryResult> get copyWith => _$SshDiscoveryRe
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is SshDiscoveryResult&&(identical(other.ip, ip) || other.ip == ip)&&(identical(other.port, port) || other.port == port)&&(identical(other.banner, banner) || other.banner == banner));
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is SshDiscoveryResult&&(identical(other.ip, ip) || other.ip == ip)&&(identical(other.port, port) || other.port == port)&&(identical(other.banner, banner) || other.banner == banner)&&(identical(other.isSelected, isSelected) || other.isSelected == isSelected));
 }
 
 @JsonKey(includeFromJson: false, includeToJson: false)
 @override
-int get hashCode => Object.hash(runtimeType,ip,port,banner);
+int get hashCode => Object.hash(runtimeType,ip,port,banner,isSelected);
 
 @override
 String toString() {
-  return 'SshDiscoveryResult(ip: $ip, port: $port, banner: $banner)';
+  return 'SshDiscoveryResult(ip: $ip, port: $port, banner: $banner, isSelected: $isSelected)';
 }
 
 
@@ -48,7 +51,7 @@ abstract mixin class $SshDiscoveryResultCopyWith<$Res>  {
   factory $SshDiscoveryResultCopyWith(SshDiscoveryResult value, $Res Function(SshDiscoveryResult) _then) = _$SshDiscoveryResultCopyWithImpl;
 @useResult
 $Res call({
- String ip, int port, String? banner
+ String ip, int port, String? banner, bool isSelected
 });
 
 
@@ -65,12 +68,13 @@ class _$SshDiscoveryResultCopyWithImpl<$Res>
 
 /// Create a copy of SshDiscoveryResult
 /// with the given fields replaced by the non-null parameter values.
-@pragma('vm:prefer-inline') @override $Res call({Object? ip = null,Object? port = null,Object? banner = freezed,}) {
+@pragma('vm:prefer-inline') @override $Res call({Object? ip = null,Object? port = null,Object? banner = freezed,Object? isSelected = null,}) {
   return _then(_self.copyWith(
 ip: null == ip ? _self.ip : ip // ignore: cast_nullable_to_non_nullable
 as String,port: null == port ? _self.port : port // ignore: cast_nullable_to_non_nullable
 as int,banner: freezed == banner ? _self.banner : banner // ignore: cast_nullable_to_non_nullable
-as String?,
+as String?,isSelected: null == isSelected ? _self.isSelected : isSelected // ignore: cast_nullable_to_non_nullable
+as bool,
   ));
 }
 
@@ -155,10 +159,10 @@ return $default(_that);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( String ip,  int port,  String? banner)?  $default,{required TResult orElse(),}) {final _that = this;
+@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( String ip,  int port,  String? banner,  bool isSelected)?  $default,{required TResult orElse(),}) {final _that = this;
 switch (_that) {
 case _SshDiscoveryResult() when $default != null:
-return $default(_that.ip,_that.port,_that.banner);case _:
+return $default(_that.ip,_that.port,_that.banner,_that.isSelected);case _:
   return orElse();
 
 }
@@ -176,10 +180,10 @@ return $default(_that.ip,_that.port,_that.banner);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( String ip,  int port,  String? banner)  $default,) {final _that = this;
+@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( String ip,  int port,  String? banner,  bool isSelected)  $default,) {final _that = this;
 switch (_that) {
 case _SshDiscoveryResult():
-return $default(_that.ip,_that.port,_that.banner);case _:
+return $default(_that.ip,_that.port,_that.banner,_that.isSelected);case _:
   throw StateError('Unexpected subclass');
 
 }
@@ -196,10 +200,10 @@ return $default(_that.ip,_that.port,_that.banner);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( String ip,  int port,  String? banner)?  $default,) {final _that = this;
+@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( String ip,  int port,  String? banner,  bool isSelected)?  $default,) {final _that = this;
 switch (_that) {
 case _SshDiscoveryResult() when $default != null:
-return $default(_that.ip,_that.port,_that.banner);case _:
+return $default(_that.ip,_that.port,_that.banner,_that.isSelected);case _:
   return null;
 
 }
@@ -211,12 +215,16 @@ return $default(_that.ip,_that.port,_that.banner);case _:
 @JsonSerializable()
 
 class _SshDiscoveryResult implements SshDiscoveryResult {
-  const _SshDiscoveryResult({required this.ip, required this.port, this.banner});
+  const _SshDiscoveryResult({required this.ip, required this.port, this.banner, this.isSelected = false});
   factory _SshDiscoveryResult.fromJson(Map<String, dynamic> json) => _$SshDiscoveryResultFromJson(json);
 
 @override final  String ip;
 @override final  int port;
 @override final  String? banner;
+/// TODO: delete. Nothing sets or reads it — a sweep is picked from one
+/// host at a time now, so which rows are ticked was never state the model
+/// had to carry. Kept for one release so a persisted report still parses.
+@override@JsonKey() final  bool isSelected;
 
 /// Create a copy of SshDiscoveryResult
 /// with the given fields replaced by the non-null parameter values.
@@ -231,16 +239,16 @@ Map<String, dynamic> toJson() {
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is _SshDiscoveryResult&&(identical(other.ip, ip) || other.ip == ip)&&(identical(other.port, port) || other.port == port)&&(identical(other.banner, banner) || other.banner == banner));
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is _SshDiscoveryResult&&(identical(other.ip, ip) || other.ip == ip)&&(identical(other.port, port) || other.port == port)&&(identical(other.banner, banner) || other.banner == banner)&&(identical(other.isSelected, isSelected) || other.isSelected == isSelected));
 }
 
 @JsonKey(includeFromJson: false, includeToJson: false)
 @override
-int get hashCode => Object.hash(runtimeType,ip,port,banner);
+int get hashCode => Object.hash(runtimeType,ip,port,banner,isSelected);
 
 @override
 String toString() {
-  return 'SshDiscoveryResult(ip: $ip, port: $port, banner: $banner)';
+  return 'SshDiscoveryResult(ip: $ip, port: $port, banner: $banner, isSelected: $isSelected)';
 }
 
 
@@ -251,7 +259,7 @@ abstract mixin class _$SshDiscoveryResultCopyWith<$Res> implements $SshDiscovery
   factory _$SshDiscoveryResultCopyWith(_SshDiscoveryResult value, $Res Function(_SshDiscoveryResult) _then) = __$SshDiscoveryResultCopyWithImpl;
 @override @useResult
 $Res call({
- String ip, int port, String? banner
+ String ip, int port, String? banner, bool isSelected
 });
 
 
@@ -268,12 +276,13 @@ class __$SshDiscoveryResultCopyWithImpl<$Res>
 
 /// Create a copy of SshDiscoveryResult
 /// with the given fields replaced by the non-null parameter values.
-@override @pragma('vm:prefer-inline') $Res call({Object? ip = null,Object? port = null,Object? banner = freezed,}) {
+@override @pragma('vm:prefer-inline') $Res call({Object? ip = null,Object? port = null,Object? banner = freezed,Object? isSelected = null,}) {
   return _then(_SshDiscoveryResult(
 ip: null == ip ? _self.ip : ip // ignore: cast_nullable_to_non_nullable
 as String,port: null == port ? _self.port : port // ignore: cast_nullable_to_non_nullable
 as int,banner: freezed == banner ? _self.banner : banner // ignore: cast_nullable_to_non_nullable
-as String?,
+as String?,isSelected: null == isSelected ? _self.isSelected : isSelected // ignore: cast_nullable_to_non_nullable
+as bool,
   ));
 }
 

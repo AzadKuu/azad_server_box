@@ -9,13 +9,9 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:hive_ce/hive.dart';
 import 'package:server_box/data/model/server/connection_stat.dart';
 import 'package:server_box/data/model/server/server_private_info.dart';
+import 'package:server_box/data/model/server/ssh_credential.dart';
 import 'package:server_box/data/res/store.dart';
-import 'package:server_box/data/store/history.dart';
-import 'package:server_box/data/store/migrations/all.dart';
-import 'package:server_box/data/store/migrations/m003_hive_to_sqlite.dart';
 import 'package:server_box/data/store/schema.dart';
-import 'package:server_box/data/store/setting.dart';
-import 'package:server_box/data/store/tables.dart';
 import 'package:server_box/hive/hive_registrar.g.dart';
 import 'package:server_box/hive/legacy_adapters.dart';
 import 'package:server_box/hive/spi_legacy_adapter.dart';
@@ -25,7 +21,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 ///
 /// This is the one pass over a user's real records, and it is not repeatable —
 /// once the marker is written the boxes are never read again. So it is worth
-/// checking against released fixture bytes and boxes written through
+/// checking against boxes written the way the app wrote them, through
 /// `HiveStore`, rather than against a hand-built map.
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -77,20 +73,23 @@ void main() {
   });
 
   /// Fills the boxes the way a running app would have left them.
-  Future<void> seedHive({bool includeReleasedServer = true}) async {
+  Future<void> seedHive() async {
     Future<HiveStore> open(String name) async {
       final store = HiveStore(name);
       await store.init();
       return store;
     }
 
-    if (includeReleasedServer) {
-      // A released app wrote these bytes with its own generated adapter. The
-      // import must keep accepting that layout, not one today's model writes.
-      File('test/fixtures/hive_v1491/server_enc.hive').copySync(
-        tempDir.path.joinPath('server_enc.hive'),
-      );
-    }
+    final server = await open('server');
+    await server.box.put(
+      'srv-1',
+      const Spi(
+        id: 'srv-1',
+        name: 'prod',
+        ssh: SshCredential(ip: '10.0.0.1', user: 'root', port: 2222),
+        tags: ['a'],
+      ),
+    );
 
     // Through the released layouts, not through today's models: `Snippet` and
     // `PrivateKeyInfo` have each gained a field since, so writing one here
@@ -135,10 +134,10 @@ void main() {
 
     final stats = await open('connection_stats');
     await stats.box.put(
-      'srv-pwd_1000',
+      'srv-1_1000',
       ConnectionStat(
-        serverId: 'srv-pwd',
-        serverName: 'password auth',
+        serverId: 'srv-1',
+        serverName: 'prod',
         timestamp: DateTime.now(),
         result: ConnectionResult.success,
         durationMs: 12,
@@ -146,7 +145,7 @@ void main() {
     );
 
     final agent = await open('agent_conversation');
-    await agent.box.put('active::srv-pwd', 'conv-1');
+    await agent.box.put('active::srv-1', 'conv-1');
 
     await Hive.close();
   }
@@ -170,11 +169,11 @@ void main() {
     await seedHive();
     await Stores.init();
 
-    final spi = kvRow('server', 'srv-pwd')!;
-    expect(spi['name'], 'password auth');
+    final spi = kvRow('server', 'srv-1')!;
+    expect(spi['name'], 'prod');
     expect((spi['ssh'] as Map)['ip'], '10.0.0.1');
-    expect((spi['ssh'] as Map)['port'], 22);
-    expect(spi['tags'], ['prod', 'db']);
+    expect((spi['ssh'] as Map)['port'], 2222);
+    expect(spi['tags'], ['a']);
 
     expect(kvRow('snippet', 'uptime')!['script'], 'w');
     // `private_key`, which is what the released model's `toJson` called it.
@@ -201,7 +200,7 @@ void main() {
       SqliteDb.instance
           .select(
             "SELECT value FROM kv WHERE store = 'agent_conversation' "
-             "AND key = 'active::srv-pwd';",
+            "AND key = 'active::srv-1';",
           )
           .single['value'],
       '"conv-1"',
@@ -216,10 +215,10 @@ void main() {
     // more, so what is in the row has to stand on its own.
     final raw = SqliteDb.instance.select(
       'SELECT value FROM kv WHERE store = ? AND key = ?;',
-      ['server', 'srv-pwd'],
+      ['server', 'srv-1'],
     ).single['value'] as String;
     final decoded = json.decode(raw) as Map<String, dynamic>;
-    expect(decoded['name'], 'password auth');
+    expect(decoded['name'], 'prod');
     expect((decoded['ssh'] as Map)['ip'], '10.0.0.1');
   });
 
@@ -251,7 +250,7 @@ void main() {
     await seedHive();
     // The one box the app opened without a cipher.
     final index = File(tempDir.path.joinPath('conn_stats_index.hive'));
-    await index.writeAsString('idx_srv-pwd');
+    await index.writeAsString('idx_srv-1');
 
     await Stores.init();
 
@@ -278,9 +277,9 @@ void main() {
       0,
     );
 
-    final stat = kvRow('conn_stat', 'srv-pwd_1000')!;
-    expect(stat['serverId'], 'srv-pwd');
-    expect(stat['serverName'], 'password auth');
+    final stat = kvRow('conn_stat', 'srv-1_1000')!;
+    expect(stat['serverId'], 'srv-1');
+    expect(stat['serverName'], 'prod');
     // The `@JsonValue`, not the enum's name. Telling the two apart is the
     // migration's job and it has a table for it.
     expect(stat['result'], 'success');
@@ -324,7 +323,7 @@ void main() {
 
     await Stores.init();
 
-    expect(kvRow('server', 'srv-pwd')?['name'], 'password auth',
+    expect(kvRow('server', 'srv-1')?['name'], 'prod',
         reason: 'a box that opened is across');
     expect(kvRow('snippet', 'uptime'), isNull,
         reason: 'the box that did not open has nothing across');
@@ -358,7 +357,7 @@ void main() {
 
     await Stores.init();
 
-    expect(kvRow('conn_stat', 'srv-pwd_1000'), isNotNull,
+    expect(kvRow('conn_stat', 'srv-1_1000'), isNotNull,
         reason: 'the readable record still lands');
 
     // Deliberate, and the opposite of an unopenable box: what makes a record
@@ -375,80 +374,13 @@ void main() {
     );
   });
 
-  test('a partially failed box retries without duplicating migrated rows',
-      () async {
-    // Build the SQLite side without running the import yet, so a trigger can
-    // model a transient destination failure during the first import.
-    getIt.registerLazySingleton<SettingStore>(() => SettingStore.instance);
-    getIt.registerLazySingleton<HistoryStore>(() => HistoryStore.instance);
-    await Stores.setting.init();
-    await Stores.history.init();
-    await createTables(SqliteDb.instance);
+  test('a v1.0.1466 server record arrives nested under ssh', () async {
     await seedHive();
 
-    final stats = HiveStore('connection_stats');
-    await stats.init();
-    await stats.box.put(
-      'srv-pwd_2000',
-      ConnectionStat(
-        serverId: 'srv-pwd',
-        serverName: 'password auth',
-        timestamp: DateTime.now(),
-        result: ConnectionResult.success,
-        durationMs: 24,
-      ),
-    );
-    await Hive.close();
-
-    SqliteDb.instance.execute('''
-      CREATE TRIGGER fail_one_conn_stat
-      BEFORE INSERT ON kv
-      WHEN NEW.store = 'conn_stat' AND NEW.key = 'srv-pwd_2000'
-      BEGIN
-        SELECT RAISE(FAIL, 'transient write failure');
-      END;
-    ''');
-
-    await HiveImport.runIfNeeded();
-    expect(kvRow('conn_stat', 'srv-pwd_1000'), isNull);
-    expect(
-      kvRow('conn_stat', 'srv-pwd_2000'),
-      isNull,
-      reason: 'the successful row rolls back with the failed box',
-    );
-
-    // Other boxes are consumed by m004 before the failed box is retried.
-    await SchemaVersion.migrate(kSchemaMigrations);
-    SqliteDb.instance.execute('DROP TRIGGER fail_one_conn_stat;');
-
-    await HiveImport.runIfNeeded();
-    await SchemaVersion.migrate(kSchemaMigrations);
-
-    final serverCount = SqliteDb.instance
-        .select('SELECT COUNT(*) AS n FROM server WHERE id = ?;', ['srv-pwd'])
-        .single['n'] as int;
-    final statCount = SqliteDb.instance
-        .select('SELECT COUNT(*) AS n FROM conn_stat WHERE server_id = ?;', [
-          'srv-pwd',
-        ])
-        .single['n'] as int;
-    expect(serverCount, 1, reason: 'an already migrated box is not re-imported');
-    expect(
-      statCount,
-      2,
-      reason: 'the failed box is imported exactly once on retry',
-    );
-  });
-
-  test('a v1.0.1466 server record arrives nested under ssh', () async {
-    // The released fixture also uses typeId 3. This test must install the
-    // 1466 writer at that typeId, so seed every other release-format box only.
-    await seedHive(includeReleasedServer: false);
-
     // What 1466 actually had on disk. Its `Spi` was typeId 3 with the SSH
-    // fields flat on the record; the current one has them under `ssh`, so
-    // nothing else here exercises the path every App Store install upgrading
-    // from 1466 takes.
+    // fields flat on the record; the current one is typeId 15 with them under
+    // `ssh`, and `seedHive` writes that current shape — so nothing else here
+    // exercises the path every App Store install upgrading from 1466 takes.
     //
     // Registered over `SpiLegacyAdapter` only to seed, because that one is
     // read-only by design. `_V2SpiWriter.write` is a copy of the 1466
@@ -460,13 +392,12 @@ void main() {
       'srv-v2',
       const LegacySpiV2(
         name: 'legacy',
-        ssh: LegacySshCredentialV1(
+        ssh: SshCredential(
           ip: '10.0.0.9',
           port: 2200,
           user: 'admin',
           pwd: 'secret',
           keyId: 'k1',
-          keyPath: null,
           alterUrl: 'alt.example',
           jumpId: 'srv-1',
           jumpIds: ['srv-1'],

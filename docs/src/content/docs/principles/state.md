@@ -3,15 +3,15 @@ title: State Management
 description: How state is managed with Riverpod
 ---
 
-This page describes Server Box's state-management architecture.
+Understanding the state management architecture in Server Box.
 
 ## Why Riverpod?
 
 **Key Benefits:**
 - **Compile-time safety**: Catch errors at compile time
 - **No BuildContext needed**: Access state anywhere
-- **Provider isolation**: Providers can be tested independently
-- **Code generation**: Generated providers reduce boilerplate while preserving static typing
+- **Easy testing**: Simple to test providers in isolation
+- **Code generation**: Less boilerplate, type-safe
 
 ## Provider Architecture
 
@@ -37,10 +37,9 @@ This page describes Server Box's state-management architecture.
 
 ## Provider Types Used
 
-### 1. NotifierProvider (Simple State)
+### 1. StateProvider (Simple State)
 
-Class-based `@riverpod` declarations generate a `NotifierProvider`, not a
-`StateProvider`:
+For simple, observable state:
 
 ```dart
 @riverpod
@@ -104,7 +103,7 @@ status.when(
 
 ### 3. StreamProvider (Real-time Data)
 
-Use for values emitted by a stream:
+For continuous data streams:
 
 ```dart
 @riverpod
@@ -261,19 +260,30 @@ Future<SystemInfo> systemInfo(Ref ref, Server server) async {
 
 ## State Persistence
 
-### SQLite Persistence
-
-The authoritative store is the encrypted SQLite database `store.db`. Settings
-and history use `SqliteStore`; related records such as servers use entity stores
-such as `ServerStore`.
+### Hive Integration
 
 ```dart
-final servers = Stores.server.readAll();
-Stores.server.put(server);
-Stores.server.deleteById(server.id);
-```
+@riverpod
+class ServerStoreNotifier extends _$ServerStoreNotifier {
+  @override
+  List<Server> build() {
+    // Load from Hive
+    return Hive.box<Server>('servers').values.toList();
+  }
 
-Hive adapters remain only for importing data from old installations.
+  void addServer(Server server) {
+    state = [...state, server];
+    // Persist to Hive
+    Hive.box<Server>('servers').put(server.id, server);
+  }
+
+  void removeServer(String id) {
+    state = state.where((s) => s.id != id).toList();
+    // Remove from Hive
+    Hive.box<Server>('servers').delete(id);
+  }
+}
+```
 
 ## Error Handling
 

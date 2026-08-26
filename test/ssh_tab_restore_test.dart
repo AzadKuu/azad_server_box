@@ -11,7 +11,6 @@ import 'package:server_box/data/ssh/terminal_source.dart';
 import 'package:server_box/data/store/history.dart';
 import 'package:server_box/data/store/private_key.dart';
 import 'package:server_box/data/store/server.dart';
-import 'package:server_box/data/store/server_dist.dart';
 import 'package:server_box/data/store/setting.dart';
 import 'package:server_box/generated/l10n/l10n.dart';
 import 'package:server_box/view/page/ssh/page/page.dart';
@@ -34,11 +33,9 @@ void main() {
   setUp(() async {
     tempDir = await Directory.systemTemp.createTemp('server-box-sshtab-');
     await openTestDb();
-    // In memory: this tree writes as it builds, and a test has no
-    // business leaving a database behind.
+      // In memory: this tree writes as it builds, and a test has no
+      // business leaving a database behind.
     getIt.registerSingleton<SettingStore>(SettingStore.forTest());
-    // The rail draws each server's distribution mark, which reads this.
-    getIt.registerSingleton<ServerDistStore>(ServerDistStore.forTest());
     getIt.registerSingleton<ServerStore>(ServerStore.forTest());
     getIt.registerSingleton<PrivateKeyStore>(PrivateKeyStore.forTest());
     getIt.registerSingleton<HistoryStore>(HistoryStore.forTest());
@@ -93,27 +90,6 @@ void main() {
     }
   }
 
-  test('a server rename rewrites history and saved tab ids', () {
-    Stores.history.sshServerHistory
-      ..add('other')
-      ..add('server-old');
-    Stores.history.sshTabs.put(
-      jsonEncode([
-        {'sourceId': 'server-old', 'tmuxSession': 'work'},
-        {'serverId': 'server-old'},
-      ]),
-    );
-
-    Stores.history.renameSshServer('server-old', 'server-new');
-
-    expect(Stores.history.sshServerHistory.all, ['server-new', 'other']);
-    expect(restored().map((entry) => entry['sourceId'] ?? entry['serverId']), [
-      'server-new',
-      'server-new',
-    ]);
-    expect(Stores.history.resolveSshServerId('server-old'), 'server-new');
-  });
-
   testWidgets('two shells on one server come back as two tabs', (tester) async {
     // The one this exists for. A restore keyed on the server rather than on
     // the entry would collapse these into one, and the second window's tmux
@@ -158,46 +134,12 @@ void main() {
     final spi = spiFixture(id: 'srv-1', name: 'web', ip: 'h', user: 'u');
     Stores.server.put(spi);
     Stores.history.sshTabs.put(
-      jsonEncode([
-        'not a map',
-        42,
-        {'sourceId': 'srv-1'},
-      ]),
+      jsonEncode(['not a map', 42, {'sourceId': 'srv-1'}]),
     );
 
     await pump(tester);
 
     expect(restored().map((t) => t['sourceId']), ['srv-1']);
-  });
-
-  testWidgets('malformed tmux fields do not block later tabs', (tester) async {
-    final spi = spiFixture(id: 'srv-1', name: 'web', ip: 'h', user: 'u');
-    Stores.server.put(spi);
-    await saveTabs([
-      {'sourceId': 'srv-1', 'tmuxSession': 42, 'tmuxWindow': 'bad'},
-      {'sourceId': 'srv-1', 'tmuxSession': 'work', 'tmuxWindow': 3},
-    ]);
-
-    await pump(tester);
-
-    final tabs = restored();
-    expect(tabs, hasLength(2));
-    expect(tabs.last['tmuxSession'], 'work');
-    expect(tabs.last['tmuxWindow'], 3);
-  });
-
-  testWidgets('a server id sharing the rootfs prefix remains a server', (
-    tester,
-  ) async {
-    final id = '${LocalSource.rootfsId}x';
-    Stores.server.put(spiFixture(id: id, name: 'web', ip: 'h', user: 'u'));
-    await saveTabs([
-      {'sourceId': id},
-    ]);
-
-    await pump(tester);
-
-    expect(restored().map((t) => t['sourceId']), [id]);
   });
 
   testWidgets('an unreadable set opens the picker rather than throwing', (
@@ -248,8 +190,7 @@ void main() {
     expect(
       find.byType(SSHPage),
       findsNothing,
-      reason:
-          'a terminal built is a terminal started — the page view only '
+      reason: 'a terminal built is a terminal started — the page view only '
           'builds the tab it is showing, so this is the whole of it',
     );
   });

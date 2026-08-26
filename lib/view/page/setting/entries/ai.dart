@@ -5,11 +5,11 @@ extension _AI on _AppSettingsPageState {
   /// settings row that opens something: title, the current value under it, and
   /// a chevron saying there is more behind the tap.
   Widget _buildAskAiTextTile({
-    required StorePropDefault<String> prop,
+    required SqliteProp<String> prop,
     required Widget leading,
     required String title,
     required String hint,
-    required String Function(String value) displayBuilder,
+    required String Function(String? value) displayBuilder,
     String? description,
     bool obscure = false,
   }) {
@@ -85,14 +85,16 @@ extension _AI on _AppSettingsPageState {
           title: libL10n.apiEndpoint,
           hint: 'https://api.openai.com',
           description: l10n.askAiEndpointTip,
-          displayBuilder: (val) => val.isEmpty ? libL10n.empty : val,
+          displayBuilder: (val) =>
+              (val == null || val.isEmpty) ? libL10n.empty : val,
         ),
         _buildAskAiTextTile(
           prop: _setting.askAiModel,
           leading: const Icon(Icons.view_module, size: _kIconSize),
           title: libL10n.askAiModel,
-          hint: 'gpt-5.6-luna',
-          displayBuilder: (val) => val.isEmpty ? libL10n.empty : val,
+          hint: 'gpt-5.4-mini',
+          displayBuilder: (val) =>
+              (val == null || val.isEmpty) ? libL10n.empty : val,
         ),
         _buildAskAiTextTile(
           prop: _setting.askAiApiKey,
@@ -100,8 +102,9 @@ extension _AI on _AppSettingsPageState {
           title: libL10n.apiKey,
           hint: 'sk-...',
           obscure: true,
-          displayBuilder: (val) =>
-              val.isNotEmpty ? libL10n.configured : l10n.askAiApiKeyOptional,
+          displayBuilder: (val) => val?.isNotEmpty == true
+              ? libL10n.configured
+              : l10n.askAiApiKeyOptional,
         ),
       ].map((e) => CardX(child: e)).toList(),
     );
@@ -111,7 +114,11 @@ extension _AI on _AppSettingsPageState {
   /// other "pick one of these" row on this page behaves — a `PopupMenuButton`
   /// wrapped around a tile was the only one that dropped a menu instead.
   Widget _buildAskAiProtocol(AppLocalizations l10n) {
-    String label(AskAiProtocol protocol) => protocol.vendorName ?? libL10n.auto;
+    String label(AskAiProtocol protocol) => switch (protocol) {
+      AskAiProtocol.auto => libL10n.auto,
+      AskAiProtocol.chatCompletions => l10n.askAiProtocolChatCompletions,
+      AskAiProtocol.responses => l10n.askAiProtocolResponses,
+    };
 
     return ListTile(
       leading: const Icon(Icons.swap_calls_outlined, size: _kIconSize),
@@ -133,37 +140,19 @@ extension _AI on _AppSettingsPageState {
     );
   }
 
-  /// Surfaces a write that did not land.
-  ///
-  /// `StoreProp.set` throws a `StateError` when the store answers `false`, and
-  /// the dialog closes before the future completes — so without this the only
-  /// sign is a line in the log.
-  static Future<void> _persist(Future<void> write) async {
-    try {
-      await write;
-    } catch (e, s) {
-      Loggers.app.warning('Saving a setting failed', e, s);
-      Toast.error('$e');
-    }
-  }
-
   Future<void> _showAskAiFieldDialog({
-    required StorePropDefault<String> prop,
+    required SqliteProp<String> prop,
     required String title,
     required String hint,
     String? description,
     bool obscure = false,
   }) async {
     return withTextFieldController((ctrl) async {
-      final fetched = prop.get();
-      if (fetched.isNotEmpty) ctrl.text = fetched;
+      final fetched = prop.fetch();
+      if (fetched != null && fetched.isNotEmpty) ctrl.text = fetched;
 
-      // Reported rather than dropped: `StoreProp.set` throws when the write
-      // does not land, and unawaited that reaches the zone handler as a
-      // generic error while the dialog has already closed as though it
-      // worked. The old `put` could not fail, so this path is new.
       void onSave() {
-        unawaited(_persist(prop.set(ctrl.text.trim())));
+        prop.put(ctrl.text.trim());
         context.popDialog();
       }
 
@@ -192,10 +181,7 @@ extension _AI on _AppSettingsPageState {
         actions: [
           TextButton(
             onPressed: () {
-              // Back to the default rather than off the map: a grouped field
-              // has no row of its own to delete, and for these the default is
-              // what an absent row read as anyway.
-              unawaited(_persist(prop.remove()));
+              prop.delete();
               context.popDialog();
             },
             child: Text(libL10n.clear),

@@ -31,11 +31,6 @@ node_modules/
 .pub-cache/
 .pub/
 /build/
-ios/build/
-android/build/
-windows/build/
-linux/build/
-macos/build/
 # `make coverage` output. Was committed once and then went stale for a year,
 # naming files that have since moved.
 /coverage/
@@ -69,9 +64,10 @@ test.dart
 linux.AppDir
 **/*.AppImage
 
-untranslated.json
+untranlated.json
 
 .vscode/settings.json
+more_build_data.json
 trans.txt
 android/app/.cxx
 .env.release
@@ -106,7 +102,8 @@ android/app/.cxx
 # Local switch for the iOS Linux engine — see ios/Flutter/Ish.xcconfig.
 /ios/Flutter/IshLocal.xcconfig
 
-# The working scratchpad for what is not done yet. Kept on disk, out of the
-# history: it churns every session, and what belongs in the repo is the TODO
-# beside the code it is about.
-/TODOS.md
+# HarmonyOS HAP inspect temp artifacts (large zip, regenerable)
+/.hap_inspect/
+
+# CodeBuddy memory (local AI assistant context)
+ohos/.codebuddy/

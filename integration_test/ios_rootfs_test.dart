@@ -8,7 +8,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
 import 'package:server_box/core/utils/ios_rootfs.dart';
 import 'package:server_box/core/utils/ish_exec.dart';
-import 'package:server_box/data/model/app/linux_distro.dart';
 
 /// The Linux userland on iOS, through the API the app will use.
 ///
@@ -38,22 +37,16 @@ void main() {
   }, skip: !Platform.isIOS);
 
   /// Everything one session prints, to a marker or until it ends.
-  ///
-  /// Bytes are accumulated and decoded whole rather than per read: a console
-  /// hands over whatever it had ready, so a multi-byte character can straddle
-  /// two of them.
   Future<String> readTo(int session, String until) async {
-    final output = <int>[];
-    var text = '';
+    final output = StringBuffer();
     for (var round = 0; round < 400; round++) {
       final chunk = IosRootfs.read(session, timeout: Duration.zero);
       if (chunk == null) break;
-      output.addAll(chunk);
-      text = utf8.decode(output, allowMalformed: true);
-      if (text.contains(until)) break;
+      output.write(chunk);
+      if (output.toString().contains(until)) break;
       await Future<void>.delayed(const Duration(milliseconds: 20));
     }
-    return text;
+    return output.toString();
   }
 
   testWidgets('the app installs a userland by itself', (_) async {
@@ -65,17 +58,11 @@ void main() {
     // its digest, unpack it in Dart. There is no `tar` here — iOS refuses to
     // start a process — and no metadata database to build, which is what
     // `realfs` bought.
-    // Every one of them: `isInstalled` asks whether any system is there, and a
-    // second profile left by an earlier run would keep it true. A distribution
-    // id is not a profile id either — profile ids are generated — so removing
-    // by one names nothing.
-    for (final profile in IosRootfs.profiles.toList()) {
-      await IosRootfs.removeProfile(profile.id);
-    }
+    await IosRootfs.remove();
     expect(await IosRootfs.isInstalled, isFalse);
 
     var seen = -1.0;
-    await IosRootfs.install(distro: LinuxDistro.alpine, onProgress: (p) => seen = p ?? seen);
+    await IosRootfs.install(onProgress: (p) => seen = p ?? seen);
     expect(await IosRootfs.isInstalled, isTrue);
     expect(seen, greaterThan(0));
 
@@ -95,13 +82,8 @@ void main() {
       markTestSkipped('this build carries no engine (SBM_ISH = 0)');
       return;
     }
-    // Installed by the test above, or already there. Only when there is
-    // nothing: `install` without `into:` adds a system beside the existing
-    // ones rather than reusing one, so calling it unconditionally leaves a
-    // fresh Alpine behind on every run.
-    if (IosRootfs.selected == null) {
-      await IosRootfs.install(distro: LinuxDistro.alpine);
-    }
+    // Installed by the test above, or already there.
+    await IosRootfs.install();
     expect(await IosRootfs.isInstalled, isTrue);
 
     final booted = IosRootfs.boot();
@@ -114,7 +96,7 @@ void main() {
     expect(one, greaterThanOrEqualTo(0), reason: 'open returned $one');
     final text = await readTo(one, 'SBM_IOS_OK');
     debugPrint('ISHPROBE one=${text.trim()}');
-    expect(text, contains(LinuxDistro.alpine.version));
+    expect(text, contains(IosRootfs.version));
     expect(text, contains('aarch64'));
     expect(text, contains('root'));
 
@@ -143,7 +125,7 @@ void main() {
       markTestSkipped('this build carries no engine (SBM_ISH = 0)');
       return;
     }
-    await IosRootfs.install(distro: LinuxDistro.alpine);
+    await IosRootfs.install();
     IosRootfs.boot();
 
     // The root is an ordinary directory and cannot hold a device node, so
@@ -195,11 +177,11 @@ void main() {
       markTestSkipped('this build carries no engine (SBM_ISH = 0)');
       return;
     }
-    await IosRootfs.install(distro: LinuxDistro.alpine);
+    await IosRootfs.install();
     const exec = IshExec();
 
     final release = await exec.run('cat /etc/alpine-release');
-    expect(release.stdout.trim(), LinuxDistro.alpine.version);
+    expect(release.stdout.trim(), IosRootfs.version);
     expect(release.exitCode, 0);
 
     final failed = await exec.run('exit 3');
@@ -254,7 +236,7 @@ void main() {
       markTestSkipped('this build carries no engine (SBM_ISH = 0)');
       return;
     }
-    await IosRootfs.install(distro: LinuxDistro.alpine);
+    await IosRootfs.install();
     IosRootfs.boot();
 
     // Padded with a comment, so the length is the only thing being varied.
@@ -284,7 +266,7 @@ void main() {
       markTestSkipped('this build carries no engine (SBM_ISH = 0)');
       return;
     }
-    await IosRootfs.install(distro: LinuxDistro.alpine);
+    await IosRootfs.install();
     const exec = IshExec();
 
     // Well past 4 KB, and past it in the part that varies rather than in one
@@ -331,7 +313,7 @@ void main() {
       markTestSkipped('this build carries no engine (SBM_ISH = 0)');
       return;
     }
-    await IosRootfs.install(distro: LinuxDistro.alpine);
+    await IosRootfs.install();
     const exec = IshExec();
 
     final probe = await exec.run(
@@ -401,7 +383,7 @@ void main() {
       markTestSkipped('this build carries no engine (SBM_ISH = 0)');
       return;
     }
-    await IosRootfs.install(distro: LinuxDistro.alpine);
+    await IosRootfs.install();
     const exec = IshExec();
 
     // Enough reads that the hundredths land under ten several times over.

@@ -182,7 +182,6 @@ extension _Widgets on _ServerEditPageState {
         ),
         _buildAltUrl(),
         _buildProxyCommand(),
-        _buildFileTransport(),
         _buildScriptDir(),
         _buildEnvs(),
         _buildPVEs(),
@@ -190,7 +189,6 @@ extension _Widgets on _ServerEditPageState {
         _buildStorageCollection(),
         _buildDisabledCmdTypes(),
         _buildCustomDev(),
-        _buildBmc(),
         _buildWOLs(),
       ],
     );
@@ -269,7 +267,7 @@ extension _Widgets on _ServerEditPageState {
     return _systemType.listenVal((val) {
       return ListTile(
         leading: Icon(MingCute.laptop_2_line),
-        title: Text(libL10n.system),
+        title: Text(l10n.system),
         trailing: PopupMenu<SystemType?>(
           initialValue: val,
           items: [
@@ -328,44 +326,6 @@ extension _Widgets on _ServerEditPageState {
     );
   }
 
-  /// Which protocol this server's files move over.
-  ///
-  /// Offered rather than probed: opening an SFTP session and falling back when
-  /// it fails would take a link that dropped, or an account that was locked,
-  /// for a host with no subsystem — and answer the second failure instead of
-  /// the first. Nobody has to come here unless SFTP does not work, and the
-  /// browser's own failure says so when it does not.
-  Widget _buildFileTransport() {
-    // Follows the *SSH* switch. Nothing to set with SSH off: saving then
-    // writes `ssh: null`, so a choice made here would be accepted, saved and
-    // discarded without a word. It used to follow the monitor switch, which
-    // was the same question only while the two were exclusive — a server
-    // carrying both had its file transport hidden and could not be told to
-    // use SCP.
-    return _useSsh.listenVal((useSsh) {
-      if (!useSsh) return UIs.placeholder;
-      return _buildFileTransportTile();
-    });
-  }
-
-  Widget _buildFileTransportTile() {
-    return _fileTransport.listenVal((val) {
-      return ListTile(
-        leading: const Icon(MingCute.transfer_2_line),
-        title: TipText(libL10n.file, l10n.sshFileTransportTip),
-        trailing: PopupMenu<SshFileTransport>(
-          initialValue: val,
-          items: const [
-            PopupMenuItem(value: SshFileTransport.sftp, child: Text('SFTP')),
-            PopupMenuItem(value: SshFileTransport.scp, child: Text('SCP')),
-          ],
-          onSelected: (value) => _fileTransport.value = value,
-          child: Text(val == SshFileTransport.scp ? 'SCP' : 'SFTP'),
-        ),
-      ).cardx;
-    });
-  }
-
   Widget _buildPVEs() {
     const addr = 'https://127.0.0.1:8006';
     return _keyIdx.listenVal((v) {
@@ -409,83 +369,27 @@ extension _Widgets on _ServerEditPageState {
     });
   }
 
-  /// SSH+shell and monitor's HTTP API — peer ways of reaching this server
-  /// (see `Spi.monitorHttp`'s doc comment), either or both.
-  ///
-  /// Two switches rather than the segmented control this replaced. Both at
-  /// once is a real configuration: an agent that reports status without
-  /// holding a shell open, and sshd for the things the agent has no endpoint
-  /// for. What survives of the exclusivity is the order, which only has to be
-  /// asked when there are two things to order.
+  /// SSH+shell vs monitor's HTTP API — mutually exclusive connection
+  /// methods for reaching this server (see `Spi.monitorHttp`'s doc comment).
   Widget _buildConnMethodSwitch() {
-    return _useSsh.listenVal((useSsh) {
-      return _useMonitorHttp.listenVal((useHttp) {
-        return Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            SwitchListTile(
-              title: const Text('SSH'),
-              secondary: const Icon(Icons.terminal),
-              value: useSsh,
-              // Turning the last one off would leave a server with no way in
-              // at all, which `Spix.validate` refuses on save — better to
-              // refuse the switch than to accept it and reject the save.
-              onChanged: (val) {
-                if (!val && !_useMonitorHttp.value) {
-                  Toast.show(l10n.noConnectionMethod);
-                  return;
-                }
-                _useSsh.value = val;
-              },
-            ),
-            SwitchListTile(
-              // The one switch here that offers a way in which does not exist
-              // until something has been installed on the server — which is
-              // not a thing a switch can convey, so the tip carries a link to
-              // the page that explains it. Markdown, so the link is a link.
-              title: TipText(
-                'Monitor HTTP',
-                l10n.monitorHttpTip(Urls.monitorAgentDoc),
-                isMarkdown: true,
-              ),
-              secondary: const Icon(MingCute.web_line),
-              value: useHttp,
-              onChanged: (val) {
-                if (!val && !_useSsh.value) {
-                  Toast.show(l10n.noConnectionMethod);
-                  return;
-                }
-                _useMonitorHttp.value = val;
-              },
-            ),
-            if (useSsh && useHttp) _buildTransportPriority(),
-          ],
-        );
-      });
-    });
-  }
-
-  /// Which way in is tried first.
-  ///
-  /// Ordering, not exclusion: the other one still carries whatever it alone
-  /// can do, and a failure on this one falls through to it. What the choice
-  /// actually decides is where the status poll goes and which connection a
-  /// command opens first.
-  Widget _buildTransportPriority() {
-    return _preferMonitorHttp.listenVal((preferHttp) {
-      return ListTile(
-        title: Text(l10n.preferredTransport),
-        subtitle: Text(l10n.preferredTransportTip, style: UIs.textGrey),
-        trailing: SegmentedButton<bool>(
-          segments: const [
-            ButtonSegment(value: false, label: Text('SSH')),
-            ButtonSegment(value: true, label: Text('HTTP')),
-          ],
-          selected: {preferHttp},
-          onSelectionChanged: (selection) {
-            _preferMonitorHttp.value = selection.first;
-          },
-        ),
+    return _useMonitorHttp.listenVal((useHttp) {
+      return SegmentedButton<bool>(
+        segments: const [
+          ButtonSegment(
+            value: false,
+            label: Text('SSH'),
+            icon: Icon(Icons.terminal, size: 16),
+          ),
+          ButtonSegment(
+            value: true,
+            label: Text('Monitor HTTP'),
+            icon: Icon(MingCute.web_line, size: 16),
+          ),
+        ],
+        selected: {useHttp},
+        onSelectionChanged: (selection) {
+          _useMonitorHttp.value = selection.first;
+        },
       );
     });
   }
@@ -572,21 +476,6 @@ extension _Widgets on _ServerEditPageState {
               value: v,
               onChanged: (val) {
                 _monitorIgnoreCert.value = val;
-              },
-            ),
-          ),
-        ).cardx,
-        ListTile(
-          leading: const Icon(Icons.warning_amber_rounded),
-          title: TipText(
-            l10n.monitorAllowInsecureHttp,
-            l10n.monitorAllowInsecureHttpTip,
-          ),
-          trailing: _monitorAllowInsecure.listenVal(
-            (v) => Switch(
-              value: v,
-              onChanged: (val) {
-                _monitorAllowInsecure.value = val;
               },
             ),
           ),
@@ -688,120 +577,6 @@ extension _Widgets on _ServerEditPageState {
         }).cardx,
       ],
     );
-  }
-
-  Widget _buildBmc() {
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        const CenterGreyTitle('BMC (Redfish)'),
-        // A row of its own rather than a suffix on the title, the same shape
-        // the Linux page uses: what a suffix cannot say is the part that
-        // matters, which is that nothing here is guaranteed. This is where
-        // someone decides to turn it on, so it is where the warning belongs.
-        ListTile(
-          leading: const Icon(Icons.science_outlined),
-          title: const Text('Beta'),
-          subtitle: Text(l10n.betaTip, style: UIs.textGrey),
-        ).cardx,
-        ListTile(
-          leading: const Icon(BoxIcons.bxs_help_circle),
-          title: TipText(libL10n.about, l10n.bmcTip),
-        ).cardx,
-        Input(
-          controller: _bmcAddrCtrl,
-          type: TextInputType.url,
-          label: libL10n.addr,
-          icon: MingCute.web_line,
-          hint: 'https://10.0.0.9',
-          suggestion: false,
-        ),
-        _buildBmcAccount(),
-        _buildBmcCert(),
-      ],
-    );
-  }
-
-  /// Which account this server's BMC is opened with.
-  ///
-  /// A picker rather than a user and a password field, because the account is
-  /// shared: BMCs are provisioned a rack at a time, so the same credentials
-  /// open twenty of them. Typed per server, a rotation means twenty edits and
-  /// no way to tell which one was missed.
-  ///
-  /// The subtitle says how many servers point at the record, since editing it
-  /// here changes what all of them use.
-  Widget _buildBmcAccount() {
-    return _bmcCredId.listenVal((id) {
-      // Watched rather than fetched: editing the account from the page this
-      // tile opens has to be visible here when it returns.
-      final creds = ref.watch(bmcCredentialProvider).creds;
-      final cred = creds.firstWhereOrNull((e) => e.id == id);
-      final shared = cred == null
-          ? 0
-          : ref.read(bmcCredentialProvider.notifier).serversUsing(cred.id);
-      return ListTile(
-        leading: Icon(
-          cred == null ? Icons.person_off_outlined : Icons.person,
-          color: cred == null ? Colors.orange : null,
-        ),
-        title: Text(l10n.bmcAccount),
-        subtitle: Text(switch (cred) {
-          null => l10n.bmcAccountUnset,
-          final c when shared > 1 =>
-            '${c.name} (${c.user}) - ${l10n.bmcAccountShared(shared)}',
-          final c => '${c.name} (${c.user})',
-        }, style: UIs.textGrey),
-        trailing: cred == null
-            ? const Icon(Icons.keyboard_arrow_right)
-            : IconButton(
-                icon: const Icon(Icons.edit),
-                // Awaited, and the result read back. That page can delete the
-                // account, and leaving without doing so left `_bmcCredId`
-                // naming a row that is gone: the tile rebuilt as "none picked"
-                // from the provider while the value behind it did not move, so
-                // the two disagreed with nothing on screen to say so, and Save
-                // took a foreign key error out of the editor.
-                onPressed: () async {
-                  await BmcCredentialEditPage.route.go(
-                    context,
-                    args: BmcCredentialEditPageArgs(cred: cred),
-                  );
-                  if (!mounted) return;
-                  final live = ref.read(bmcCredentialProvider).creds;
-                  if (!live.any((e) => e.id == cred.id)) {
-                    _bmcCredId.value = null;
-                  }
-                },
-              ),
-        onTap: _onTapBmcAccount,
-      ).cardx;
-    });
-  }
-
-  /// The certificate the BMC presents, and whether it has been reviewed.
-  ///
-  /// A step of its own because it has to be: the TLS callbacks that decide
-  /// whether to accept a certificate are synchronous, so the question cannot be
-  /// put to anyone from inside them. Reviewing here means the check at request
-  /// time answers by itself, with nothing to interrupt — see `cert_pin.dart`.
-  Widget _buildBmcCert() {
-    return _bmcCert.listenVal((pinned) {
-      final has = pinned?.isNotEmpty == true;
-      return ListTile(
-        leading: Icon(
-          has ? Icons.verified_user : Icons.gpp_maybe,
-          color: has ? null : Colors.orange,
-        ),
-        title: Text(l10n.bmcCert),
-        subtitle: Text(
-          has ? l10n.bmcCertPinned : l10n.bmcCertUnreviewed,
-          style: UIs.textGrey,
-        ),
-        trailing: const Icon(Icons.keyboard_arrow_right),
-        onTap: _onTapBmcCert,
-      ).cardx;
-    });
   }
 
   Widget _buildWOLs() {
@@ -929,8 +704,7 @@ extension _Widgets on _ServerEditPageState {
   }
 
   Widget _buildDelBtn() {
-    return IconButton(
-      tooltip: libL10n.delete,
+    return IconButton(tooltip: libL10n.delete, 
       onPressed: () async {
         // The dialog answers; this — which is on the page — acts on the answer
         // and then closes the page. Doing both from inside the button meant
@@ -947,12 +721,7 @@ extension _Widgets on _ServerEditPageState {
           actions: Btn.ok(red: true).toList,
         );
         if (confirmed != true || !mounted) return;
-        try {
-          await ref.read(serversProvider.notifier).delServer(spi!.id);
-        } catch (e, s) {
-          if (mounted) context.showErrDialog(e, s);
-          return;
-        }
+        await ref.read(serversProvider.notifier).delServer(spi!.id);
         if (!mounted) return;
         context.pop(true);
       },

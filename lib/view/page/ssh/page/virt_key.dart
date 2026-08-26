@@ -2,79 +2,9 @@ part of 'page.dart';
 
 extension _VirtKey on SSHPageState {
   void _reloadVirtKeys() {
-    final pagesBefore = _virtKeyPages.length;
-    _virtKeyRows = Stores.setting.virtKeyRows.fetch();
+    _horizonVirtKeys = Stores.setting.horizonVirtKey.fetch();
     _initVirtKeys();
     _updateVirtKeysHeight();
-    // Only when the count changed, which is exactly when the `PageView` is
-    // rebuilt from its key and starts at the first page again. Resetting
-    // unconditionally moved the dots while the strip stayed where it was — a
-    // key turned on or off within the same number of rows left page two
-    // showing under a lit first dot.
-    if (_virtKeyPages.length != pagesBefore) _virtKeyPage.value = 0;
-  }
-
-  /// Runs the walkthrough over the keys, once ever — on the terminal that is
-  /// actually on screen.
-  ///
-  /// Every restored tab lays out, not only the one landed on, so this waits
-  /// for its own page to be the visible one. Without that, the walkthrough is
-  /// spent on whichever tab the `PageView` happened to build first and the
-  /// user sees a flag that has already been set.
-  void _startVirtKeyIntroWhenVisible() {
-    final visible = widget.args.visibleListenable;
-    if (visible == null || visible.value) return _startVirtKeyIntro();
-    if (Stores.setting.virtKeyIntroShown.fetch()) return;
-
-    void onVisible() {
-      if (!mounted || !visible.value) return;
-      visible.removeListener(onVisible);
-      _introVisibilityListener = null;
-      _startVirtKeyIntro();
-    }
-
-    _introVisibilityListener = onVisible;
-    visible.addListener(onVisible);
-  }
-
-  /// Only where there are keys to walk through: a desktop has none, and a user
-  /// who hid the lot has said what they think of them. [_showHelp] is what
-  /// covers the terminal itself when this does not run.
-  void _startVirtKeyIntro() {
-    if (_virtKeysHeight == 0) return;
-    if (Stores.setting.virtKeyIntroShown.fetch()) return;
-    // Written now rather than at the end: a walkthrough that reappears because
-    // the app was killed halfway through is worse than one seen once.
-    Stores.setting.virtKeyIntroShown.put(true);
-    setIntroStep(0, steps: VirtKeyIntroStep.of(context));
-  }
-
-  void _endVirtKeyIntro() {
-    if (_introStep == null) return;
-    setIntroStep(null);
-  }
-
-  /// The keys the step on screen is about, or null while none is.
-  VirtKeyGroup? get _introGroup {
-    final step = _introStep;
-    final steps = _introSteps;
-    if (step == null || steps == null || step >= steps.length) return null;
-    return steps[step].group;
-  }
-
-  /// What a key does, for the ones where the label does not say.
-  ///
-  /// A dialog rather than a tooltip: this is reached by holding a key on a
-  /// phone, where a tooltip appears under the finger that is covering it.
-  void _showVirtKeyHelp(VirtKey item) {
-    final help = item.help;
-    if (help == null) return;
-    HapticFeedback.selectionClick();
-    context.showRoundDialog(
-      title: item.text,
-      child: Text(help),
-      actions: [Btn.ok(onTap: context.popDialog)],
-    );
   }
 
   void _doVirtualKey(VirtKey item, VirtKeyboard virtKeyNotifier) {
@@ -123,18 +53,37 @@ extension _VirtKey on SSHPageState {
         await _onClipboardAction();
         break;
       case VirtualKeyFunc.snippet:
-        // The toolbar's picker, not a copy of it. The copy that used to be
-        // here returned without a word when there was no server, so the key
-        // did nothing at all on a shell on this device — while the button two
-        // rows up ran the snippets that name no server perfectly well.
-        await _pickSnippet();
+        // Before the picker, not after it: a snippet's script is written
+        // against a server, and browsing tags to choose one that is then
+        // silently dropped is worse than the button doing nothing.
+        final snippetSpi = widget.args.spi;
+        if (snippetSpi == null) return;
+        final snippetState = ref.read(snippetProvider);
+        final snippets = await context.showPickWithTagDialog<Snippet>(
+          title: libL10n.snippet,
+          tags: snippetState.tags.vn,
+          itemsBuilder: (e) {
+            if (e == TagSwitcher.kDefaultTag) {
+              return snippetState.snippets;
+            }
+            return snippetState.snippets
+                .where((element) => element.tags?.contains(e) ?? false)
+                .toList();
+          },
+          display: (e) => e.name,
+        );
+        if (snippets == null || snippets.isEmpty) return;
+
+        final snippet = snippets.firstOrNull;
+        if (snippet == null) return;
+        snippet.runInTerm(_terminal, snippetSpi);
         break;
       case VirtualKeyFunc.file:
-        // Before anything is typed. This opens the files of the server the
-        // shell is on, and this device has its own browser in the files tab —
-        // so the key is not offered on a local shell at all (see
-        // `_virtKeyWorksHere`) rather than echoing a probe command into the
-        // session, polling for three seconds and giving up in silence.
+        // Before anything is typed. SFTP is a file browser on a server and
+        // this device already has one, so on a local shell there is nothing to
+        // open — and asking afterwards meant echoing a probe command into the
+        // user's session, polling for three seconds, and then giving up in
+        // silence.
         final fileSpi = widget.args.spi;
         if (fileSpi == null) return;
         // get $PWD from SSH session with unique markers
@@ -193,11 +142,7 @@ extension _VirtKey on SSHPageState {
         }
 
         final args = SftpPageArgs(spi: fileSpi, initPath: initPath);
-        // `ServerFilePage`, not `SftpPage`: it is the one place that decides
-        // how a server's files are reached, so this key now works on a server
-        // reached through its monitor agent — which has files and no SFTP, and
-        // where opening the SFTP page directly could only fail.
-        ServerFilePage.route.go(context, args);
+        SftpPage.route.go(context, args);
         break;
       case VirtualKeyFunc.sudoPassword:
         await _insertSudoPassword();
@@ -211,20 +156,15 @@ extension _VirtKey on SSHPageState {
   void _initVirtKeys() {
     _virtKeysList.clear();
     final disabled = Stores.setting.sshVirtKeysDisabled.fetch().toSet();
-    // Filtered by what this session can do, not only by what the user hid.
-    // Read from the server behind the terminal rather than from a connection
-    // that may not be up yet: both questions are settled before the first key
-    // is drawn, and a key that appeared once something connected would be a
-    // strip rearranging itself under the user's thumb.
-    final spi = widget.args.spi;
     final virtKeys = VirtKeyX.loadFromStore()
-        .where((key) => !disabled.contains(key.name))
-        .where((key) => key.worksOn(spi))
+        .where((key) => !disabled.contains(key.index))
         .toList();
-    for (var at = 0; at < virtKeys.length; at += kVirtKeysPerRow) {
-      _virtKeysList.add(
-        virtKeys.sublist(at, math.min(at + kVirtKeysPerRow, virtKeys.length)),
-      );
+    for (int len = 0; len < virtKeys.length; len += 7) {
+      if (len + 7 > virtKeys.length) {
+        _virtKeysList.add(virtKeys.sublist(len));
+      } else {
+        _virtKeysList.add(virtKeys.sublist(len, len + 7));
+      }
     }
   }
 }

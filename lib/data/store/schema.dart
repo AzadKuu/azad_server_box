@@ -48,9 +48,6 @@ abstract interface class SchemaMigration {
 /// the backup envelope carries this same number so a file can be checked
 /// against the reader's capability.
 abstract final class SchemaVersion {
-  /// Oldest schema a partially completed Hive import may have left in SQLite.
-  static const oldestSupported = 2;
-
   /// v2: everything up to and including `monitorHttp` on Spi — the last
   ///     layout written before versioning existed, hence the starting point
   ///     rather than v1
@@ -64,30 +61,7 @@ abstract final class SchemaVersion {
   /// and [migrate] has nothing to do until a v5 exists.
   /// v5: entities out of `kv` and into tables with columns, foreign keys
   ///     and per-row sync metadata
-  /// v6: per-monitor explicit permission for plaintext HTTP on trusted networks
-  /// v7: the BMC side channel's columns on `server`
-  /// v8: `private_key.comment`, so a key's label can be edited without
-  ///     opening the key to rewrite the copy inside it
-  /// v9: the two settings fixups that gated themselves on their own
-  ///     `xxxMigrated` flag key, now ordered steps like everything else
-  /// v10: the Agent shell's eight settings keys and the AI provider's six
-  ///      folded into one object row each
-  /// v11: `server_dist`, caching what each server was last seen running so a
-  ///      row can draw its mark without a live status
-  /// v12: `horizonVirtKey`, a switch meaning one row of virtual keys, becomes
-  ///      `virtKeyRows`, a count of how many rows to show at once
-  /// v13: the trusted host keys v5 moved into `known_host` put back into the
-  ///      setting the app actually reads
-  /// v14: the virtual keys' order and hidden set by name rather than by enum
-  ///      index
-  /// v15: `server.ssh_file_transport`, so a host with no SFTP subsystem can be
-  ///      told to move its files over `scp` instead
-  /// v16: the watch's server selection inverted into an exclusion list, so
-  ///      every monitor server syncs unless it is held back
-  /// v17: the hand-typed Go-compat `/status` URLs retired, and the user told
-  /// v18: `server.preferred_transport`, and the SSH/monitor exclusivity check
-  ///      relaxed so one server can carry both
-  static const current = 18;
+  static const current = 5;
 
   /// Persisted locally, never included in a backup: it describes *this
   /// device's* storage, and restoring another device's number would make the
@@ -102,31 +76,13 @@ abstract final class SchemaVersion {
   /// build. Callers must treat that as fatal for anything that writes — see
   /// the class doc.
   static Future<void> migrate(List<SchemaMigration> migrations) async {
-    // Before anything about *this* install is consulted, because what it
-    // catches is a disagreement in the list itself and every install has the
-    // same list. Built by hand rather than with a collection-for, which kept
-    // the last of two steps claiming one version and dropped the other with
-    // nothing said — and the gap check below only notices when the loss leaves
-    // a version this install has to cross, so whether anyone found out
-    // depended on where the install happened to be.
-    final byFrom = <int, SchemaMigration>{};
-    for (final m in migrations) {
-      final clash = byFrom[m.from];
-      if (clash != null) {
-        throw StateError(
-          'Two schema migrations from v${m.from}: '
-          '${clash.runtimeType} and ${m.runtimeType}',
-        );
-      }
-      byFrom[m.from] = m;
-    }
-
     final from = stored;
     if (from == current) return;
     if (from > current) {
       throw SchemaTooNewException(stored: from, supported: current);
     }
 
+    final byFrom = {for (final m in migrations) m.from: m};
     for (var v = from; v < current; v++) {
       final step = byFrom[v];
       if (step == null) {

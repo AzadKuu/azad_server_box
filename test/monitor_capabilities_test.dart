@@ -36,64 +36,24 @@ void main() {
       expect(caps.storedHistory, isTrue);
     });
 
-    test('a server carrying both is valid, and answers for both', () {
-      // This used to be the rejected case. Carrying both is a configuration
-      // someone can ask for, and what it can do is the union: the agent's
-      // stored history, and the byte stream the agent has no endpoint for.
-      // Reporting only the leading transport's answers would take features
-      // away over a preference that is about ordering.
+    test('the agent answers when both are somehow configured', () {
+      // `Spi.validate` rejects this, so it can only arrive from hand-edited
+      // storage. `ServerConnectCredential.fromSpi` reads status over the agent
+      // in that case, and what a server can do has to be the same answer as
+      // how it is actually reached — otherwise the app offers SFTP over a
+      // connection it is not using.
       final spi = Spi(
         name: 'test',
         id: 'e',
         ssh: const SshCredential(ip: '10.0.0.1'),
         monitorHttp: monitor,
       );
-
-      expect(spi.validate(), isNull);
-
-      final caps = ServerCapabilities.ofSpi(spi);
-      // SSH's, which the agent alone cannot offer.
-      expect(caps.byteStream, isTrue);
-      // The agent's, which SSH alone cannot offer.
-      expect(caps.storedHistory, isTrue);
-    });
-
-    test('a server with neither is what validation now rejects', () {
-      // A row with no way in is not a server, it is a name. The database
-      // refuses it too — see `tables_schema_test.dart`.
-      final spi = Spi(name: 'test', id: 'f');
-
-      expect(spi.validate(), SpiValidationError.noConnectionMethod);
-    });
-
-    test('SSH leads when both are configured and nothing says otherwise', () {
-      // What every such server was before the field existed, and the
-      // transport that can do everything — so a server that gains an agent
-      // does not quietly lose its terminal.
-      final spi = Spi(
-        name: 'test',
-        id: 'g',
-        ssh: const SshCredential(ip: '10.0.0.1'),
-        monitorHttp: monitor,
+      final caps = ServerCapabilities.of(
+        ServerConnectCredential.fromSpi(spi),
+        granted: const MonitorRemoteAccess(fullAccess: true),
       );
-
-      expect(spi.transport, ServerTransport.ssh);
-      expect(spi.fallbackTransport, ServerTransport.monitorHttp);
-    });
-
-    test('a preference for a transport that is not configured is ignored', () {
-      // It happens: switching a server's SSH off leaves the preference
-      // behind, and nothing clears it. Honouring it would resolve to a
-      // credential that does not exist.
-      final spi = Spi(
-        name: 'test',
-        id: 'h',
-        monitorHttp: monitor,
-        preferredTransport: ServerTransport.ssh,
-      );
-
-      expect(spi.transport, ServerTransport.monitorHttp);
-      expect(spi.fallbackTransport, isNull);
+      expect(caps, isA<MonitorHttpCapabilities>());
+      expect(caps.byteStream, isFalse);
     });
 
     test('a plain SSH server is unchanged', () {
@@ -119,11 +79,11 @@ void main() {
       expect(caps.byteStream, isFalse);
     });
 
-    test('a terminal alone is not the grant commands need', () {
-      // The terminal reaches the machine's own sshd, which authenticates for
-      // itself. Only `full_access` is the agent acting as the account.
+    test('a tunnel or terminal alone is not the grant commands need', () {
+      // Both are about reaching the machine's own sshd, which authenticates
+      // for itself. Only `full_access` is the agent acting as the account.
       const caps = MonitorHttpCapabilities(
-        MonitorRemoteAccess(terminal: true),
+        MonitorRemoteAccess(tunnel: true, terminal: true, secure: true),
       );
       expect(caps.shell, isFalse);
       expect(caps.terminal, isFalse);

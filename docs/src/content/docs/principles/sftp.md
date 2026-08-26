@@ -3,7 +3,7 @@ title: SFTP System
 description: How the SFTP file browser works
 ---
 
-SFTP manages remote files over an SSH connection.
+The SFTP system provides file management capabilities over SSH.
 
 ## Architecture
 
@@ -46,7 +46,7 @@ Future<SftpClient> createSftpClient(Spi spi) async {
   final sshClient = await genClient(spi);
 
   // 2. Open SFTP subsystem
-  final sftp = await sshClient.sftp();
+  final sftp = await sshClient.openSftp();
 
   return sftp;
 }
@@ -62,7 +62,7 @@ class ServerProvider {
   SftpClient? _sftpClient;
 
   Future<SftpClient> getSftpClient(String spiId) async {
-    _sftpClient ??= await _sshClient!.sftp();
+    _sftpClient ??= await _sshClient!.openSftp();
     return _sftpClient!;
   }
 }
@@ -73,19 +73,28 @@ class ServerProvider {
 ### Directory Listing
 
 ```dart
-Future<List<SftpName>> listDirectory(String path) async {
+Future<List<SftpFile>> listDirectory(String path) async {
   final sftp = await getSftpClient(spiId);
 
   // List directory
-  final files = await sftp.listdir(path);
+  final files = await sftp.listDir(path);
 
-  // Sort based on settings; each entry exposes metadata through `attr`.
-  files.sort((a, b) => a.filename.toLowerCase().compareTo(b.filename.toLowerCase()));
+  // Sort based on settings
+  files.sort((a, b) {
+    switch (sortOption) {
+      case SortOption.name:
+        return a.name.toLowerCase().compareTo(b.name.toLowerCase());
+      case SortOption.size:
+        return a.size.compareTo(b.size);
+      case SortOption.time:
+        return a.modified.compareTo(b.modified);
+    }
+  });
 
   // Folders first if enabled
   if (showFoldersFirst) {
-    final dirs = files.where((f) => f.attr.isDirectory);
-    final regular = files.where((f) => !f.attr.isDirectory);
+    final dirs = files.where((f) => f.isDirectory);
+    final regular = files.where((f) => !f.isDirectory);
     return [...dirs, ...regular];
   }
 
@@ -95,10 +104,22 @@ Future<List<SftpName>> listDirectory(String path) async {
 
 ### File Metadata
 
-`SftpClient.listdir` returns `SftpName` entries. Their `filename`, `attr`, and
-the attributes' `size`, `modifyTime`, and `isDirectory` fields provide the
-metadata used by the browser. An opened `SftpFile` is a separate handle used for
-streaming bytes and must be closed.
+```dart
+class SftpFile {
+  final String name;
+  final String path;
+  final int size;           // Bytes
+  final int modified;       // Unix timestamp
+  final String permissions;  // e.g., "rwxr-xr-x"
+  final String owner;
+  final String group;
+  final bool isDirectory;
+  final bool isSymlink;
+
+  String get sizeFormatted => formatBytes(size);
+  String get modifiedFormatted => formatDate(modified);
+}
+```
 
 ## File Operations
 
@@ -111,43 +132,34 @@ Future<void> uploadFile(
 ) async {
   final sftp = await getSftpClient(spiId);
 
-  final stagingPath = '$remotePath.sb-part-${nextTransferId()}';
-  SftpFile? remote;
-  String? pendingStagingPath = stagingPath;
-  try {
-    remote = await sftp.open(
-      stagingPath,
-      mode: SftpFileOpenMode.create |
-          SftpFileOpenMode.write |
-          SftpFileOpenMode.truncate,
-    );
-    await remote.write(File(localPath).openRead().map(Uint8List.fromList)).done;
-    await remote.close();
-    remote = null;
-    await sftp.rename(stagingPath, remotePath);
-    pendingStagingPath = null;
-  } finally {
-    try {
-      await remote?.close();
-    } catch (_) {}
-    if (pendingStagingPath != null) {
-      try {
-        await sftp.remove(pendingStagingPath!);
-      } catch (_) {}
-    }
-  }
+  // Create request
+  final req = SftpReq(
+    spi: spi,
+    remotePath: remotePath,
+    localPath: localPath,
+    type: SftpReqType.upload,
+  );
+
+  // Add to queue
+  _transferQueue.add(req);
+
+  // Execute transfer with progress
+  final file = File(localPath);
+  final size = await file.length();
+  final stream = file.openRead();
+
+  await sftp.upload(
+    stream: stream,
+    toPath: remotePath,
+    onProgress: (transferred) {
+      _updateProgress(req, transferred, size);
+    },
+  );
+
+  // Complete
+  _transferQueue.remove(req);
 }
 ```
-
-`nextTransferId()` is a process-wide counter. The real implementation uses the
-same counter to make each `.sb-part-<number>` path distinct, including when two
-transfers target the same destination.
-
-There is no `sftp.upload` convenience method in the client used by Server Box.
-The real transfer code opens an `SftpFile`, closes it before the rename, writes
-to a unique staging path beside the destination, and removes that staging file
-when opening, writing, closing, or renaming fails. The destination is not
-truncated before the new contents are complete.
 
 ### Download
 
@@ -158,39 +170,28 @@ Future<void> downloadFile(
 ) async {
   final sftp = await getSftpClient(spiId);
 
-  SftpFile? remote;
-  File? staging;
-  IOSink? sink;
-  try {
-    remote = await sftp.open(remotePath, mode: SftpFileOpenMode.read);
-    staging = File('$localPath.sb-part-${nextTransferId()}');
-    sink = staging!.openWrite();
-    await sink.addStream(remote.read());
-    await sink.close();
-    sink = null;
-    await remote.close();
-    remote = null;
-    await staging!.rename(localPath);
-  } finally {
-    try {
-      await remote?.close();
-    } catch (_) {}
-    try {
-      await sink?.close();
-    } catch (_) {}
-    if (staging != null && await staging!.exists()) {
-      try {
-        await staging!.delete();
-      } catch (_) {}
-    }
-  }
+  // Create local file
+  final file = File(localPath);
+  final sink = file.openWrite();
+
+  // Download with progress
+  final stat = await sftp.stat(remotePath);
+
+  await sftp.download(
+    fromPath: remotePath,
+    toSink: sink,
+    onProgress: (transferred) {
+      _updateProgress(
+        SftpReq(...),
+        transferred,
+        stat.size,
+      );
+    },
+  );
+
+  await sink.close();
 }
 ```
-
-There is no `sftp.download` convenience method either. Reads stream from the
-opened `SftpFile` into a local staging file. The remote handle and local sink are
-closed before the staging file is renamed over the destination; failures remove
-the staging file so a partial download cannot replace the existing file.
 
 ### Permission Editing
 
@@ -204,15 +205,11 @@ Future<void> setPermissions(
   // Parse permissions (e.g., "rwxr-xr-x" or "755")
   final mode = parsePermissions(permissions);
 
-  // Normal path: use the SFTP set-stat operation.
-  await sftp.setStat(path, SftpFileAttrs(mode: SftpFileMode.value(mode)));
+  // Set via SSH command (more reliable than SFTP)
+  final ssh = await getSshClient(spiId);
+  await ssh.exec('chmod $mode "$path"');
 }
 ```
-
-Permission changes normally use SFTP `setStat`; a shell is not required. If the
-server refuses the operation and an SSH escalation handler is available, the
-backend can retry with `sudo chmod`. That fallback requires a shell and is not
-the normal SFTP path.
 
 ## Path Management
 
@@ -273,36 +270,94 @@ class PathHistory {
 
 ## Transfer System
 
+### Transfer Request
+
+```dart
+class SftpReq {
+  final Spi spi;
+  final String remotePath;
+  final String localPath;
+  final SftpReqType type;
+  final DateTime createdAt;
+
+  int? totalBytes;
+  int? transferredBytes;
+  String? error;
+}
+```
+
+### Progress Tracking
+
+```dart
+class TransferProgress {
+  final SftpReq request;
+  final int total;
+  final int transferred;
+  final DateTime startTime;
+
+  double get percentage => (transferred / total) * 100;
+  Duration get elapsed => DateTime.now().difference(startTime);
+
+  String get speedFormatted {
+    final bytesPerSecond = transferred / elapsed.inSeconds;
+    return formatSpeed(bytesPerSecond);
+  }
+}
+```
+
 ### Queue Management
 
-The app does not use a fixed three-transfer `TransferQueue`. Transfers are
-represented by `FileTransferStatus` objects in the keep-alive
-`FileTransferNotifier`. Each status owns its worker or runs inline, and the
-notifier exposes add, cancel, progress, completion, and cleanup through that
-lifecycle.
+```dart
+class TransferQueue {
+  final List<SftpReq> _queue = [];
+  final Map<String, TransferProgress> _progress = {};
+  int _concurrent = 3;  // Max concurrent transfers
+
+  Future<void> process() async {
+    final active = _progress.values.where((p) => p.isInProgress);
+    if (active.length >= _concurrent) return;
+
+    final pending = _queue.where((r) => !_progress.containsKey(r.id));
+    for (final req in pending.take(_concurrent - active.length)) {
+      _executeTransfer(req);
+    }
+  }
+
+  Future<void> _executeTransfer(SftpReq req) async {
+    try {
+      _progress[req.id] = TransferProgress.inProgress(req);
+
+      if (req.type == SftpReqType.upload) {
+        await uploadFile(req.localPath, req.remotePath);
+      } else {
+        await downloadFile(req.remotePath, req.localPath);
+      }
+
+      _progress[req.id] = TransferProgress.completed(req);
+    } catch (e) {
+      _progress[req.id] = TransferProgress.failed(req, e);
+    }
+  }
+}
+```
 
 ## Local Storage Pattern
 
-### Downloaded File Location
+### Download Cache
 
-Downloaded files are stored at a path made from the server id and the remote
-path components. Components are sanitized for the local platform, but the
-directory structure is retained:
+Downloaded files stored at:
 
 ```dart
 String getLocalDownloadPath(String spiId, String remotePath) {
-  final parts = remotePath.split('/').where((part) => part.isNotEmpty);
-  return parts.fold(
-    Paths.file.joinPath(spiId),
-    (path, part) => path.joinPath(_safeLocalPathPart(part)),
-  );
+  final normalized = remotePath.replaceAll('/', '_');
+  return 'Paths.file/$spiId/$normalized';
 }
 ```
 
 Example:
 - Remote: `/var/log/nginx/access.log`
 - spiId: `server-123`
-- Local: `Paths.file/server-123/var/log/nginx/access.log`
+- Local: `Paths.file/server-123/_var_log_nginx_access.log`
 
 ## File Editing
 
@@ -336,13 +391,12 @@ Future<void> editFile(String path) async {
 ### External Editor Integration
 
 ```dart
-Future<void> editInExternalEditor(String path, {bool useSudo = false}) async {
+Future<void> editInExternalEditor(String path) async {
   final ssh = await getSshClient(spiId);
 
   // Open terminal with editor
   final editor = getSetting('sftpEditor', 'vim');
-  final command = '${useSudo ? 'sudo ' : ''}$editor ${shellSingleQuote(path)}';
-  await ssh.exec(command);
+  await ssh.exec('$editor "$path"');
 
   // User edits in terminal
   // After save, refresh SFTP view
@@ -355,7 +409,7 @@ Future<void> editInExternalEditor(String path, {bool useSudo = false}) async {
 
 ```dart
 try {
-  await uploadFile(localPath, remotePath);
+  await sftp.upload(...);
 } on SftpPermissionException {
   showError('Permission denied: ${stat.path}');
   showHint('Check file permissions and ownership');
@@ -366,8 +420,8 @@ try {
 
 ```dart
 try {
-  await sftp.listdir(path);
-} on SftpStatusError {
+  await sftp.listDir(path);
+} on SftpConnectionException {
   showError('Connection lost');
   await reconnect();
 }
@@ -377,8 +431,8 @@ try {
 
 ```dart
 try {
-  await uploadFile(localPath, remotePath);
-} on SftpStatusError {
+  await sftp.upload(...);
+} on SftpNoSpaceException {
   showError('Disk full on remote server');
 }
 ```
@@ -386,6 +440,6 @@ try {
 ## Performance Notes
 
 - The SSH connection is reused for SFTP; no separate connection is opened.
-- Directory listings are fetched on navigation and refreshed on demand. There is
-  no TTL cache layer.
-- Large transfers run in a background isolate.
+- Directory listings are fetched on navigation and refreshed on demand —
+  there is no TTL cache layer.
+- Large transfers run in a background isolate so the UI stays responsive.

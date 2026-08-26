@@ -311,11 +311,7 @@ abstract class EntityStore<T extends Object> {
   ///
   /// Returns whether anything changed, which is what tells a provider to
   /// reload.
-  bool merge(
-    Map<String, Object?> backupData, {
-    required bool force,
-    bool notify = true,
-  }) {
+  bool merge(Map<String, Object?> backupData, {required bool force}) {
     final incoming = _timestampsOf(backupData[lastModKey]);
     final current = timestamps;
     final records = backupData.keys
@@ -341,39 +337,6 @@ abstract class EntityStore<T extends Object> {
           // Only a record the backup knew about and no longer holds is a
           // delete; one it never had a timestamp for says nothing.
           if (!known || bakTs == null) continue;
-          if (table == 'server') {
-            final snippetIds = db
-                .select(
-                  'SELECT snippet_id AS id FROM snippet_auto_run_on WHERE server_id = ?;',
-                  [id],
-                )
-                .map((row) => row['id'] as String)
-                .toSet();
-            final jumpOwnerIds = db
-                .select(
-                  'SELECT server_id AS id FROM server_jump WHERE jump_id = ?;',
-                  [id],
-                )
-                .map((row) => row['id'] as String)
-                .toSet();
-            for (final row in db.select(
-              'SELECT id FROM port_forward WHERE server_id = ?;',
-              [id],
-            )) {
-              final pfId = row['id'] as String;
-              db.execute(
-                'INSERT OR REPLACE INTO tombstone (tbl, row_id, deleted_at) VALUES (?, ?, ?);',
-                ['port_forward', pfId, at],
-              );
-            }
-            final snippetSync = SyncedTable('snippet');
-            for (final snippetId in snippetIds) {
-              snippetSync.stamp(snippetId, at: at);
-            }
-            for (final ownerId in jumpOwnerIds) {
-              if (ownerId != id) synced.stamp(ownerId, at: at);
-            }
-          }
           db.execute('DELETE FROM $table WHERE $idColumn = ?;', [id]);
           synced.tombstone(id, at: at);
           changed = true;
@@ -382,16 +345,7 @@ abstract class EntityStore<T extends Object> {
 
         final raw = backupData[id];
         if (raw is! Map) continue;
-        final json = Map<String, dynamic>.from(raw);
-        // A record written before ids existed carries none — the map key was
-        // its name and that was the whole of its identity. Every `fromJson`
-        // here requires an id, so such a record decoded to null and was
-        // skipped, which took the entire store with it: the pass that re-points
-        // a server at its key or its BMC account by name then had nothing to
-        // point at, and the server lost the reference or was skipped outright.
-        // `reconcile` is what turns the name back into this device's id.
-        if (json['id'] == null) json['id'] = id;
-        final item = fromJson(json);
+        final item = fromJson(Map<String, dynamic>.from(raw));
         if (item == null) continue;
         try {
           final resolved = reconcile(item);
@@ -411,22 +365,12 @@ abstract class EntityStore<T extends Object> {
         writeLinks(item);
       }
     });
-    if (changed) {
-      _cache = null;
-      if (notify && !_changes.isClosed) _changes.add(null);
-    }
+    if (changed) invalidate();
     return changed;
   }
 
   /// Replaces everything with [items], for the v1 backup format, which carries
   /// no per-record timestamps and so can only be taken or left whole.
-  ///
-  /// Whole means whole: a write that fails takes the transaction with it. This
-  /// used to log the record and carry on, but it had already deleted
-  /// everything — so a backup whose records this schema cannot accept left the
-  /// user with the rows gone and only some of the replacements written, and a
-  /// warning in a log as the only sign. [merge] can afford to skip a record
-  /// because it never removes what it is not replacing; this cannot.
   bool replaceAll(Iterable<T> items) {
     SqliteStore.transact(() {
       for (final id in keys()) {
@@ -435,10 +379,14 @@ abstract class EntityStore<T extends Object> {
       db.execute('DELETE FROM $table;');
       final written = <T>[];
       for (final item in items) {
-        final resolved = reconcile(item);
-        write(resolved);
-        written.add(resolved);
-        synced.stamp(idOf(resolved));
+        try {
+          final resolved = reconcile(item);
+          write(resolved);
+          written.add(resolved);
+          synced.stamp(idOf(resolved));
+        } on SqliteException catch (e) {
+          Loggers.app.warning('Restore skipped a $T', e);
+        }
       }
       // Once every row exists — see [writeLinks].
       for (final item in written) {

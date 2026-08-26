@@ -1,31 +1,19 @@
 
+import 'package:server_box/data/res/build_data.dart';
+
 /// Path constants and per-connection script directory state.
 ///
-/// Script content, markers, headers, and output splitting live in the shared
-/// Rust library (`sbm_parser::script`); only path/filename conventions and
-/// Flutter-connection state remain here.
+/// Script content, dividers, headers, and output splitting live in the shared
+/// Rust library (sbm_parser::script, see the shared-parser design); only path/filename
+/// conventions and Flutter-connection state remain here.
 // TODO(migration): residue of the Dart script layer — reevaluate once the app
 // endpoints move fully onto the FFI script API.
 class ScriptConstants {
   const ScriptConstants._();
 
-  /// The number in the remote script's filename.
-  ///
-  /// It must only increase, and it must increase whenever the generated script
-  /// changes: the name is what decides whether a server reuses the copy it
-  /// already has. Two builds writing different scripts under one name is the
-  /// failure this exists to prevent.
-  ///
-  /// A plain constant, here. It was a Git-history count computed during the
-  /// build, whose result varied with the source paths and with whether a build
-  /// went through `fl_build` at all — so it became a hand-maintained number,
-  /// and then a hand-maintained number in *two* files with a test holding them
-  /// level, because `fl_build` regenerates `BuildData` and drops anything it
-  /// was not fed.
-  static const int version = 75;
-
-  static const String scriptFile = 'srvboxm_v$version.sh';
-  static const String scriptFileWindows = 'srvboxm_v$version.ps1';
+  // Script file names (versioned: bumping BuildData.script forces re-upload)
+  static const String scriptFile = 'srvboxm_v${BuildData.script}.sh';
+  static const String scriptFileWindows = 'srvboxm_v${BuildData.script}.ps1';
 
   // Script directories
   static const String scriptDirHome = '~/.config/server_box';
@@ -33,6 +21,22 @@ class ScriptConstants {
   static const String scriptDirHomeWindows =
       r'$env:USERPROFILE/.config/server_box';
   static const String scriptDirTmpWindows = r'$env:TEMP/server_box';
+
+  /// Output segment separator (mirrors sbm_parser commands::SEPARATOR); also
+  /// used by container/systemd providers for their own command segmenting
+  static const String separator = 'SrvBoxSep';
+
+  /// Custom-command segment separator (mirrors sbm_parser
+  /// script::CUSTOM_CMD_SEPARATOR)
+  static const String customCmdSep = 'SrvBoxCusCmdSep';
+
+  /// Key a custom command's output is filed under by
+  /// `sbm_parser::script::parse_script_output`. Namespaced because custom
+  /// command names come from the user: one called `cpu` would otherwise
+  /// overwrite the built-in section of that name.
+  ///
+  /// Locked against the Rust implementation by `test/frb_parser_test.dart`.
+  static String customResultKey(String cmdName) => '$customCmdSep.$cmdName';
 
   // Path separators
   static const String unixPathSeparator = '/';

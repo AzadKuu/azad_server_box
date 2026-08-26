@@ -11,6 +11,7 @@ _SshDiscoveryResult _$SshDiscoveryResultFromJson(Map<String, dynamic> json) =>
       ip: json['ip'] as String,
       port: (json['port'] as num).toInt(),
       banner: json['banner'] as String?,
+      isSelected: json['isSelected'] as bool? ?? false,
     );
 
 Map<String, dynamic> _$SshDiscoveryResultToJson(_SshDiscoveryResult instance) =>
@@ -18,6 +19,7 @@ Map<String, dynamic> _$SshDiscoveryResultToJson(_SshDiscoveryResult instance) =>
       'ip': instance.ip,
       'port': instance.port,
       'banner': instance.banner,
+      'isSelected': instance.isSelected,
     };
 
 _SshDiscoveryReport _$SshDiscoveryReportFromJson(Map<String, dynamic> json) =>

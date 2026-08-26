@@ -22,7 +22,7 @@
   // that knows whether used/total are cumulative ticks (Linux, needs a delta)
   // or one-shot percentage pseudo-counters (Bsd/Windows, ratio is the value).
   // null until a baseline exists on the first Linux cycle.
-  const corePercents = $derived((m?.cpu_cores ?? []).map((c) => c.usage_percent))
+  const corePercents = $derived((m?.cpu_cores ?? []).map((c) => c.usage_percent ?? 0))
 
   // Detail pages backed by the slower extended collection cycle — see the
   // freshness note rendered for these below
@@ -80,27 +80,12 @@
         case 'name':
           return dir * a.name.localeCompare(b.name)
         case 'rx':
-          return dir * compareCounters(a.rx_bytes_exact, a.rx_bytes, b.rx_bytes_exact, b.rx_bytes)
+          return dir * (a.rx_bytes - b.rx_bytes)
         case 'tx':
-          return dir * compareCounters(a.tx_bytes_exact, a.tx_bytes, b.tx_bytes_exact, b.tx_bytes)
+          return dir * (a.tx_bytes - b.tx_bytes)
       }
     }),
   )
-
-  function compareCounters(
-    aExact: string | undefined,
-    aFallback: number,
-    bExact: string | undefined,
-    bFallback: number,
-  ): number {
-    const a = BigInt(aExact ?? Math.trunc(aFallback))
-    const b = BigInt(bExact ?? Math.trunc(bFallback))
-    return a < b ? -1 : a > b ? 1 : 0
-  }
-
-  function sectorBytes(exact: string | undefined, fallback: number): number | bigint {
-    return exact === undefined ? fallback * 512 : BigInt(exact) * 512n
-  }
 </script>
 
 {#snippet sortTh(label: string, active: boolean, dir: 1 | -1, align: 'left' | 'right', onclick: () => void)}
@@ -153,13 +138,13 @@
 
 <!-- Compact per-core tile: index + percent on top, thin bar below. Sized to
      fit many columns so high core-count machines don't produce a page-long list. -->
-{#snippet coreTile(index: number, pct: number | null)}
+{#snippet coreTile(index: number, pct: number)}
   <div class="rounded-lg border border-line px-2.5 py-2">
     <div class="flex justify-between items-baseline gap-2 mb-1">
       <span class="text-xs text-faint-fg">{index}</span>
-      <span class="text-xs font-medium text-fg tabular-nums">{pct == null ? '--' : `${pct.toFixed(0)}%`}</span>
+      <span class="text-xs font-medium text-fg tabular-nums">{pct.toFixed(0)}%</span>
     </div>
-    {@render progressBar(pct ?? 0)}
+    {@render progressBar(pct)}
   </div>
 {/snippet}
 
@@ -267,7 +252,7 @@
             </tr>
           </thead>
           <tbody class="divide-y divide-line">
-            {#each sortedDisks as d (`${d.path}\u0000${d.mount}`)}
+            {#each sortedDisks as d (d.path)}
               <tr>
                 <td class="py-2 pr-4 align-top">
                   <div
@@ -311,7 +296,7 @@
                 <td class="py-2 pr-4">
                   <span class="block truncate" title={d.dev}>{d.dev}</span>
                   <span class="block text-xs text-faint-fg truncate">
-                    {$LL.read()} {fmtBytes(sectorBytes(d.sectors_read_exact, d.sectors_read))} · {$LL.write()} {fmtBytes(sectorBytes(d.sectors_write_exact, d.sectors_write))}
+                    {$LL.read()} {fmtBytes(d.sectors_read * 512)} · {$LL.write()} {fmtBytes(d.sectors_write * 512)}
                   </span>
                 </td>
                 <td class="py-2 text-right whitespace-nowrap text-muted-fg">
@@ -352,10 +337,10 @@
                   <span class="block truncate" title={iface.name}>{iface.name}</span>
                 </td>
                 <td class="py-2 text-right whitespace-nowrap text-muted-fg">
-                  {fmtBytes(iface.rx_bytes_exact ?? iface.rx_bytes)}
+                  {fmtBytes(iface.rx_bytes)}
                 </td>
                 <td class="py-2 pl-4 text-right whitespace-nowrap text-muted-fg">
-                  {fmtBytes(iface.tx_bytes_exact ?? iface.tx_bytes)}
+                  {fmtBytes(iface.tx_bytes)}
                 </td>
               </tr>
             {/each}
@@ -382,12 +367,12 @@
     <LineChart
       {labels}
       series={[
-        { label: $LL.battery(), color: '#84cc16', values: history.map((p) => p.battery_percent ?? null) },
+        { label: $LL.battery(), color: '#84cc16', values: history.map((p) => p.battery_percent ?? 0) },
       ]}
       yMax={100}
       format={fmtPercent}
     />
-    {#each m?.batteries ?? [] as battery, i (`${battery.name ?? 'battery'}-${i}`)}
+    {#each m?.batteries ?? [] as battery, i (battery.name ?? i)}
       <Card>
         <div class="flex items-center justify-between gap-2 mb-3">
           <h3 class="text-sm font-semibold text-fg-strong truncate">

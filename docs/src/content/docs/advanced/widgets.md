@@ -3,26 +3,24 @@ title: Home Screen Widgets
 description: Add server status widgets to your home screen
 ---
 
-Requires a [monitor agent](/docs/advanced/monitor-agent/) on each server shown by the widget.
+Requires a [monitor agent](/docs/advanced/monitor-agent/) installed on your servers.
 
 ## Prerequisites
 
 Install ServerBox Monitor on your server first. See its [README](https://github.com/lollipopkit/flutter_server_box/blob/main/monitor/README.md) for setup instructions.
 
-After installation, verify that the server provides:
+After installation, your server should have:
 - HTTP/HTTPS endpoint
 - `/status` API endpoint
-- Optional authentication. `/status` is the legacy unauthenticated route; the
-  authenticated `/api/v1/status` route requires a bearer or watch token.
+- Optional authentication
 
 ## URL Format
 
-```text
+```
 https://your-server.com/status
 ```
 
-The URL must end with `/status`. URL-only widgets cannot use authenticated
-endpoints that require a bearer or watch token.
+Must end with `/status`.
 
 ## iOS Widget
 
@@ -36,7 +34,7 @@ endpoints that require a bearer or watch token.
 
 ### Notes
 
-- Use HTTPS for remote endpoints; use HTTP only on a trusted local network.
+- Must use HTTPS (except local IPs)
 - Max refresh rate: 30 minutes (iOS limit)
 - Add multiple widgets for multiple servers
 
@@ -60,8 +58,8 @@ Example:
 ## watchOS
 
 The watch reads each server from its monitor agent by itself, so it can only
-show servers that have one configured. Add the agent to the server first. In
-the server's edit page, set it as the connection method instead of SSH.
+show servers that have one configured. Add the agent to the server first — in
+the server's edit page, either as its connection method, or alongside SSH.
 
 ### Setup
 
@@ -71,14 +69,14 @@ the server's edit page, set it as the connection method instead of SSH.
    pages through that list
 4. Wait for the watch app to sync
 
-**Lock screen widget** is a separate entry on the same page and shows one server rather
+**Lock screen widget** is a separate entry on the same page — one server rather
 than a list.
 
 ### Notes
 
 - Try restarting the watch app if it is not updating
 - Verify phone and watch are connected
-- **Legacy status URLs** appear only when they were saved by an
+- **Legacy status URLs** only appears when you already have some, saved by an
   older version. Nothing creates new ones
 
 
@@ -98,5 +96,5 @@ than a list.
 
 ## Security
 
-- **Use HTTPS** for all remote endpoints.
-- **Use HTTP for local IPs** only on trusted networks.
+- **Always use HTTPS** when possible
+- **Local IPs only** on trusted networks

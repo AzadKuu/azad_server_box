@@ -41,7 +41,6 @@ abstract final class Tables {
   /// reasoning — neither leaves the device.
   static const syncRoots = [
     'private_key',
-    'bmc_credential',
     'server',
     'snippet',
     'port_forward',
@@ -53,7 +52,6 @@ abstract final class Tables {
   /// database has nothing else in it.
   static const names = [
     'private_key',
-    'bmc_credential',
     'server',
     'server_tag',
     'server_env',
@@ -68,7 +66,6 @@ abstract final class Tables {
     'snippet_auto_run_on',
     'port_forward',
     'conn_stat',
-    'server_dist',
     'agent_conversation',
     'agent_active_conversation',
     'tombstone',

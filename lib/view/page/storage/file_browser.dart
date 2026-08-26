@@ -19,6 +19,7 @@ import 'package:server_box/view/page/storage/file_pane.dart';
 import 'package:server_box/view/page/storage/send_to.dart';
 import 'package:server_box/view/page/storage/transfer_announce.dart';
 import 'package:server_box/view/widget/omit_start_text.dart';
+import 'package:server_box/view/widget/page_issue.dart';
 import 'package:server_box/view/widget/unix_perm.dart';
 
 /// What an injected action is allowed to do to the browser it sits in.
@@ -204,15 +205,7 @@ class _FileBrowserPageState extends ConsumerState<FileBrowserPage>
 
   final _listFocus = FocusNode(debugLabel: 'file browser');
 
-  /// Whether anything *still in the listing* is selected.
-  ///
-  /// Not `_selected.isNotEmpty`. That set holds names, and a name outlives the
-  /// entry: deleted from another session, removed by a failed batch, or
-  /// filtered out by toggling hidden files. Everything that acts on a selection
-  /// goes through [_selectedEntries], which is the listing filtered by that
-  /// set — so the two disagreed, and the bar stayed open over a selection with
-  /// nothing in it, its delete button raising a confirmation for zero files.
-  bool get _selecting => _shown.any((e) => _selected.contains(e.name));
+  bool get _selecting => _selected.isNotEmpty;
 
   late Future<List<FileEntry>> _entries = _list();
 
@@ -238,17 +231,10 @@ class _FileBrowserPageState extends ConsumerState<FileBrowserPage>
 
   Future<List<FileEntry>> _list() async {
     final listed = _path.path;
-    final entries = _named(await backend.list(listed));
+    final entries = await backend.list(listed);
     // Here rather than at each move: this is where the browser learns the
     // directory really opened.
-    //
-    // Only while it is still the directory being shown. A slow listing that
-    // lands after the user has moved on would otherwise announce where they
-    // were, and this is what the file tab persists — a listing of `/slow`
-    // finishing after a move to `/fast` reopened the tab at `/slow`.
-    if (mounted && _path.path == listed) {
-      widget.args.onPathChanged?.call(listed);
-    }
+    if (mounted) widget.args.onPathChanged?.call(listed);
     return entries;
   }
 
@@ -311,7 +297,7 @@ class _FileBrowserPageState extends ConsumerState<FileBrowserPage>
   ///
   /// Matched by asking whether this directory's own ref, with the arriving
   /// name on the end, *is* where the transfer was going. That answers "the
-  /// same place" rather than "the same string": an [SshFileRef] carries the
+  /// same place" rather than "the same string": an [SftpFileRef] carries the
   /// server it is on, so a file landing in `/tmp` on another host does not
   /// reload `/tmp` here.
   void _refreshOnArrival(FileTransferState transfers) {
@@ -401,10 +387,6 @@ class _FileBrowserPageState extends ConsumerState<FileBrowserPage>
       _pick(entry);
       return;
     }
-    // Picking a directory: a file is not something to act on here. Falling
-    // through opened the entry menu — edit, delete, download — in a browser the
-    // caller put up only to choose a folder.
-    if (widget.args.isPickDir) return;
     final open = widget.args.onOpenFile;
     if (open == null) {
       _showEntryMenu(entry);
@@ -462,20 +444,17 @@ class _FileBrowserPageState extends ConsumerState<FileBrowserPage>
       case LogicalKeyboardKey.escape:
         if (!_selecting && _cursor == null) return KeyEventResult.ignored;
         _clearSelection();
-      // The three that mutate or select are guarded rather than the whole
-      // handler: moving the cursor, entering a directory, going up and
-      // clearing are what a picker is *for*, and stay.
-      case LogicalKeyboardKey.f2 when !_isPicking:
+      case LogicalKeyboardKey.f2:
         final entry = _cursorOrOnlySelected;
         if (entry == null) return KeyEventResult.ignored;
         _rename(entry);
-      case LogicalKeyboardKey.delete when !_isPicking:
+      case LogicalKeyboardKey.delete:
         final targets = _selecting
             ? _selectedEntries
             : [?_cursorEntry];
         if (targets.isEmpty) return KeyEventResult.ignored;
         _deleteAll(targets);
-      case LogicalKeyboardKey.keyA when modified && !_isPicking:
+      case LogicalKeyboardKey.keyA when modified:
         _selectAll();
       default:
         return KeyEventResult.ignored;
@@ -513,33 +492,6 @@ class _FileBrowserPageState extends ConsumerState<FileBrowserPage>
   }
 
   String _fullPath(FileEntry entry) => BrowsePath.join(_path.path, entry.name);
-
-  /// The entries whose names are names, dropping any that are paths.
-  ///
-  /// `FileEntry.name` is documented as the last component and never a path, and
-  /// every backend the app ships honours that. This is the boundary where that
-  /// stops being a convention and starts being enforced, because everything
-  /// downstream joins the name onto the directory being shown: an entry called
-  /// `../outside` would make rename, delete, chmod and send-to act above the
-  /// root the browser is confined to, which `BrowsePath` guards only for
-  /// *navigation*. A listing is the far side's answer, and the far side is not
-  /// always the far side one meant to be talking to.
-  List<FileEntry> _named(List<FileEntry> entries) {
-    final safe = <FileEntry>[];
-    for (final entry in entries) {
-      final name = entry.name;
-      if (name.isEmpty ||
-          name == '.' ||
-          name == '..' ||
-          name.contains('/') ||
-          name.contains(r'\')) {
-        Loggers.app.warning('Dropping a listing entry that is a path: $name');
-        continue;
-      }
-      safe.add(entry);
-    }
-    return safe;
-  }
 
   // ------------------------------------------------------------------ actions
 
@@ -607,41 +559,15 @@ class _FileBrowserPageState extends ConsumerState<FileBrowserPage>
     );
     if (confirmed != true) return;
 
-    // Not `_run`: it treats a failure as "nothing happened" and skips the
-    // reload, which is right for one operation and wrong for a batch. A refusal
-    // part way through leaves the earlier ones deleted, so the listing is stale
-    // either way — and clearing the selection wholesale after that took away
-    // the only record of which ones were left.
-    _busy.value = true;
-    final removed = <String>{};
-    Object? failure;
-    try {
+    await _run(() async {
       for (final entry in entries) {
         await backend.remove(
           _fullPath(entry),
           recursive: entry.isDir && recursive,
         );
-        removed.add(entry.name);
       }
-    } catch (e) {
-      failure = e;
-    } finally {
-      _busy.value = false;
-    }
-
-    if (mounted) {
-      setStateSafe(() {
-        // What is gone stops being selected; what is still there stays, so the
-        // user can see what the failure left behind and retry it.
-        _selected.removeAll(removed);
-        if (_selected.isEmpty) {
-          _cursor = null;
-          _anchor = null;
-        }
-      });
-      if (failure != null) Toast.error(libL10n.fail, body: '$failure');
-    }
-    await refresh();
+    });
+    _clearSelection();
   }
 
   Future<void> _delete(FileEntry entry) async {
@@ -746,15 +672,6 @@ class _FileBrowserPageState extends ConsumerState<FileBrowserPage>
       child: _NameField(icon: icon, initial: initial),
     );
     if (name == null || name.isEmpty || !mounted) return null;
-    // A name, not a path. Every caller joins this onto the directory being
-    // shown and hands the result to the backend, so a separator or a dot
-    // segment here renames or creates somewhere else — `../outside` in a
-    // browser rooted at `/home/me` resolves to `/home/outside`. `BrowsePath`
-    // guards where the browser *goes*, and never sees these.
-    if (name.contains('/') || name.contains(r'\') || name == '.' || name == '..') {
-      Toast.error(libL10n.invalid);
-      return null;
-    }
     return name;
   }
 
@@ -789,7 +706,7 @@ class _FileBrowserPageState extends ConsumerState<FileBrowserPage>
   List<ContextMenuAction> _entryActions(FileEntry entry, String full) => [
     ContextMenuAction(
       icon: Icons.checklist,
-      text: libL10n.select,
+      text: l10n.selectItem,
       onTap: () => _toggle(entry),
     ),
     ContextMenuAction(
@@ -836,11 +753,6 @@ class _FileBrowserPageState extends ConsumerState<FileBrowserPage>
 
   /// [at] is where the pointer was, for a right-click. Null for a long press.
   Future<void> _showEntryMenu(FileEntry entry, {Offset? at}) {
-    // Picking: the caller asked for a path back, not a file manager. Every
-    // action on this menu either changes the entry or downloads it — none of
-    // them is what the browser was opened to do, and on SFTP that put delete
-    // one long press away from a dialog that only wanted a folder.
-    if (_isPicking) return Future.value();
     final full = _fullPath(entry);
     return showContextMenu(
       context,
@@ -896,14 +808,9 @@ class _FileBrowserPageState extends ConsumerState<FileBrowserPage>
   Future<List<FileEntry>> _matching(String query) async {
     final entries = await _entries;
     final needle = query.toLowerCase();
-    // The same visibility rule the listing uses. Searching the raw listing
-    // meant a query could surface — and open — the dotfiles the user had
-    // asked not to see, which is a filter that only holds until someone types.
-    final hidden = Stores.setting.showHiddenFiles.fetch();
     return [
       for (final entry in entries)
-        if (hidden || !entry.name.startsWith('.'))
-          if (entry.name.toLowerCase().contains(needle)) entry,
+        if (entry.name.toLowerCase().contains(needle)) entry,
     ];
   }
 
@@ -946,17 +853,6 @@ class _FileBrowserPageState extends ConsumerState<FileBrowserPage>
 
     final actions = <Widget>[
       ...?widget.args.extraActions?.call(this),
-      // The same menu a right-click on the directory gives — new folder, new
-      // file, and bringing one in from outside — where it can be seen. It was
-      // reachable only by secondary tap, which a phone does not have, so on
-      // every mobile build the one visible `+` in this tab belonged to the
-      // *server* list and adding a file had no button at all.
-      if (!widget.args.isPickFile && !widget.args.isPickDir)
-        Btn.icon(
-          text: libL10n.add,
-          icon: const Icon(Icons.add),
-          onTap: () => showContextMenu(context, _createActions),
-        ),
       _buildViewBtn(),
       Btn.icon(text: libL10n.search, icon: const Icon(Icons.search), onTap: _showSearch),
       if (isDesktop)
@@ -1319,54 +1215,27 @@ class _FileBrowserPageState extends ConsumerState<FileBrowserPage>
     // registers an inherited-widget dependency, and doing that inside
     // `itemBuilder` did it for every visible entry, every rebuild.
     final narrow = MediaQuery.sizeOf(context).width < 350;
-    const padding = EdgeInsets.symmetric(vertical: 10, horizontal: 13);
-
-    Widget upTile() => ListTile(
-      leading: const Icon(Icons.arrow_upward),
-      title: const Text('..'),
-      onTap: () => _go(_path.goUp),
-    ).cardx;
-
-    // An empty directory still has to say so, and still has to be leavable.
-    //
-    // The mark this tab uses for an empty surface, not a word. The row above
-    // says where you are and how to leave; a sentence here would be describing
-    // what the reader is already looking at.
-    //
-    // The failed *search* below keeps its words: "nothing matched" and "this
-    // place is empty" are different things, and only one of them is a state of
-    // the directory.
-    //
-    // `SliverFillRemaining` and not another list item: as an item it took the
-    // height of the icon and sat at the top of the list, which reads as the
-    // first entry of a directory that has none. This centres it in whatever is
-    // left under the `..` row.
-    if (items.isEmpty) {
-      return FadeIn(
-        key: ValueKey(_path.path),
-        child: CustomScrollView(
-          slivers: [
-            if (up == 1)
-              SliverPadding(
-                padding: const EdgeInsets.fromLTRB(13, 10, 13, 0),
-                sliver: SliverToBoxAdapter(child: upTile()),
-              ),
-            const SliverFillRemaining(
-              hasScrollBody: false,
-              child: Center(child: EmptyMark(icon: Icons.folder_open)),
-            ),
-          ],
-        ),
-      );
-    }
-
     return FadeIn(
       key: ValueKey(_path.path),
       child: ListView.builder(
-        itemCount: items.length + up,
-        padding: padding,
+        // One more than there is, when there is nothing: an empty directory
+        // still has to say so, and still has to be leavable.
+        itemCount: items.isEmpty ? up + 1 : items.length + up,
+        padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 13),
         itemBuilder: (context, index) {
-          if (up == 1 && index == 0) return upTile();
+          if (up == 1 && index == 0) {
+            return ListTile(
+              leading: const Icon(Icons.arrow_upward),
+              title: const Text('..'),
+              onTap: () => _go(_path.goUp),
+            ).cardx;
+          }
+          if (items.isEmpty) {
+            return Padding(
+              padding: const EdgeInsets.symmetric(vertical: 24),
+              child: Center(child: Text(libL10n.empty, style: UIs.textGrey)),
+            );
+          }
           return _buildEntry(items[index - up], narrow: narrow);
         },
       ),
@@ -1405,10 +1274,7 @@ class _FileBrowserPageState extends ConsumerState<FileBrowserPage>
         _extendTo(entry);
         return;
       }
-      // Not while picking: a selection is the beginning of acting on several
-      // entries, and a picker returns exactly one thing.
-      if (!_isPicking &&
-          (keys.isControlPressed || keys.isMetaPressed || _selecting)) {
+      if (keys.isControlPressed || keys.isMetaPressed || _selecting) {
         _toggle(entry);
         return;
       }

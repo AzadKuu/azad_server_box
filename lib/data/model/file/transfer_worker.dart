@@ -12,20 +12,18 @@ import 'package:server_box/core/utils/server.dart';
 import 'package:server_box/core/utils/sftp_file_backend.dart';
 import 'package:server_box/core/utils/sftp_timeout.dart';
 import 'package:server_box/core/utils/ssh_auth.dart';
-import 'package:server_box/core/utils/ssh_file_backend.dart';
 import 'package:server_box/data/model/file/copy_tree.dart';
 import 'package:server_box/data/model/file/file_backend.dart';
 import 'package:server_box/data/model/file/file_ref.dart';
 import 'package:server_box/data/model/file/prompt_queue.dart';
 import 'package:server_box/data/model/file/transfer.dart';
 import 'package:server_box/data/model/server/server_private_info.dart';
-import 'package:server_box/data/model/server/ssh_credential.dart';
 
 const _sftpChunkSize = 32 * 1024;
 
 const _sftpDownloadMaxPendingRequests = 64;
 
-const _sftpMinIdleTimeout = Duration(seconds: 60);
+const _sftpDownloadMinIdleTimeout = Duration(seconds: 60);
 
 const _sftpUploadMaxBytesOnTheWire = _sftpChunkSize * 64;
 
@@ -85,26 +83,22 @@ class TransferStaging {
 
 class TransferHostKeyAccepted {
   final String storageKey;
-
-  /// OpenSSH-style, `SHA256:<base64-without-padding>` — the same string
-  /// `HostKeyPromptInfo.fingerprint` carries. Was `fingerprintHex` back when
-  /// it held colon-separated hex, and the name outlived the format.
-  final String fingerprint;
+  final String fingerprintHex;
 
   const TransferHostKeyAccepted({
     required this.storageKey,
-    required this.fingerprint,
+    required this.fingerprintHex,
   });
 }
 
 Duration _prepareTimeout(FileTransfer job) =>
     sftpOperationTimeout(job.timeoutSeconds);
 
-Duration _idleTimeout(FileTransfer job) {
+Duration _downloadIdleTimeout(FileTransfer job) {
   final seconds = job.timeoutSeconds;
   final timeout = Duration(seconds: seconds <= 0 ? 60 : seconds);
-  return timeout < _sftpMinIdleTimeout
-      ? _sftpMinIdleTimeout
+  return timeout < _sftpDownloadMinIdleTimeout
+      ? _sftpDownloadMinIdleTimeout
       : timeout;
 }
 
@@ -123,11 +117,11 @@ Future<SSHClient> _connectSsh(
     onKeyboardInteractive: (server, request) =>
         _requestKeyboardInteractive(mainSendPort, server, request),
     onHostKeyPrompt: (info) => _requestHostKey(mainSendPort, info),
-    onHostKeyAccepted: (storageKey, fingerprint) {
+    onHostKeyAccepted: (storageKey, fingerprintHex) {
       mainSendPort.send(
         TransferHostKeyAccepted(
           storageKey: storageKey,
-          fingerprint: fingerprint,
+          fingerprintHex: fingerprintHex,
         ),
       );
     },
@@ -159,9 +153,7 @@ Future<List<String>?> _requestKeyboardInteractive(
     ),
   );
   try {
-    return await completer.future.timeout(
-      KeyboardInteractiveAuth.promptTimeout,
-    );
+    return await completer.future.timeout(KeyboardInteractiveAuth.promptTimeout);
   } on TimeoutException {
     return null;
   } finally {
@@ -178,9 +170,7 @@ Future<bool> _requestHostKey(
   _hostKeyResponses[id] = completer;
   mainSendPort.send(TransferHostKeyPrompt(id: id, info: info));
   try {
-    return await completer.future.timeout(
-      KeyboardInteractiveAuth.promptTimeout,
-    );
+    return await completer.future.timeout(KeyboardInteractiveAuth.promptTimeout);
   } on TimeoutException {
     return false;
   } finally {
@@ -192,41 +182,23 @@ class FileTransferWorker {
   final Function(Object event) onNotify;
   final FileTransfer job;
 
-  final Worker worker;
-  bool _disposed = false;
-  bool _workerDisposed = false;
+  final worker = Worker();
 
-  FileTransferWorker({
-    required this.onNotify,
-    required this.job,
-    Worker? worker,
-  }) : worker = worker ?? Worker();
+  FileTransferWorker({required this.onNotify, required this.job});
 
   void dispose() {
-    if (_disposed) return;
-    _disposed = true;
-    _disposeWorker();
-  }
-
-  void _disposeWorker() {
-    if (_workerDisposed || !worker.isInitialized) return;
-    _workerDisposed = true;
     worker.dispose();
   }
 
   /// Initiate the worker (new thread) and start listen from messages between
   /// the threads
   Future<void> init() async {
-    if (_disposed) return;
+    if (worker.isInitialized) worker.dispose();
     await worker.init(
       mainMessageHandler,
       isolateMessageHandler,
       errorHandler: print,
     );
-    if (_disposed) {
-      _disposeWorker();
-      return;
-    }
     worker.sendMessage(job);
   }
 
@@ -274,7 +246,7 @@ class FileTransferWorker {
       case final TransferHostKeyAccepted accepted:
         await persistHostKeyFingerprint(
           accepted.storageKey,
-          accepted.fingerprint,
+          accepted.fingerprintHex,
         );
         return;
       default:
@@ -294,15 +266,13 @@ Future<void> isolateMessageHandler(
       // The two pairs that already existed keep their own code: segmented
       // reads, an idle timer and a bounded write window are what make a large
       // file over a slow link finish, and none of that is expressible as
-      // `read` piped into `write`. Everything else takes the general path —
-      // including an SCP server, whose protocol has no random access to
-      // segment and no window to bound.
+      // `read` piped into `write`. Everything else takes the general path.
       switch ((job.from, job.to)) {
-        case (final SshFileRef from, final LocalFileRef to)
-            when job.isSingleFile && from.transport == SshFileTransport.sftp:
+        case (final SftpFileRef from, final LocalFileRef to)
+            when job.isSingleFile:
           await _download(job, from, to, mainSendPort);
-        case (final LocalFileRef from, final SshFileRef to)
-            when job.isSingleFile && to.transport == SshFileTransport.sftp:
+        case (final LocalFileRef from, final SftpFileRef to)
+            when job.isSingleFile:
           await _upload(job, from, to, mainSendPort);
         default:
           await _copy(job, mainSendPort);
@@ -325,7 +295,7 @@ Future<void> isolateMessageHandler(
 /// A server to this device.
 Future<void> _download(
   FileTransfer job,
-  SshFileRef from,
+  SftpFileRef from,
   LocalFileRef to,
   SendPort mainSendPort,
 ) async {
@@ -335,7 +305,6 @@ Future<void> _download(
   File? staging;
   Object? error;
   StackTrace? stackTrace;
-  Duration? spentTime;
 
   try {
     mainSendPort.send(FileTransferStage.preparing);
@@ -356,11 +325,10 @@ Future<void> _download(
     sftp = openedSftp;
 
     Loggers.app.info('Transfer download opening remote file: ${from.path}');
-    final openedRemoteFile = await withSftpLateCleanupTimeout(
+    final openedRemoteFile = await withSftpOpTimeout(
       'open remote file for download',
       openedSftp.open(from.path),
       _prepareTimeout(job),
-      cleanup: (file) => file.close(),
     );
     remoteFile = openedRemoteFile;
     Loggers.app.info('Transfer download reading remote size: ${from.path}');
@@ -383,7 +351,7 @@ Future<void> _download(
     // Beside the destination, not under its name: a download that dies
     // halfway used to leave a truncated file where a whole one was expected,
     // and nothing about it said so.
-    staging = File(stagingNameFor(to.path));
+    staging = File('${to.path}.$_stagingSuffix');
     mainSendPort.send(TransferStaging(staging.path));
     final localFile = await staging.open(mode: FileMode.write);
 
@@ -400,7 +368,7 @@ Future<void> _download(
       final dlWatch = Stopwatch()..start();
       Loggers.app.info('Transfer download start size=$size');
 
-      final timeout = _idleTimeout(job);
+      final timeout = _downloadIdleTimeout(job);
 
       while (offset < size) {
         final remaining = size - offset;
@@ -421,10 +389,9 @@ Future<void> _download(
           });
         }
 
-        Future<int>? pending;
         try {
           resetIdleTimer();
-          pending = openedRemoteFile.downloadToRandomAccess(
+          final downloadFuture = openedRemoteFile.downloadToRandomAccess(
             localFile,
             length: length,
             offset: offset,
@@ -452,22 +419,14 @@ Future<void> _download(
               }
             },
           );
-          final segmentBytes = await Future.any([pending, idleTimeout.future]);
+          final segmentBytes = await Future.any([
+            downloadFuture,
+            idleTimeout.future,
+          ]);
 
           totalBytes += segmentBytes;
           chunkCount += (segmentBytes / _sftpChunkSize).ceil();
         } on TimeoutException {
-          // `Future.any` stops waiting; it does not stop the download, which
-          // goes on writing into `localFile` — the handle closed a few lines
-          // below and the file deleted after that. Closing the remote file is
-          // what ends the reads still in flight, and `ignore` is what keeps
-          // their failure from surfacing later as an unhandled asynchronous
-          // error with no transfer left to attach it to.
-          pending?.ignore();
-          try {
-            await openedRemoteFile.close();
-          } catch (_) {}
-          remoteFile = null;
           throw SftpError('Download timed out at offset=$offset');
         } finally {
           idleTimer?.cancel();
@@ -491,7 +450,8 @@ Future<void> _download(
     staging = null;
     mainSendPort.send(const TransferStaging(''));
 
-    spentTime = watch.elapsed;
+    mainSendPort.send(watch.elapsed);
+    mainSendPort.send(FileTransferStage.finished);
   } catch (e, s) {
     error = e;
     stackTrace = s;
@@ -505,36 +465,47 @@ Future<void> _download(
   }
 
   if (error != null) {
-    Loggers.app.warning(
-      'Transfer download failed: ${from.path}',
-      error,
-      stackTrace,
-    );
+    Loggers.app.warning('Transfer download failed: ${from.path}', error, stackTrace);
     mainSendPort.send(error);
-  } else if (spentTime != null) {
-    mainSendPort.send(spentTime);
-    mainSendPort.send(FileTransferStage.finished);
   }
 }
 
-/// Renames [staging] over [path], moving what is there out of the way if the
-/// server will not replace it itself. See `SftpFileBackend._replace`, which
-/// faces the same `SSH_FXP_RENAME` rule and does the same thing.
+/// The name a half-finished transfer is parked under.
+///
+/// A counter rather than a timestamp: two transfers of the same file, started
+/// in the same millisecond, must not stage onto each other.
+var _staging = 0;
+
+String get _stagingSuffix => 'sb-part-${_staging++}';
+
+/// Renames [staging] over [path], deleting what is there if the server will
+/// not replace it itself. See `SftpFileBackend._replace`, which faces the same
+/// `SSH_FXP_RENAME` rule.
 Future<void> _replaceRemote(
   SftpClient sftp,
   String staging,
   String path,
   Duration timeout,
 ) async {
-  await replaceSftpPath(
-    staging: staging,
-    destination: path,
-    aside: stagingNameFor(path),
-    rename: (from, to) =>
-        withSftpOpTimeout('rename', sftp.rename(from, to), timeout),
-    remove: (target) =>
-        withSftpOpTimeout('remove', sftp.remove(target), timeout),
-  );
+  final Object failure;
+  try {
+    await withSftpOpTimeout('rename', sftp.rename(staging, path), timeout);
+    return;
+  } catch (e) {
+    failure = e;
+  }
+
+  // Only "the destination is in the way" is worth a second attempt. Anything
+  // else — no permission, no such directory — is the rename's own answer, and
+  // deleting something on the strength of a misread would be worse than
+  // failing.
+  try {
+    await withSftpOpTimeout('stat', sftp.stat(path), timeout);
+  } catch (_) {
+    throw failure;
+  }
+  await withSftpOpTimeout('remove', sftp.remove(path), timeout);
+  await withSftpOpTimeout('rename', sftp.rename(staging, path), timeout);
 }
 
 Future<void> _discardRemote(SftpClient? sftp, String? staging) async {
@@ -559,17 +530,15 @@ Future<void> _discard(File? staging) async {
 Future<void> _upload(
   FileTransfer job,
   LocalFileRef from,
-  SshFileRef to,
+  SftpFileRef to,
   SendPort mainSendPort,
 ) async {
   SSHClient? client;
   SftpClient? sftp;
   SftpFile? remoteFile;
   String? staging;
-  var replacementOutcomeUnknown = false;
   Object? error;
   StackTrace? stackTrace;
-  Duration? spentTime;
 
   try {
     mainSendPort.send(FileTransferStage.preparing);
@@ -595,9 +564,9 @@ Future<void> _upload(
     sftp = openedSftp;
     // Beside the destination rather than onto it. Truncating first meant a
     // failed upload replaced a good remote file with a partial one.
-    staging = stagingNameFor(to.path);
+    staging = '${to.path}.$_stagingSuffix';
     Loggers.app.info('Transfer upload opening remote file: $staging');
-    final openedRemoteFile = await withSftpLateCleanupTimeout(
+    final openedRemoteFile = await withSftpOpTimeout(
       'open remote file for upload',
       openedSftp.open(
         staging,
@@ -607,12 +576,6 @@ Future<void> _upload(
             SftpFileOpenMode.write,
       ),
       _prepareTimeout(job),
-      cleanup: (file) async {
-        await file.close();
-        try {
-          await openedSftp.remove(staging!);
-        } catch (_) {}
-      },
     );
     remoteFile = openedRemoteFile;
     mainSendPort.send(FileTransferStage.loading);
@@ -621,20 +584,9 @@ Future<void> _upload(
       'chunk=$_sftpChunkSize, maxBytes=$_sftpUploadMaxBytesOnTheWire',
     );
     var lastProgress = -1;
-    // The download beside this one has been bounded by the gap between its
-    // chunks all along; the upload was not, so a server that accepted the
-    // channel and then stopped acknowledging left `done` pending forever and
-    // no configured timeout ever reached it — the isolate stayed alive, and
-    // the staged file with it.
-    //
-    // Through [SftpIdleWatchdog] rather than a third hand-rolled timer, since
-    // `SftpFileBackend.write` needs the same bound and the download's own copy
-    // is what this was written from.
-    final watchdog = SftpIdleWatchdog('upload', _idleTimeout(job));
     final writer = openedRemoteFile.write(
       localFile,
       onProgress: (total) {
-        watchdog.beat();
         if (localLen == 0) return;
         final progress = (total / localLen * 100).round();
         if (progress != lastProgress) {
@@ -650,52 +602,21 @@ Future<void> _upload(
       chunkSize: _sftpChunkSize,
       maxBytesOnTheWire: _sftpUploadMaxBytesOnTheWire,
     );
-    try {
-      await watchdog.guard(writer.done);
-    } on TimeoutException {
-      // `Future.any` stops waiting; it does not stop the write, which goes on
-      // holding the remote file. Closing it is what ends the requests still in
-      // flight — the `finally` below then removes the staging file — and the
-      // download path stops the same way for the same reason.
-      writer.done.ignore();
-      try {
-        await openedRemoteFile.close();
-      } catch (_) {}
-      remoteFile = null;
-      // Named like the download's, rather than passed through as a bare
-      // `TimeoutException`: both are the same failure and the list shows the
-      // message.
-      throw SftpError('Upload timed out without progress');
-    }
+    await writer.done;
     // Closed before the rename: a server need not see a handle to a path that
     // is about to stop existing.
     await remoteFile.close();
     remoteFile = null;
-    // Through a backend over the channel this already has, rather than another
-    // copy of the stat-and-chmod: this is the path the editor's save-back
-    // takes, so it is exactly where a 0755 script must not come back 0644, and
-    // two hand-written versions of that are two chances to differ.
-    await carryModeToStaging(
-      SftpFileBackend(openedSftp, timeout: _prepareTimeout(job)),
-      staging,
-      to.path,
-    );
-    try {
-      await _replaceRemote(openedSftp, staging, to.path, _prepareTimeout(job));
-    } on TimeoutException {
-      replacementOutcomeUnknown = true;
-      rethrow;
-    }
+    await _replaceRemote(openedSftp, staging, to.path, _prepareTimeout(job));
     staging = null;
 
-    spentTime = watch.elapsed;
+    mainSendPort.send(watch.elapsed);
+    mainSendPort.send(FileTransferStage.finished);
   } catch (e, s) {
     error = e;
     stackTrace = s;
   } finally {
-    if (!replacementOutcomeUnknown) {
-      await _discardRemote(sftp, staging);
-    }
+    await _discardRemote(sftp, staging);
     await _closeSftpResources(
       remoteFile: remoteFile,
       sftp: sftp,
@@ -704,15 +625,8 @@ Future<void> _upload(
   }
 
   if (error != null) {
-    Loggers.app.warning(
-      'Transfer upload failed: ${to.path}',
-      error,
-      stackTrace,
-    );
+    Loggers.app.warning('Transfer upload failed: ${to.path}', error, stackTrace);
     mainSendPort.send(error);
-  } else if (spentTime != null) {
-    mainSendPort.send(spentTime);
-    mainSendPort.send(FileTransferStage.finished);
   }
 }
 
@@ -726,7 +640,6 @@ Future<void> _copy(FileTransfer job, SendPort mainSendPort) async {
   final closing = <Future<void> Function()>[];
   Object? error;
   StackTrace? stackTrace;
-  Duration? spentTime;
 
   try {
     mainSendPort.send(FileTransferStage.preparing);
@@ -771,16 +684,15 @@ Future<void> _copy(FileTransfer job, SendPort mainSendPort) async {
             // zero rather than as a guess that would run past 100.
             percent: total == 0
                 ? 0
-                : ((transferred / total * 100 * 10).roundToDouble() / 10)
-                      .clamp(0, 100)
-                      .toDouble(),
+                : (transferred / total * 100 * 10).roundToDouble() / 10,
             transferredBytes: transferred,
           ),
         );
       },
     );
 
-    spentTime = watch.elapsed;
+    mainSendPort.send(watch.elapsed);
+    mainSendPort.send(FileTransferStage.finished);
   } catch (e, s) {
     error = e;
     stackTrace = s;
@@ -801,9 +713,6 @@ Future<void> _copy(FileTransfer job, SendPort mainSendPort) async {
       stackTrace,
     );
     mainSendPort.send(error);
-  } else if (spentTime != null) {
-    mainSendPort.send(spentTime);
-    mainSendPort.send(FileTransferStage.finished);
   }
 }
 
@@ -822,14 +731,13 @@ Future<FileBackend> _openBackend(
       final backend = MonitorFileBackend(monitor);
       closing.add(backend.close);
       return backend;
-    case SshFileRef(:final creds, :final transport):
+    case SftpFileRef(:final creds):
       final client = await _connectSsh(creds, mainSendPort);
       closing.add(() async => client.close());
       // No escalation: there is nobody on this isolate to ask for a password,
       // and a refusal is a refusal.
-      final backend = await openSshFileBackend(
+      final backend = await SftpFileBackend.connect(
         client,
-        transport: transport,
         timeout: _prepareTimeout(job),
       );
       closing.add(backend.close);

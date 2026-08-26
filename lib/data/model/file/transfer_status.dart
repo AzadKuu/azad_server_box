@@ -41,17 +41,7 @@ class FileTransferStatus {
 
   final FileTransfer job;
   final void Function() notifyListeners;
-
-  /// Answered with whether the transfer *finished*, for a caller that has
-  /// something to do next with what it moved.
-  ///
-  /// It used to be answered `true` no matter how the transfer ended, and a
-  /// cancelled one is removed from the list — so the caller's other check,
-  /// "does this row carry an error", found no row and read the cancellation as
-  /// a success. `_uploadViaSudo` then renamed a staging file that was never
-  /// fully written over the destination, and the editor opened a download that
-  /// had not arrived.
-  final Completer<bool>? completer;
+  final Completer? completer;
 
   /// Null for a transfer that runs on this isolate, which is the pairs with no
   /// crypto in them.
@@ -90,7 +80,7 @@ class FileTransferStatus {
     worker?.dispose();
     if (unfinished) _discardStaging();
     if (completer?.isCompleted == false) {
-      completer?.complete(!unfinished);
+      completer?.complete(true);
     }
   }
 
@@ -101,56 +91,45 @@ class FileTransferStatus {
   /// copy running.
   bool get _cancelled => _disposed;
 
-  /// Removes the staged copy this transfer did not get to rename.
+  /// Removes a staged copy the transfer did not get to rename.
   ///
   /// Only where this device is the destination. Killing an isolate skips the
-  /// cleanup its own `catch` would have done, and a `.sb-part-…` nobody
+  /// cleanup its own `catch` would have done, and a `.sb-part-N` nobody
   /// deletes is worse than the partial file this staging replaced.
   ///
-  /// The one path the transfer reported, not every name in the directory that
-  /// looks like one. Sweeping by pattern deleted a *sibling* transfer's file
-  /// whenever two of them targeted the same basename — and for a download it
-  /// swept nothing at all, because what arrives here is already the staging
-  /// path and no file is a staged copy of that. Every backend that stages
-  /// somewhere this side can reach now reports where, before it writes a byte.
+  /// Swept by name rather than deleted by path: the backend picks the staging
+  /// name inside `write`, and the two sides agree on the pattern rather than
+  /// on the whole string. Two transfers staging the same destination are
+  /// already writing over each other.
   ///
   /// A cancelled *upload* leaves one on the server, which this side cannot
   /// reach without opening the connection again. It is at least visible in the
   /// browser, beside the file it was going to become.
   void _discardStaging() {
-    final staging = stagingPath;
-    if (staging == null || job.to is! LocalFileRef) return;
+    final destination = stagingPath;
+    if (destination == null || job.to is! LocalFileRef) return;
     stagingPath = null;
-    unawaited(_remove(staging));
+    unawaited(_sweep(destination));
   }
 
-  static Future<void> _remove(String staging) async {
+  static Future<void> _sweep(String destination) async {
     try {
-      final file = File(LocalFileBackend.nativePath(staging));
-      if (await file.exists()) await file.delete();
+      final native = LocalFileBackend.nativePath(destination);
+      final dir = File(native).parent;
+      if (!await dir.exists()) return;
+      await for (final entity in dir.list(followLinks: false)) {
+        final name = entity.path.split(Platform.pathSeparator).last;
+        if (entity is File && isStagingOf(name, destination)) {
+          await entity.delete();
+        }
+      }
     } catch (e, s) {
-      Loggers.app.warning(
-        'Failed to clean up after a cancelled transfer',
-        e,
-        s,
-      );
+      Loggers.app.warning('Failed to clean up after a cancelled transfer', e, s);
     }
   }
 
   Future<void> _initWorker() async {
     try {
-      // Before the bundle crosses: the isolate has no screen to ask a
-      // passphrase on, so a key stored encrypted has to be opened on this side
-      // or it fails over there with nothing to say why.
-      for (final ref in [job.from, job.to]) {
-        if (ref is SshFileRef) await ref.creds.unlockKeys();
-      }
-      // Unlocking asks for a passphrase, so this await lasts as long as
-      // somebody takes to answer it — plenty of time to cancel. `dispose` has
-      // already killed a worker that was never started; going on would spawn a
-      // fresh isolate for a transfer that is no longer in the list, and it
-      // would run to completion with nothing watching it.
-      if (_disposed) return;
       await worker!.init();
     } catch (e, s) {
       Loggers.app.warning('Failed to initialize the transfer worker', e, s);
@@ -168,8 +147,6 @@ class FileTransferStatus {
     // agent would otherwise log in twice to move a file it never sends over
     // the network at all.
     final dest = _sameEnd(job.from, job.to) ? source : _backendFor(job.to);
-    Duration? spentTime;
-    Object? error;
     try {
       onNotify(FileTransferStage.preparing);
       final watch = Stopwatch()..start();
@@ -187,66 +164,46 @@ class FileTransferStatus {
         plan,
         source,
         dest,
-        // As the isolate path reports it, and for the same reason: `write`
-        // cleans up after its own failures, and a cancellation is not one of
-        // them. Without this a local copy stopped part-way left its
-        // `.sb-part-…` beside the destination, which is the thing staging was
-        // introduced to avoid.
-        onStaging: (path) => onNotify(TransferStaging(path)),
         cancelled: () => _cancelled,
         onProgress: (transferred) => onNotify(
           FileTransferProgress(
-            percent: total == 0
-                ? 0
-                : (transferred / total * 100).clamp(0, 100).toDouble(),
+            percent: total == 0 ? 0 : transferred / total * 100,
             transferredBytes: transferred,
           ),
         ),
       );
 
-      spentTime = watch.elapsed;
+      onNotify(watch.elapsed);
+      onNotify(FileTransferStage.finished);
     } on CopyCancelled {
       // The row is already gone and `write` has removed what it staged. There
       // is nobody left to report this to.
     } catch (e, s) {
       Loggers.app.warning('Local copy failed: ${job.from} -> ${job.to}', e, s);
-      error = e;
+      onNotify(e);
     } finally {
       await source.close();
       if (!identical(dest, source)) await dest.close();
-    }
-
-    if (error != null) {
-      onNotify(error);
-    }
-    if (spentTime != null) {
-      onNotify(spentTime);
-      onNotify(FileTransferStage.finished);
     }
   }
 
   /// Whether two ends are the same place, and so can share one session.
   static bool _sameEnd(FileRef a, FileRef b) => switch ((a, b)) {
     (LocalFileRef(), LocalFileRef()) => true,
-    (MonitorFileRef(spi: final x), MonitorFileRef(spi: final y)) => x == y,
+    (MonitorFileRef(spi: final x), MonitorFileRef(spi: final y)) =>
+      x.id == y.id,
     _ => false,
   };
 
-  /// An `SshFileRef` never reaches here — [FileTransfer.needsIsolate] is
+  /// An `SftpFileRef` never reaches here — [FileTransfer.needsIsolate] is
   /// exactly the question "is either end SSH".
   static FileBackend _backendFor(FileRef ref) => switch (ref) {
     LocalFileRef() => const LocalFileBackend(),
     MonitorFileRef(:final monitor) => MonitorFileBackend(monitor),
-    SshFileRef() => throw StateError('SFTP transfers run in an isolate'),
+    SftpFileRef() => throw StateError('SFTP transfers run in an isolate'),
   };
 
   void onNotify(dynamic event) {
-    // Nothing after the end. Killing a worker does not recall the messages it
-    // already sent, so a cancelled transfer could still be handed a progress
-    // update or a stage — and would publish it, moving a row that is no longer
-    // in the list and completing a completer that has already been answered.
-    if (_disposed) return;
-
     var shouldDispose = false;
     switch (event) {
       case final FileTransferStage val:

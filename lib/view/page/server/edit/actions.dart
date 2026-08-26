@@ -3,13 +3,6 @@ part of 'edit.dart';
 /// Only permit ipv4 / ipv6 / domain chars (including IPv6 zone identifier like %en0)
 final _hostReg = RegExp(r'^[a-zA-Z0-9\.\-_:%;]+$');
 
-/// The BMC account picker's "create a new one" entry.
-///
-/// A sentinel in the same list as the ids, rather than a second button:
-/// the picker takes one list, and a value `ShortId` cannot produce is
-/// cheaper than a wrapper type for one entry.
-const _kNewBmcCred = '\u0000new';
-
 extension _Discovery on _ServerEditPageState {
   /// Sweeps the network and fills this form in from what is picked.
   ///
@@ -66,116 +59,6 @@ extension _Actions on _ServerEditPageState {
     _pendingSudoPassword = value;
     _sudoPasswordDirty = true;
     _hasStoredSudoPassword.value = value != null && value.isNotEmpty;
-  }
-
-  /// Picks the account this server's BMC is opened with, or opens the editor
-  /// for a new one.
-  ///
-  /// Creating and editing are the account page's job, reached from here and
-  /// from the account list — the same arrangement the private key picker
-  /// already uses. A dialog owned by this page would be a second copy of that
-  /// form, and the delete and the "used by N servers" warning would only exist
-  /// in one of them.
-  Future<void> _onTapBmcAccount() async {
-    final creds = ref.read(bmcCredentialProvider).creds;
-    final current = _bmcCredId.value;
-    // `showPickDialog` rather than `showPickSingleDialog`, which answers null
-    // for a dialog that was dismissed *and* for one whose selection was
-    // cleared. Those have to be told apart here, or dismissing would silently
-    // unset the account. This one answers null only for a dismissal, and an
-    // empty list for a clear.
-    final picked = await context.showPickDialog<String>(
-      title: l10n.bmcAccount,
-      items: [...creds.map((e) => e.id), _kNewBmcCred],
-      display: (id) {
-        if (id == _kNewBmcCred) return '+ ${libL10n.add}';
-        final cred = creds.firstWhereOrNull((e) => e.id == id);
-        return cred == null ? id : '${cred.name} (${cred.user})';
-      },
-      multi: false,
-      initial: current == null ? null : [current],
-      // An address with no account is a state the whole stack models: the
-      // column is nullable, the key action sets it null, `isComplete` answers
-      // false to it and the tile has a string for it. Without this there was
-      // no way back to it once an account had been picked, short of deleting
-      // the address and the reviewed certificate with it.
-      clearable: true,
-    );
-    if (picked == null || !mounted) return;
-
-    final choice = picked.firstOrNull;
-    if (choice != _kNewBmcCred) {
-      _bmcCredId.value = choice;
-      return;
-    }
-    final created = await BmcCredentialEditPage.route.go(context);
-    // Whatever the page saved, or null if it was left without saving. Read
-    // rather than assumed: the picker must not point at a record that does not
-    // exist, which the foreign key would refuse at save time anyway.
-    if (!mounted) return;
-    if (created is BmcCredential) _bmcCredId.value = created.id;
-  }
-
-  /// Fetches the certificate the BMC presents, shows it, and pins it if the
-  /// user agrees.
-  ///
-  /// The connection here sends nothing — it exists only to read what the far
-  /// end offers — so an impostor at that address learns no password from it.
-  /// That is what makes it safe to accept any certificate for this one step,
-  /// and it is the only step that does.
-  Future<void> _onTapBmcCert() async {
-    final cfg = BmcCfg(addr: _bmcAddrCtrl.text.trim());
-    final uri = cfg.uri;
-    final port = cfg.port;
-    if (uri == null || port == null) {
-      Toast.error(libL10n.fail, body: l10n.bmcAddrInvalid);
-      return;
-    }
-
-    final CertInfo info;
-    try {
-      info = await fetchServerCert(uri.host, port);
-    } catch (e) {
-      Toast.error(libL10n.fail, body: '$e');
-      return;
-    }
-    if (!mounted) return;
-
-    final pinned = _bmcCert.value;
-    final changed = pinned != null && pinned != info.fingerprint;
-
-    final accepted = await context.showRoundDialog<bool>(
-      title: l10n.bmcCert,
-      barrierDismiss: false,
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(changed ? l10n.bmcCertChanged : l10n.bmcCertReview),
-          const SizedBox(height: 12),
-          SelectableText('${libL10n.addr}: ${uri.host}:$port'),
-          SelectableText('Subject: ${info.subject}'),
-          SelectableText('Issuer: ${info.issuer}'),
-          SelectableText('SHA-256: ${info.prettyFingerprint}'),
-          if (info.isExpired) ...[
-            const SizedBox(height: 8),
-            Text(
-              l10n.bmcCertExpired,
-              style: const TextStyle(color: Colors.orange),
-            ),
-          ],
-          if (changed) ...[
-            const SizedBox(height: 8),
-            SelectableText(l10n.bmcCertWas(pinned)),
-          ],
-        ],
-      ),
-      actions: Btnx.cancelOk,
-    );
-    // The dialog answers; this page acts on the answer and this page is what
-    // holds the field — see the dialog rules in CLAUDE.md
-    if (accepted != true || !mounted) return;
-    _bmcCert.value = info.fingerprint;
   }
 
   Future<void> _onTapSudoPassword() async {
@@ -295,8 +178,6 @@ extension _Actions on _ServerEditPageState {
     switch (error) {
       case SpiValidationError.jumpServerAndProxyCommandConflict:
         return l10n.jumpServerAndProxyCommandCannotBeUsedTogether;
-      case SpiValidationError.noConnectionMethod:
-        return l10n.noConnectionMethod;
     }
   }
 
@@ -338,34 +219,11 @@ extension _Actions on _ServerEditPageState {
   }
 
   void _onSave() async {
-    final useSsh = _useSsh.value;
     final useMonitorHttp = _useMonitorHttp.value;
-    final keyIdx = _keyIdx.value;
-    // `-1` is not an index into anything. It is what the key-auth switch
-    // writes when it is turned on before a key is picked, and it stands for
-    // "no selection" — the check further down at `_keyIdx.value == -1` is what
-    // handles it. `elementAtOrNull` does not tolerate it either: it throws
-    // `RangeError.checkNotNegative` rather than answering null, so reaching it
-    // with the switch on and no key chosen took the save down.
-    final selectedKey = keyIdx == null || keyIdx < 0
-        ? null
-        : ref.read(privateKeyProvider).keys.elementAtOrNull(keyIdx);
-    // Said rather than silently dropped. `elementAtOrNull` is what keeps the
-    // save from throwing when the chosen key was deleted from another pane
-    // meanwhile, but going on from there would write a server with no key and
-    // no word about why.
-    // Only when the key is going to be written. With SSH switched off the
-    // form is hidden and `_keyIdx` still holds whatever it was loaded with, so
-    // this used to refuse a save over a key the record is about to drop.
-    if (useSsh && keyIdx != null && keyIdx >= 0 && selectedKey == null) {
-      Toast.show('${libL10n.invalid}: ${libL10n.key}');
-      return;
-    }
 
-    // The SSH form is hidden when SSH is switched off, so there is nothing
-    // there to validate — and requiring it is what used to make a
-    // monitor-only server invent a host and a user named `monitor`.
-    if (useSsh) {
+    // SSH host/auth/jump-chain fields are hidden (and irrelevant) in
+    // monitor-HTTP mode — skip their validation/defaulting entirely.
+    if (!useMonitorHttp) {
       if (_ipController.text.isEmpty) {
         Toast.show('${libL10n.empty} ${libL10n.host}');
         return;
@@ -379,18 +237,18 @@ extension _Actions on _ServerEditPageState {
       // Either key source counts. A server imported with an IdentityFile has
       // a key and no password, and asking it to confirm "no authentication"
       // on every save would be asking about something that is not true.
-      final hasKey = selectedKey != null || _keyPath.value != null;
+      final hasKey = _keyIdx.value != null || _keyPath.value != null;
       if (!hasKey && _passwordController.text.isEmpty) {
         final ok = await context.showRoundDialog<bool>(
           title: libL10n.attention,
           child: Text(libL10n.askContinue(l10n.useNoPwd)),
           actions: Btnx.cancelRedOk,
         );
-        if (ok != true || !mounted) return;
+        if (ok != true) return;
       }
 
       // If [_pubKeyIndex] is -1, it means that the user has not selected
-      if (_keyIdx.value == -1 && _passwordController.text.isEmpty) {
+      if (_keyIdx.value == -1) {
         Toast.show(libL10n.empty);
         return;
       }
@@ -406,7 +264,7 @@ extension _Actions on _ServerEditPageState {
       }
     }
     final proxyCommandText = _proxyCommandCtrl.text.trim();
-    if (useSsh && !isDesktop && proxyCommandText.isNotEmpty) {
+    if (!useMonitorHttp && !isDesktop && proxyCommandText.isNotEmpty) {
       Toast.show(l10n.proxyCommandOnlySupportedOnDesktop);
       return;
     }
@@ -435,35 +293,38 @@ extension _Actions on _ServerEditPageState {
         user: _monitorUserCtrl.text.selfNotEmptyOrNull,
         pwd: _monitorPwdCtrl.text.selfNotEmptyOrNull,
         ignoreCert: _monitorIgnoreCert.value,
-        allowInsecure: _monitorAllowInsecure.value,
       );
     }
 
-    // Null when the SSH switch is off: such a server is reached through its
-    // agent, and nothing in the hidden form would have anywhere to go.
-    final ssh = !useSsh
+    // In monitor mode the SSH form is hidden and a monitor server carries no
+    // SSH credential at all: it is reached through its agent, and nothing here
+    // would have anywhere to go. Previously these fields were required, which
+    // is why a monitor-only server used to be saved with a host derived from
+    // the monitor URL and a user literally named `monitor`.
+    final ssh = useMonitorHttp
         ? null
         : SshCredential(
             ip: _ipController.text,
             port: int.tryParse(_portController.text) ?? 22,
             user: _usernameController.text,
             pwd: _passwordController.text.selfNotEmptyOrNull,
-            keyId: selectedKey?.id,
+            keyId: _keyIdx.value != null
+                ? ref
+                      .read(privateKeyProvider)
+                      .keys
+                      .elementAt(_keyIdx.value!)
+                      .id
+                : null,
             // Carried through rather than rebuilt from the form: nothing on
             // this page can type a path, and dropping it on save would take
             // away the only credential an imported server has
-            keyPath: selectedKey != null ? null : _keyPath.value,
-            identityFiles:
-                keyIdx == null && _keyPath.value == this.spi?.ssh?.keyPath
-                ? this.spi?.ssh?.identityFiles
-                : null,
+            keyPath: _keyIdx.value != null ? null : _keyPath.value,
             alterUrl: _altUrlController.text.selfNotEmptyOrNull,
             jumpId: _jumpServers.value.isEmpty
                 ? null
                 : _jumpServers.value.first,
             jumpIds: _jumpServers.value.isEmpty ? null : _jumpServers.value,
             proxyCommand: proxyCommandText.selfNotEmptyOrNull,
-            fileTransport: _fileTransport.value,
           );
 
     final wolEmpty =
@@ -485,26 +346,6 @@ extension _Actions on _ServerEditPageState {
       }
     }
 
-    // An address alone is not enough to reach a BMC, and a half-filled one
-    // would poll forever against nothing — so it is all or nothing
-    final bmcAddr = _bmcAddrCtrl.text.trim();
-    final bmc = bmcAddr.isEmpty
-        ? null
-        : BmcCfg(
-            addr: bmcAddr,
-            credId: _bmcCredId.value,
-            certSha256: _bmcCert.value,
-          );
-    if (bmc != null && !bmc.isComplete) {
-      // Which half is missing, since `isComplete` is both and reporting either
-      // as a bad address sent the user back to retype one that was fine.
-      Toast.error(
-        libL10n.fail,
-        body: bmc.uri == null ? l10n.bmcAddrInvalid : l10n.bmcAccountUnset,
-      );
-      return;
-    }
-
     final spi = Spi(
       name: _nameController.text.isEmpty
           ? (ssh?.ip ?? monitorHttp?.addr ?? '')
@@ -514,17 +355,7 @@ extension _Actions on _ServerEditPageState {
       autoConnect: _autoConnect.value,
       custom: custom,
       wolCfg: wol,
-      bmc: bmc,
       monitorHttp: monitorHttp,
-      // Only meaningful with two to order. Storing it for a server with one
-      // way in would leave a preference behind for a transport that is not
-      // configured — which is exactly what `Spix.transport` then has to
-      // ignore, so it is better never written.
-      preferredTransport: ssh != null && monitorHttp != null
-          ? (_preferMonitorHttp.value
-                ? ServerTransport.monitorHttp
-                : ServerTransport.ssh)
-          : null,
       envs: _env.value.isEmpty ? null : _env.value,
       id: _serverId,
       customSystemType: _systemType.value,
@@ -538,36 +369,19 @@ extension _Actions on _ServerEditPageState {
       return;
     }
 
-    try {
-      if (this.spi == null) {
-        final existsIds = Stores.server.keys();
-        if (existsIds.contains(spi.id)) {
-          Toast.show('${l10n.sameIdServerExist}: ${spi.id}');
-          return;
-        }
-        if (!await _persistPendingSudoPassword()) return;
-        await ref.read(serversProvider.notifier).addServer(spi);
-      } else {
-        if (!await _persistPendingSudoPassword()) return;
-        await ref.read(serversProvider.notifier).updateServer(this.spi!, spi);
+    if (this.spi == null) {
+      final existsIds = Stores.server.keys();
+      if (existsIds.contains(spi.id)) {
+        Toast.show('${l10n.sameIdServerExist}: ${spi.id}');
+        return;
       }
-    } on DuplicateNameException catch (e) {
-      if (mounted) Toast.error(l10n.nameAlreadyExistsFmt(e.name));
-      return;
-    } catch (e, s) {
-      if (mounted) context.showErrDialog(e, s);
-      return;
+      if (!await _persistPendingSudoPassword()) return;
+      await ref.read(serversProvider.notifier).addServer(spi);
+    } else {
+      if (!await _persistPendingSudoPassword()) return;
+      await ref.read(serversProvider.notifier).updateServer(this.spi!, spi);
     }
 
-    if (!mounted) return;
-    // Saved either way — the address may well be one TLS is being set up for,
-    // and refusing to store it would be this page deciding that for the user.
-    // But it will not connect as it stands, and the switch that would let it
-    // is on this same page under More, so saying so beats leaving them to find
-    // out from the detail page's error.
-    if (monitorHttp?.needsInsecureOptIn == true) {
-      Toast.warn(l10n.monitorHttpsRequired, body: l10n.monitorAllowInsecureHttpTip);
-    }
     context.pop();
   }
 }
@@ -695,7 +509,6 @@ extension _Utils on _ServerEditPageState {
       _altUrlController.text = ssh.alterUrl ?? '';
       _jumpServers.value = ssh.resolvedJumpIds;
       _proxyCommandCtrl.text = ssh.proxyCommand ?? '';
-      _fileTransport.value = ssh.fileTransport;
     }
 
     /// List in dart is passed by pointer, so you need to copy it here
@@ -715,23 +528,12 @@ extension _Utils on _ServerEditPageState {
     }
 
     final monitorHttp = spi.monitorHttp;
-    _useSsh.value = spi.ssh != null;
     _useMonitorHttp.value = monitorHttp != null;
-    _preferMonitorHttp.value =
-        spi.transport == ServerTransport.monitorHttp;
     if (monitorHttp != null) {
       _monitorAddrCtrl.text = monitorHttp.addr;
       _monitorUserCtrl.text = monitorHttp.user ?? '';
       _monitorPwdCtrl.text = monitorHttp.pwd ?? '';
       _monitorIgnoreCert.value = monitorHttp.ignoreCert;
-      _monitorAllowInsecure.value = monitorHttp.allowInsecure;
-    }
-
-    final bmc = spi.bmc;
-    if (bmc != null) {
-      _bmcAddrCtrl.text = bmc.addr;
-      _bmcCredId.value = bmc.credId;
-      _bmcCert.value = bmc.certSha256;
     }
 
     final wol = spi.wolCfg;

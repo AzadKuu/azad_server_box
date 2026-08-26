@@ -7,47 +7,45 @@ Display custom logos on server cards using image URLs.
 
 ## Setup
 
-1. Server settings → **Logo URL**
+1. Server settings → Custom Logo
 2. Enter image URL
 
 ## URL Placeholders
 
 ### {DIST} - Linux Distribution
 
-Replaced automatically with the detected distribution:
+Auto-replaced with detected distribution:
 
-```text
+```
 https://example.com/{DIST}.png
 ```
 
-The requested file can be `debian.png`, `ubuntu.png`, `arch.png`, and so on. If
-the system is not recognized, `{DIST}` is left unchanged; provide a generic URL
-or avoid this placeholder when a fallback is needed.
+Becomes: `debian.png`, `ubuntu.png`, `arch.png`, etc.
 
 ### {BRIGHT} - Theme
 
-Replaced automatically with the current theme:
+Auto-replaced with current theme:
 
-```text
+```
 https://example.com/{BRIGHT}.png
 ```
 
-The requested file is `light.png` or `dark.png`.
+Becomes: `light.png` or `dark.png`
 
-### Combining Both Placeholders
+### Combine Both
 
-```text
+```
 https://example.com/{DIST}-{BRIGHT}.png
 ```
 
-The requested file can be `debian-light.png`, `ubuntu-dark.png`, and so on.
+Becomes: `debian-light.png`, `ubuntu-dark.png`, etc.
 
 ## Tips
 
-- Use PNG or SVG images
+- Use PNG or SVG formats
 - Recommended size: 64x64 to 128x128 pixels
 - Use HTTPS URLs
-- Keep image files small
+- Keep file sizes small
 
 ## Supported Distributions
 

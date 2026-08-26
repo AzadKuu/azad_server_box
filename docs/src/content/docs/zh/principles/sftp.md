@@ -3,15 +3,15 @@ title: SFTP 系统
 description: SFTP 文件浏览器的工作原理
 ---
 
-SFTP 通过 SSH 管理远程文件。
+SFTP 系统通过 SSH 提供文件管理功能。
 
 ## 架构
 
-```text
+```
 ┌─────────────────────────────────────────────┐
 │              SFTP UI 层                     │
-│  - 远程文件浏览器                           │
-│  - 本地文件浏览器                           │
+│  - 文件浏览器 (远程)                        │
+│  - 文件浏览器 (本地)                        │
 │  - 传输队列                                 │
 └─────────────────────────────────────────────┘
                 ↓
@@ -46,7 +46,7 @@ Future<SftpClient> createSftpClient(Spi spi) async {
   final sshClient = await genClient(spi);
 
   // 2. 打开 SFTP 子系统
-  final sftp = await sshClient.sftp();
+  final sftp = await sshClient.openSftp();
 
   return sftp;
 }
@@ -62,7 +62,7 @@ class ServerProvider {
   SftpClient? _sftpClient;
 
   Future<SftpClient> getSftpClient(String spiId) async {
-    _sftpClient ??= await _sshClient!.sftp();
+    _sftpClient ??= await _sshClient!.openSftp();
     return _sftpClient!;
   }
 }
@@ -73,20 +73,28 @@ class ServerProvider {
 ### 目录列表
 
 ```dart
-Future<List<SftpName>> listDirectory(String path) async {
+Future<List<SftpFile>> listDirectory(String path) async {
   final sftp = await getSftpClient(spiId);
 
   // 获取目录列表
-  final files = await sftp.listdir(path);
+  final files = await sftp.listDir(path);
 
   // 根据设置排序
-  // 每个条目通过 `attr` 暴露元数据；此处按名称排序。
-  files.sort((a, b) => a.filename.toLowerCase().compareTo(b.filename.toLowerCase()));
+  files.sort((a, b) {
+    switch (sortOption) {
+      case SortOption.name:
+        return a.name.toLowerCase().compareTo(b.name.toLowerCase());
+      case SortOption.size:
+        return a.size.compareTo(b.size);
+      case SortOption.time:
+        return a.modified.compareTo(b.modified);
+    }
+  });
 
   // 如果启用，文件夹优先
   if (showFoldersFirst) {
-    final dirs = files.where((f) => f.attr.isDirectory);
-    final regular = files.where((f) => !f.attr.isDirectory);
+    final dirs = files.where((f) => f.isDirectory);
+    final regular = files.where((f) => !f.isDirectory);
     return [...dirs, ...regular];
   }
 
@@ -96,9 +104,22 @@ Future<List<SftpName>> listDirectory(String path) async {
 
 ### 文件元数据
 
-`SftpClient.listdir` 返回 `SftpName` 条目。浏览器使用其 `filename`、`attr` 以及属性中
-的 `size`、`modifyTime` 和 `isDirectory` 字段。已打开的 `SftpFile` 是用于流式读写的
-独立句柄，使用后必须关闭。
+```dart
+class SftpFile {
+  final String name;
+  final String path;
+  final int size;           // 字节
+  final int modified;       // Unix 时间戳
+  final String permissions;  // 例如 "rwxr-xr-x"
+  final String owner;
+  final String group;
+  final bool isDirectory;
+  final bool isSymlink;
+
+  String get sizeFormatted => formatBytes(size);
+  String get modifiedFormatted => formatDate(modified);
+}
+```
 
 ## 文件操作
 
@@ -111,40 +132,34 @@ Future<void> uploadFile(
 ) async {
   final sftp = await getSftpClient(spiId);
 
-  final stagingPath = '$remotePath.sb-part-${nextTransferId()}';
-  SftpFile? remote;
-  String? pendingStagingPath = stagingPath;
-  try {
-    remote = await sftp.open(
-      stagingPath,
-      mode: SftpFileOpenMode.create |
-          SftpFileOpenMode.write |
-          SftpFileOpenMode.truncate,
-    );
-    await remote.write(File(localPath).openRead().map(Uint8List.fromList)).done;
-    await remote.close();
-    remote = null;
-    await sftp.rename(stagingPath, remotePath);
-    pendingStagingPath = null;
-  } finally {
-    try {
-      await remote?.close();
-    } catch (_) {}
-    if (pendingStagingPath != null) {
-      try {
-        await sftp.remove(pendingStagingPath!);
-      } catch (_) {}
-    }
-  }
+  // 创建请求
+  final req = SftpReq(
+    spi: spi,
+    remotePath: remotePath,
+    localPath: localPath,
+    type: SftpReqType.upload,
+  );
+
+  // 添加到队列
+  _transferQueue.add(req);
+
+  // 执行带进度的传输
+  final file = File(localPath);
+  final size = await file.length();
+  final stream = file.openRead();
+
+  await sftp.upload(
+    stream: stream,
+    toPath: remotePath,
+    onProgress: (transferred) {
+      _updateProgress(req, transferred, size);
+    },
+  );
+
+  // 完成
+  _transferQueue.remove(req);
 }
 ```
-
-`nextTransferId()` 是进程级计数器。实际实现使用同样的计数器生成不同的
-`.sb-part-<number>` 路径，即使两个传输指向同一个目标文件也不会互相覆盖。
-
-客户端没有 `sftp.upload` 便捷方法。实际传输会打开 `SftpFile` 并显式关闭，先写入
-目标旁边带唯一后缀的临时路径，并在重命名之前关闭句柄；打开、写入、关闭或重命名失败
-时都会删除临时文件。新内容完成之前不会截断目标文件。
 
 ### 下载
 
@@ -155,38 +170,28 @@ Future<void> downloadFile(
 ) async {
   final sftp = await getSftpClient(spiId);
 
-  SftpFile? remote;
-  File? staging;
-  IOSink? sink;
-  try {
-    remote = await sftp.open(remotePath, mode: SftpFileOpenMode.read);
-    staging = File('$localPath.sb-part-${nextTransferId()}');
-    sink = staging!.openWrite();
-    await sink.addStream(remote.read());
-    await sink.close();
-    sink = null;
-    await remote.close();
-    remote = null;
-    await staging!.rename(localPath);
-  } finally {
-    try {
-      await remote?.close();
-    } catch (_) {}
-    try {
-      await sink?.close();
-    } catch (_) {}
-    if (staging != null && await staging!.exists()) {
-      try {
-        await staging!.delete();
-      } catch (_) {}
-    }
-  }
+  // 创建本地文件
+  final file = File(localPath);
+  final sink = file.openWrite();
+
+  // 执行带进度的下载
+  final stat = await sftp.stat(remotePath);
+
+  await sftp.download(
+    fromPath: remotePath,
+    toSink: sink,
+    onProgress: (transferred) {
+      _updateProgress(
+        SftpReq(...),
+        transferred,
+        stat.size,
+      );
+    },
+  );
+
+  await sink.close();
 }
 ```
-
-客户端也没有 `sftp.download` 便捷方法。读取通过已打开的 `SftpFile` 流式进行；远端
-句柄和本地 sink 都必须显式关闭。内容先写入本地临时文件，关闭后才重命名覆盖目标；
-失败时会删除临时文件，因此部分下载不会替换原文件。
 
 ### 权限编辑
 
@@ -200,14 +205,11 @@ Future<void> setPermissions(
   // 解析权限 (例如 "rwxr-xr-x" 或 "755")
   final mode = parsePermissions(permissions);
 
-  // 通常通过 SFTP 的 set-stat 操作设置权限。
-  await sftp.setStat(path, SftpFileAttrs(mode: SftpFileMode.value(mode)));
+  // 通过 SSH 命令设置 (比 SFTP 更可靠)
+  final ssh = await getSshClient(spiId);
+  await ssh.exec('chmod $mode "$path"');
 }
 ```
-
-权限修改通常使用 SFTP `setStat`，不需要 shell。如果服务器拒绝该操作且存在
-SSH 提权处理器，backend 才会用 `sudo chmod` 重试。这个回退需要 shell，并非普通的
-SFTP 路径。
 
 ## 路径管理
 
@@ -268,33 +270,94 @@ class PathHistory {
 
 ## 传输系统
 
+### 传输请求
+
+```dart
+class SftpReq {
+  final Spi spi;
+  final String remotePath;
+  final String localPath;
+  final SftpReqType type;
+  final DateTime createdAt;
+
+  int? totalBytes;
+  int? transferredBytes;
+  String? error;
+}
+```
+
+### 进度跟踪
+
+```dart
+class TransferProgress {
+  final SftpReq request;
+  final int total;
+  final int transferred;
+  final DateTime startTime;
+
+  double get percentage => (transferred / total) * 100;
+  Duration get elapsed => DateTime.now().difference(startTime);
+
+  String get speedFormatted {
+    final bytesPerSecond = transferred / elapsed.inSeconds;
+    return formatSpeed(bytesPerSecond);
+  }
+}
+```
+
 ### 队列管理
 
-App 并不使用固定三并发的 `TransferQueue`。传输由常驻的
-`FileTransferNotifier` 中的 `FileTransferStatus` 表示；每个状态会拥有自己的 worker，
-或直接在当前 isolate 中运行。notifier 通过这一生命周期提供添加、取消、进度、完成和清理。
+```dart
+class TransferQueue {
+  final List<SftpReq> _queue = [];
+  final Map<String, TransferProgress> _progress = {};
+  int _concurrent = 3;  // 最大并发传输数
+
+  Future<void> process() async {
+    final active = _progress.values.where((p) => p.isInProgress);
+    if (active.length >= _concurrent) return;
+
+    final pending = _queue.where((r) => !_progress.containsKey(r.id));
+    for (final req in pending.take(_concurrent - active.length)) {
+      _executeTransfer(req);
+    }
+  }
+
+  Future<void> _executeTransfer(SftpReq req) async {
+    try {
+      _progress[req.id] = TransferProgress.inProgress(req);
+
+      if (req.type == SftpReqType.upload) {
+        await uploadFile(req.localPath, req.remotePath);
+      } else {
+        await downloadFile(req.remotePath, req.localPath);
+      }
+
+      _progress[req.id] = TransferProgress.completed(req);
+    } catch (e) {
+      _progress[req.id] = TransferProgress.failed(req, e);
+    }
+  }
+}
+```
 
 ## 本地存储模式
 
-### 下载文件位置
+### 下载缓存
 
-下载的文件按服务器 id 和远程路径各级组件存储。组件会按本机平台进行清理，但目录结构
-会保留：
+下载的文件存储在：
 
 ```dart
 String getLocalDownloadPath(String spiId, String remotePath) {
-  final parts = remotePath.split('/').where((part) => part.isNotEmpty);
-  return parts.fold(
-    Paths.file.joinPath(spiId),
-    (path, part) => path.joinPath(_safeLocalPathPart(part)),
-  );
+  final normalized = remotePath.replaceAll('/', '_');
+  return 'Paths.file/$spiId/$normalized';
 }
 ```
 
 示例：
 - 远程：`/var/log/nginx/access.log`
 - spiId：`server-123`
-- 本地：`Paths.file/server-123/var/log/nginx/access.log`
+- 本地：`Paths.file/server-123/_var_log_nginx_access.log`
 
 ## 文件编辑
 
@@ -328,13 +391,12 @@ Future<void> editFile(String path) async {
 ### 外部编辑器集成
 
 ```dart
-Future<void> editInExternalEditor(String path, {bool useSudo = false}) async {
+Future<void> editInExternalEditor(String path) async {
   final ssh = await getSshClient(spiId);
 
   // 使用编辑器打开终端
   final editor = getSetting('sftpEditor', 'vim');
-  final command = '${useSudo ? 'sudo ' : ''}$editor ${shellSingleQuote(path)}';
-  await ssh.exec(command);
+  await ssh.exec('$editor "$path"');
 
   // 用户在终端中编辑
   // 保存后，刷新 SFTP 视图
@@ -347,7 +409,7 @@ Future<void> editInExternalEditor(String path, {bool useSudo = false}) async {
 
 ```dart
 try {
-  await uploadFile(localPath, remotePath);
+  await sftp.upload(...);
 } on SftpPermissionException {
   showError('拒绝访问：${stat.path}');
   showHint('请检查文件权限和所有权');
@@ -358,8 +420,8 @@ try {
 
 ```dart
 try {
-  await sftp.listdir(path);
-} on SftpStatusError {
+  await sftp.listDir(path);
+} on SftpConnectionException {
   showError('连接丢失');
   await reconnect();
 }
@@ -369,8 +431,8 @@ try {
 
 ```dart
 try {
-  await uploadFile(localPath, remotePath);
-} on SftpStatusError {
+  await sftp.upload(...);
+} on SftpNoSpaceException {
   showError('远程服务器磁盘空间不足');
 }
 ```
@@ -378,5 +440,5 @@ try {
 ## 性能说明
 
 - SFTP 复用现有 SSH 连接,不会另建连接。
-- 目录列表在导航时获取，并按需刷新，不使用 TTL 缓存层。
-- 大文件传输在后台 isolate 中执行，不阻塞 UI。
+- 目录列表在导航时获取、按需刷新,没有 TTL 缓存层。
+- 大文件传输在后台 isolate 中执行,不阻塞 UI。

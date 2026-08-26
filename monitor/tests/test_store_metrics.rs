@@ -1,8 +1,7 @@
 use anyhow::Result;
 use chrono::Utc;
 use server_box_monitor::monitoring::{
-    timeseries::CpuCoreTime, DiskMetrics, MemoryMetrics, NetworkMetrics,
-    SwapMetrics, SystemMetrics,
+    DiskMetrics, MemoryMetrics, NetworkMetrics, SwapMetrics, SystemMetrics,
 };
 use sqlx::{Row, SqlitePool};
 
@@ -18,9 +17,7 @@ fn sample_metrics() -> SystemMetrics {
         extended_updated_at: Utc::now(),
         server_name: "test-server".to_string(),
         cpu_usage: 12.5,
-        // The per-core table was removed. A non-empty snapshot proves storage
-        // does not still attempt to write it.
-        cpu_cores: vec![CpuCoreTime { used: 25, total: 100, usage_percent: Some(25.0) }],
+        cpu_cores: vec![],
         memory: MemoryMetrics { total: 100, used: 50, free: 50, usage_percent: 50.0 },
         swap: SwapMetrics { total: 0, used: 0, usage_percent: 0.0 },
         disk: DiskMetrics { total: 100, used: 50, free: 50, usage_percent: 50.0 },
@@ -28,8 +25,6 @@ fn sample_metrics() -> SystemMetrics {
         temperature: None,
         temps: vec![],
         sys: None,
-        os_id: None,
-        os_id_like: Vec::new(),
         cpu_brand: None,
         gpus: vec![],
         disk_details: vec![],

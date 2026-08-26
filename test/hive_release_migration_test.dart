@@ -11,7 +11,7 @@ import 'package:server_box/data/model/container/type.dart';
 import 'package:server_box/data/model/server/port_forward.dart';
 import 'package:server_box/data/model/server/system.dart';
 import 'package:server_box/data/res/store.dart';
-import 'package:server_box/data/store/migrations/all.dart';
+import 'package:server_box/data/store/migrations/m004_kv_to_tables.dart';
 import 'package:server_box/data/store/schema.dart';
 import 'package:server_box/hive/hive_registrar.g.dart';
 import 'package:server_box/hive/legacy_adapters.dart';
@@ -72,7 +72,7 @@ void main() {
         }
         for (final f in fixtureDir.listSync().whereType<File>()) {
           if (!f.path.endsWith('.hive')) continue;
-          f.copySync(tempDir.path.joinPath(f.uri.pathSegments.last));
+          f.copySync(tempDir.path.joinPath(f.path.split('/').last));
         }
         SqliteDb.openInMemory();
       });
@@ -89,7 +89,7 @@ void main() {
       final names = fixtureDir
           .listSync()
           .whereType<File>()
-          .map((f) => f.uri.pathSegments.last)
+          .map((f) => f.path.split('/').last)
           .where((n) => n.endsWith('.hive'))
           .toList()
         ..sort();
@@ -127,7 +127,7 @@ void main() {
     group('after importing the boxes and migrating', () {
       setUp(() async {
         await Stores.init();
-        await SchemaVersion.migrate(kSchemaMigrations);
+        await SchemaVersion.migrate(const [KvToTablesMigration()]);
       });
 
       test('every server arrives with its SSH fields nested', () {
@@ -262,16 +262,7 @@ void main() {
 
         expect(Stores.setting.homeTabs.get().map((e) => e.name),
             ['server', 'ssh', 'snippet']);
-        // Written as `[0, 1, 2, 13, 14]` by that release and converted to
-        // names by m013 — an index stops meaning the same key the moment a
-        // case is inserted into `VirtKey`.
-        expect(Stores.setting.sshVirtKeys.get(), [
-          'esc',
-          'alt',
-          'home',
-          'ime',
-          'shift',
-        ]);
+        expect(Stores.setting.sshVirtKeys.get(), [0, 1, 2, 13, 14]);
         expect(Stores.setting.serverOrder.get(),
             ['srv-key', 'srv-pwd', 'srv-jump']);
         expect(Stores.setting.detailCardDisabled.get(), ['temperature']);
@@ -280,13 +271,12 @@ void main() {
         // changed meaning silently.
         expect(Stores.setting.netViewType.get().name, 'speed');
 
-        // Still a setting, which is the only place anything reads them from.
-        // Re-keyed onto the ids m004 hands out, so a fingerprint filed under
-        // an old `user@ip:port` id is still found for the same server.
-        expect(Stores.setting.sshKnownHostFingerprints.get(), {
-          'srv-pwd::ssh-ed25519': 'SHA256:AAAA',
-          'srv-key::ssh-rsa': 'SHA256:BBBB',
-        });
+        // Not a setting any more: a trusted fingerprint belongs to the server
+        // it was trusted for, and cascades with it. The old key is gone.
+        expect(Stores.setting.sshKnownHostFingerprints.get(), isEmpty);
+        expect(Stores.server.knownHosts('srv-pwd'),
+            {'ssh-ed25519': 'SHA256:AAAA'});
+        expect(Stores.server.knownHosts('srv-key'), {'ssh-rsa': 'SHA256:BBBB'});
       });
 
       test('history, container hosts and port forwards come across', () {
@@ -385,7 +375,7 @@ void main() {
         await getIt.reset();
 
         await Stores.init();
-        await SchemaVersion.migrate(kSchemaMigrations);
+        await SchemaVersion.migrate(const [KvToTablesMigration()]);
 
         expect(Stores.setting.timeout.get(), 42, reason: 'no re-import');
         expect(Stores.server.fetchOneRaw('srv-key')!.ssh?.ip, before.ssh?.ip);
@@ -434,7 +424,7 @@ void main() {
 
       test('the agent conversations come across when the release had them', () async {
         await Stores.init();
-        await SchemaVersion.migrate(kSchemaMigrations);
+        await SchemaVersion.migrate(const [KvToTablesMigration()]);
         final had = version == '1491';
         final convs = Stores.agentConversation.fetchForServer('srv-key');
         expect(convs.length, had ? 1 : 0,

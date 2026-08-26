@@ -79,7 +79,7 @@ Several `ServerStatus` fields share one struct shape across `SystemType::{Linux,
 
 - **`cpu` (`CpuCore.user`/`idle`/...)**: Linux = real cumulative `/proc/stat` ticks (delta-over-time is correct); Bsd = an instantaneous percentage stored directly into the tick fields (never delta — the raw value already is the percentage); Windows = an instantaneous percentage *accumulated* onto the previous sample into a synthetic monotonic counter (`windows::parse_cpu`'s `prev` param). Three incompatible interpretations of the same fields — `monitor::monitoring::adapt_cpu` already branches on `SystemType` correctly; any new consumer must too.
 - **`diskio` (`DiskIoPiece.sectors_read`/`sectors_write`)**: Linux = genuine cumulative sector counters (`/proc/diskstats`); Windows = already-computed bytes/sec rate divided by 512 and stored in the same "sectors" fields — not a cumulative count at all. A naive delta-over-two-samples on Windows data double-differentiates.
-- **`sys`**: Linux uses a real distro-description parser (`common::parse_sys_version`, extracts `PRETTY_NAME`); Bsd/Windows repurpose the generic hostname-trimming helper (`common::parse_hostname`) against `uname -or`/`OsName` output — happens to work because those are single clean lines, but isn't a "system version" parser on those platforms. The `os_id`/`os_id_like` fields beside it come out of the same command and are Linux-only for the same reason: they are `/etc/os-release`'s `ID=`/`ID_LIKE=`, which Bsd/Windows have no equivalent of. `capabilities::Capabilities` has no entry for them — they share `sys`'s by construction.
+- **`sys`**: Linux uses a real distro-description parser (`common::parse_sys_version`, extracts `PRETTY_NAME`); Bsd/Windows repurpose the generic hostname-trimming helper (`common::parse_hostname`) against `uname -or`/`OsName` output — happens to work because those are single clean lines, but isn't a "system version" parser on those platforms.
 - **`uptime`**: Linux/Bsd normalize the `uptime` command's varied output via `common::parse_uptime`; Windows pre-formats the duration string in PowerShell itself and the field just passes it through — presentation shape isn't guaranteed identical across platforms.
 
 The shell-script collection path has been replaced with native per-platform sampling for the fields it can cover (`crates/sbm_native` — see below); this incidentally resolved both the `cpu` mismatch (`sysinfo`'s CPU percentage has consistent semantics across platforms) and the `diskio` mismatch (`sysinfo::Disk::usage()` is genuinely cumulative everywhere, unlike the old Windows script path's rate-mislabeled-as-sectors bug). These fixes only apply to **monitor's own native path** — `sbm_parser`'s script-based output (still used by the SSH-based Flutter app, and by monitor's own extended-cycle script for amd/sensors/SMART/battery) still has the documented mismatches, since changing that shared, App-facing behavior is out of scope here. `sys`/`uptime` still differ in string shape between native and script sources (unchanged — see their doc comments).
@@ -123,10 +123,18 @@ Monitor-only crate (the app never depends on it — it always collects over SSH 
 
 ### Remote access (`api/ws/`, `ssh/`, `core/remote_access.rs`)
 
-The WebSocket terminal reaches the local sshd. It is **off by default** and
+Two WebSocket endpoints reach the local sshd. **Both are off by default**, are
 configured only in `config.toml` (deliberately absent from `PUT /settings`, so
-the panel password can't switch it on); shared admission checks live in
+the panel password can't switch them on), and share the admission checks in
 `api/ws/mod.rs`.
+
+- **`/api/v1/tunnel/ws`** — a byte relay for the app, which then speaks SSH end
+  to end with sshd and verifies the host key at its own end. The agent can't
+  read the session. **No target parameter**: it connects to
+  `remote_access.ssh_addr` and nothing else, which is the whole reason it isn't
+  usable as a pivot into the agent's network. Multi-hop is the SSH layer's job
+  (configure the far host with this one as its jump server). Port forwarding
+  needs nothing here — the app's forwards are channels inside that stream.
 - **`POST /api/v1/exec`** — one command, its output, its exit code, for the
   pages that parse what a command printed (processes, units, containers,
   snippets, power). A request rather than a stream because none of those
@@ -255,8 +263,8 @@ Uses environment variables (.env file) and TOML config files:
 - **Configuration file**: Defaults to `config.toml` (with JSON fallback support for `config.json`)
 
 Settings are grouped into subsections by **what they act on**, not by a shared
-name prefix — `[remote_access.terminal]`, `[remote_access.fs]`,
-`[monitoring.extended]`,
+name prefix — `[remote_access.tunnel]`, `[remote_access.terminal]`,
+`[remote_access.fs]`, `[monitoring.extended]`,
 `[monitoring.extended.idle_pause]`. Two consequences worth knowing before
 adding a key:
 
@@ -266,12 +274,12 @@ adding a key:
   only cycle it can pause. What stays at a section's own level is what more
   than one subsection reads (`ssh_addr`, `full_access`). Adding a key to the
   wrong level makes the file lie about what it does.
-- The resolved runtime structs (`RemoteAccess`, with `Terminal`/`Fs`)
+- The resolved runtime structs (`RemoteAccess`, with `Tunnel`/`Terminal`/`Fs`)
   mirror the file's shape, so `terminal.available()` and `fs.available()` are
   methods on the part they answer for.
 
 The **flat pre-Aug-2026 layout is not read at all** (`fs_enabled`,
-`terminal_enabled`, `idle_pause_enabled`, ...). serde
+`terminal_enabled`, `tunnel_max_conns`, `idle_pause_enabled`, ...). serde
 ignores unknown keys, so an old file parses and every switch in it silently
 reverts to off — a deliberate hard cut, since the safe direction is "feature
 disabled". `[server] name` and `[monitoring] push_rate` were also top-level Go
@@ -285,7 +293,7 @@ SQLite database with migrations in `migrations/`:
 - System metrics history
 - User authentication
 - Configuration storage
-- `access_log` — who opened a terminal, from where, and whether it
+- `access_log` — who opened a tunnel/terminal, from where, and whether it
   worked. Never records a credential; cleaned up by the existing
   `retention_policies` mechanism (`DataCleanupService::POLICY_TABLES`)
 - `ssh_known_hosts` — the pinned host key of the sshd the terminal connects to

@@ -2,7 +2,6 @@ import 'dart:io';
 
 import 'package:dio/dio.dart';
 import 'package:dio/io.dart';
-import 'package:meta/meta.dart';
 import 'package:server_box/core/extension/context/locale.dart';
 import 'package:server_box/core/utils/secure_endpoint.dart';
 import 'package:server_box/data/model/app/error.dart';
@@ -32,7 +31,6 @@ class MonitorHttpClient {
   Dio? _dio;
   String? _token;
   Future<void>? _loginFuture;
-  bool _disposed = false;
 
   String get _addr {
     final addr = monitor.addr.trim();
@@ -40,8 +38,7 @@ class MonitorHttpClient {
         ? addr.substring(0, addr.length - 1)
         : addr;
     final uri = Uri.tryParse(normalized);
-    if (uri == null ||
-        !isSecureRemoteEndpoint(uri, allowInsecure: monitor.allowInsecure)) {
+    if (uri == null || !isSecureRemoteEndpoint(uri)) {
       throw MonitorHttpErr(
         type: MonitorHttpErrType.net,
         message: l10n.monitorHttpsRequired,
@@ -51,22 +48,20 @@ class MonitorHttpClient {
   }
 
   Dio _session() {
-    if (_disposed) throw StateError('MonitorHttpClient disposed');
     final existing = _dio;
     if (existing != null) return existing;
-    final dio =
-        Dio(
-            BaseOptions(
-              baseUrl: _addr,
-              connectTimeout: _connectTimeout,
-              sendTimeout: _sendTimeout,
-              receiveTimeout: _receiveTimeout,
-            ),
-          )
-          ..httpClientAdapter = IOHttpClientAdapter(
-            createHttpClient: _httpClient,
-            validateCertificate: monitor.ignoreCert ? (_, _, _) => true : null,
-          );
+    final dio = Dio(
+      BaseOptions(
+        baseUrl: _addr,
+        connectTimeout: _connectTimeout,
+        sendTimeout: _sendTimeout,
+        receiveTimeout: _receiveTimeout,
+      ),
+    )
+      ..httpClientAdapter = IOHttpClientAdapter(
+        createHttpClient: _httpClient,
+        validateCertificate: monitor.ignoreCert ? (_, _, _) => true : null,
+      );
     _dio = dio;
     return dio;
   }
@@ -90,7 +85,6 @@ class MonitorHttpClient {
   }
 
   Future<void> _loginImpl() async {
-    if (_disposed) return;
     final user = monitor.user?.trim() ?? '';
     final pwd = monitor.pwd ?? '';
     try {
@@ -98,7 +92,6 @@ class MonitorHttpClient {
         '/api/v1/login',
         post: {'username': user, 'password': pwd},
       );
-      if (_disposed) return;
       final token = resp['token'] as String?;
       if (token == null || token.isEmpty) {
         throw const MonitorHttpErr(
@@ -109,7 +102,6 @@ class MonitorHttpClient {
       _token = token;
       _session().options.headers['Authorization'] = 'Bearer $token';
     } on DioException catch (e) {
-      if (_disposed) return;
       throw _toMonitorHttpErr(e);
     }
   }
@@ -167,15 +159,9 @@ class MonitorHttpClient {
     });
   }
 
-  /// Mints a read-only, independently revocable credential for a second
-  /// device. The normal session token is never handed to one.
-  ///
-  /// The agent's `expires_at` is returned rather than dropped: these live 90
-  /// days, and a caller that keeps the token without keeping the deadline has
-  /// no way to renew it before the device it was given to starts answering
-  /// 401 with nobody to report it to. Zero when the agent did not say — an
-  /// older one — which [ScopedToken] treats as due for renewal.
-  Future<({String token, int expiresAt})> issueWatchToken(String clientId) {
+  /// Mints a read-only, independently revocable credential for a watch.
+  /// The normal session token is never handed to the second device.
+  Future<String> issueWatchToken(String clientId) {
     return _authed(() async {
       final resp = await _object(
         '/api/v1/watch-token',
@@ -188,11 +174,7 @@ class MonitorHttpClient {
           message: 'Empty token in /api/v1/watch-token response',
         );
       }
-      final expiresAt = resp['expires_at'];
-      return (
-        token: token,
-        expiresAt: expiresAt is num ? expiresAt.toInt() : 0,
-      );
+      return token;
     });
   }
 
@@ -205,28 +187,19 @@ class MonitorHttpClient {
     });
   }
 
-  /// [maxPoints] is how many points to come back with; the agent averages the
-  /// window into that many buckets rather than answering with its own default
-  /// of 300 for the caller to throw most of away. An agent from before that
-  /// parameter existed ignores it and answers with 300, which is why nothing
-  /// here assumes the count it asked for.
-  Future<List<MonitorHistoryPoint>> fetchHistory({
-    int minutes = 60,
-    int maxPoints = 300,
-  }) {
+  Future<List<MonitorHistoryPoint>> fetchHistory({int minutes = 60}) {
     return _authed(() async {
       // The endpoint answers with a bare JSON array of points, not an
       // envelope object — see `get_metrics_history` in monitor's api/server.rs
       final resp = await _session().get<dynamic>(
         '/api/v1/metrics/history',
-        queryParameters: {'minutes': minutes, 'max_points': maxPoints},
+        queryParameters: {'minutes': minutes},
       );
       final points = resp.data;
       if (points is! List) {
         throw MonitorHttpErr(
           type: MonitorHttpErrType.invalidResponse,
-          message:
-              '/api/v1/metrics/history answered with '
+          message: '/api/v1/metrics/history answered with '
               '${points.runtimeType}, not a JSON array',
         );
       }
@@ -299,29 +272,19 @@ class MonitorHttpClient {
   /// the only paths any other call here can succeed on, and a browser that does
   /// not know them can only start at `/` and be refused.
   Future<List<String>> fsRoots() {
-    return _fsRoots ??= _loadFsRoots().onError((Object e, StackTrace s) {
-      _fsRoots = null;
-      Error.throwWithStackTrace(e, s);
-    });
-  }
-
-  Future<List<String>> _loadFsRoots() {
     return _authed(() async {
       final resp = await _object('/api/v1/fs/roots');
       final roots = resp['roots'];
       if (roots is! List) {
         throw MonitorHttpErr(
           type: MonitorHttpErrType.invalidResponse,
-          message:
-              '/api/v1/fs/roots answered with '
+          message: '/api/v1/fs/roots answered with '
               '${roots.runtimeType}, not a JSON array',
         );
       }
       return roots.whereType<String>().toList();
     });
   }
-
-  Future<List<String>>? _fsRoots;
 
   /// One directory, as the agent's `EntryView` describes it.
   Future<List<Map<String, dynamic>>> fsList(String path) {
@@ -335,8 +298,7 @@ class MonitorHttpClient {
       if (entries is! List) {
         throw MonitorHttpErr(
           type: MonitorHttpErrType.invalidResponse,
-          message:
-              '/api/v1/fs/list answered with '
+          message: '/api/v1/fs/list answered with '
               '${entries.runtimeType}, not a JSON array',
         );
       }
@@ -389,18 +351,18 @@ class MonitorHttpClient {
     String path,
     Stream<List<int>> data, {
     int? size,
-    Stream<List<int>> Function()? replayData,
   }) async {
-    // Validate or refresh the token with a replayable request before touching
-    // this one-shot body. `_authed` cannot safely retry the PUT itself: a
-    // `File.openRead()` stream has already been consumed by the first attempt.
-    await fsRoots();
-
-    Future<void> put(Stream<List<int>> body) async {
+    // Logged in *before* the body is touched, rather than relying on
+    // `_authed`'s retry: that retry calls the request again, and a second
+    // attempt would re-listen a stream `File.openRead` only allows one
+    // listener on. Everything else here builds a fresh body and can be
+    // replayed; this cannot, so it must not have to be.
+    if (_token == null) await _login();
+    return _authed(() async {
       await _session().put<dynamic>(
         '/api/v1/fs/write',
         queryParameters: {'path': path},
-        data: body,
+        data: data,
         options: Options(
           // Dio will not set one for a stream, and the agent needs to know
           // where the body ends. Null sends it chunked, which the agent reads
@@ -411,23 +373,7 @@ class MonitorHttpClient {
           },
         ),
       );
-    }
-
-    try {
-      await put(data);
-    } on DioException catch (e) {
-      if (e.response?.statusCode == 401 && replayData != null) {
-        _token = null;
-        await _login();
-        try {
-          await put(replayData());
-          return;
-        } on DioException catch (retryError) {
-          throw _toMonitorHttpErr(retryError);
-        }
-      }
-      throw _toMonitorHttpErr(e);
-    }
+    });
   }
 
   Future<void> fsMkdir(String path) =>
@@ -461,13 +407,30 @@ class MonitorHttpClient {
     });
   }
 
+  /// Opens the agent's SSH tunnel and returns the raw WebSocket.
+  ///
+  /// Sends no target — the agent connects to its own configured address and
+  /// refuses to take one from a client.
+  ///
+  /// TODO: **nothing calls this.** A monitor server carries no SSH credential
+  /// any more, so there is nothing to speak SSH with over this stream; shell
+  /// use goes through [exec] and [openTerminal] instead. Remove it along with
+  /// `MonitorRemoteAccess.tunnel`/`.secure`, which are parsed and never read,
+  /// and the agent's `/api/v1/tunnel/ws` — or restore a consumer.
+  Future<WebSocket> openTunnel({Duration? timeout}) =>
+      _openWs(purpose: 'tunnel', path: '/api/v1/tunnel/ws', timeout: timeout);
+
   /// Opens the agent's terminal endpoint and returns the raw WebSocket.
   ///
-  /// The agent runs the shell itself; what travels here is PTY bytes and
-  /// control JSON in the clear, so it refuses plaintext links that are not
+  /// Unlike the tunnel this carries no SSH: the agent runs the shell itself
+  /// and what travels here is PTY bytes and control JSON in the clear, which
+  /// is why the agent refuses this endpoint on a plaintext link that isn't
   /// loopback. See `MonitorShellBackend` for the protocol spoken over it.
-  Future<WebSocket> openTerminal({Duration? timeout}) =>
-      _openWs(timeout: timeout);
+  Future<WebSocket> openTerminal({Duration? timeout}) => _openWs(
+    purpose: 'terminal',
+    path: '/api/v1/terminal/ws',
+    timeout: timeout,
+  );
 
   /// What this agent will accept right now, and what it runs on.
   ///
@@ -484,41 +447,19 @@ class MonitorHttpClient {
 
   /// Takes a single-use ticket, then upgrades.
   ///
-  /// Where the terminal upgrade is opened, carrying no ticket.
-  ///
-  /// Split out, and paired with [terminalWsProtocol], because this is one half
-  /// of a contract whose other half is in another language: the agent reads
-  /// the ticket in `api/ws/terminal.rs` and the panel sends it from
-  /// `frontend/src/lib/terminal.svelte.ts`. The panel's two functions are
-  /// shaped this way for the same reason and are tested the same way — this
-  /// side had it inline and untested, which is how it went on sending
-  /// `?ticket=` for a release after the agent stopped reading it.
-  ///
-  /// Scheme compared case-insensitively: `Uri.parse` lowercases it, but [addr]
-  /// is whatever the user typed, and reading `HTTPS://` as plaintext would
-  /// dial `ws://` at a TLS port and hang.
-  @visibleForTesting
-  static Uri terminalWsUrl(String addr) => Uri.parse(addr)
-      .replace(
-        scheme: addr.toLowerCase().startsWith('https') ? 'wss' : 'ws',
-        path: '/api/v1/terminal/ws',
-        queryParameters: const <String, String>{},
-      )
-      .removeFragment();
-
-  /// What the agent reads the ticket out of — `TICKET_PROTOCOL_PREFIX` in
-  /// `monitor/src/api/ws/terminal.rs`, and `terminalWsProtocol` in the panel.
-  /// All three have to say the same thing.
-  @visibleForTesting
-  static String terminalWsProtocol(String ticket) => 'sbm-ticket.$ticket';
-
   /// A browser can't put a bearer token on a WebSocket handshake, so the agent
-  /// authorises upgrades with a short-lived, single-use ticket instead.
-  Future<WebSocket> _openWs({Duration? timeout}) {
+  /// authorises upgrades with a short-lived, purpose-bound ticket instead;
+  /// this client uses the same path rather than a second mechanism that only
+  /// native clients could exercise.
+  Future<WebSocket> _openWs({
+    required String purpose,
+    required String path,
+    Duration? timeout,
+  }) {
     return _authed(() async {
       final resp = await _object(
         '/api/v1/ws-ticket',
-        post: const {'purpose': 'terminal'},
+        post: {'purpose': purpose},
       );
       final ticket = resp['ticket'] as String?;
       if (ticket == null || ticket.isEmpty) {
@@ -528,31 +469,31 @@ class MonitorHttpClient {
         );
       }
 
-      final socket =
-          await WebSocket.connect(
-            terminalWsUrl(_addr).toString(),
-            // The ticket rides the subprotocol, not the query string. A URL is
-            // what every access log, proxy and error message writes down, and
-            // this one authorises a shell — the agent stopped reading
-            // `?ticket=` for that reason and answers 401 to anything that
-            // still sends it that way.
-            protocols: [terminalWsProtocol(ticket)],
-            // Carries `ignoreCert` onto the upgrade: this is the same endpoint the
-            // status poll uses, so it has to trust the same certs
-            customClient: _httpClient(),
-          ).timeout(
-            timeout ?? const Duration(seconds: 15),
-            onTimeout: () => throw MonitorHttpErr(
-              type: MonitorHttpErrType.net,
-              message: 'Timed out opening the monitor terminal',
-            ),
-          );
+      // Scheme compared case-insensitively: `Uri.parse` lowercases it, but
+      // `_addr` is whatever the user typed, and reading `HTTPS://` as
+      // plaintext would dial `ws://` at a TLS port and hang
+      final url = Uri.parse(_addr).replace(
+        scheme: _addr.toLowerCase().startsWith('https') ? 'wss' : 'ws',
+        path: path,
+        queryParameters: {'ticket': ticket},
+      );
+      final socket = await WebSocket.connect(
+        url.toString(),
+        // Carries `ignoreCert` onto the upgrade: this is the same endpoint the
+        // status poll uses, so it has to trust the same certs
+        customClient: _httpClient(),
+      ).timeout(
+        timeout ?? const Duration(seconds: 15),
+        onTimeout: () => throw MonitorHttpErr(
+          type: MonitorHttpErrType.net,
+          message: 'Timed out opening the monitor $purpose',
+        ),
+      );
       return socket;
     });
   }
 
   void dispose() {
-    _disposed = true;
     _dio?.close(force: true);
     _dio = null;
     _token = null;
@@ -569,20 +510,11 @@ class MonitorHttpClient {
         e.type == DioExceptionType.connectionTimeout ||
         e.type == DioExceptionType.sendTimeout ||
         e.type == DioExceptionType.receiveTimeout) {
-      return MonitorHttpErr(
-        type: MonitorHttpErrType.net,
-        message: e.toString(),
-      );
+      return MonitorHttpErr(type: MonitorHttpErrType.net, message: e.toString());
     }
     if (e.response?.statusCode == 401) {
-      return MonitorHttpErr(
-        type: MonitorHttpErrType.auth,
-        message: e.toString(),
-      );
+      return MonitorHttpErr(type: MonitorHttpErrType.auth, message: e.toString());
     }
-    return MonitorHttpErr(
-      type: MonitorHttpErrType.unknown,
-      message: e.toString(),
-    );
+    return MonitorHttpErr(type: MonitorHttpErrType.unknown, message: e.toString());
   }
 }

@@ -22,8 +22,6 @@ abstract class SnippetState with _$SnippetState {
 class SnippetNotifier extends _$SnippetNotifier {
   @override
   SnippetState build() {
-    final subscription = Stores.snippet.watch().listen((_) => reload());
-    ref.onDispose(subscription.cancel);
     return _load();
   }
 

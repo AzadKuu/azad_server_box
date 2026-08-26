@@ -50,19 +50,6 @@ class ForegroundService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         try {
-            // Before the permission check below, because stopping needs no
-            // notification. A user who revokes the permission while this is
-            // running still has the action on a notification the system has not
-            // taken down yet, and it used to take the early exit — killing the
-            // service without ever telling Flutter to disconnect anything.
-            if (intent?.action == ACTION_STOP_FOREGROUND) {
-                val stopAllIntent = Intent("tech.lolli.toolbox.STOP_ALL_CONNECTIONS")
-                    .setPackage(packageName)
-                sendBroadcast(stopAllIntent, "tech.lolli.toolbox.permission.INTERNAL_BROADCAST")
-                stopForegroundService()
-                return START_NOT_STICKY
-            }
-
             // Check notification permission for Android 13+
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
                 androidx.core.content.ContextCompat.checkSelfPermission(
@@ -75,44 +62,26 @@ class ForegroundService : Service() {
                 return START_NOT_STICKY
             }
 
-            // A null intent is the system restarting this service after killing
-            // the process, which is exactly what START_STICKY asks it to do.
-            // Stopping here threw that contract away: the one case the sticky
-            // restart exists for — a backgrounded app with a session open —
-            // ended with no service, no notification and a process free to be
-            // frozen, and nothing left running to notice. The placeholder is
-            // what re-enters the foreground; Dart re-states the session list
-            // through `updateSessions` as soon as an engine is up.
             if (intent == null) {
-                Log.w("ForegroundService", "Restarted with a null intent; going foreground with a placeholder")
-                ensureForeground(createMergedNotification(0, emptyList(), emptyList()))
-                return START_STICKY
+                Log.w("ForegroundService", "onStartCommand called with null intent")
+                // Don't call stopForegroundService() here as we haven't started foreground yet
+                stopSelf()
+                return START_NOT_STICKY
             }
 
             val action = intent.action
             Log.d("ForegroundService", "onStartCommand action=$action")
 
             return when (action) {
+                ACTION_STOP_FOREGROUND -> {
+                    // Notify Flutter to stop all connections before stopping service
+                    val stopAllIntent = Intent("tech.lolli.toolbox.STOP_ALL_CONNECTIONS")
+                    sendBroadcast(stopAllIntent)
+                    clearAll()
+                    stopForegroundService()
+                    START_NOT_STICKY
+                }
                 ACTION_UPDATE_SESSIONS -> {
-                    // The promise `startForegroundService` made, kept before
-                    // anything downstream can decide not to.
-                    //
-                    // Every exit from `handleUpdateSessions` used to have to
-                    // remember this for itself, and the one that stands down
-                    // when nothing is connected did not: it cancelled the
-                    // notification and called `stopSelf`, which does not
-                    // discharge the obligation while a later start command is
-                    // in flight. The system then kills the process with a
-                    // `ForegroundServiceDidNotStartInTimeException` — thirty
-                    // of them in one afternoon of testing, every time the last
-                    // session closed with `bgRun` off.
-                    //
-                    // Entering the foreground and leaving it again is the
-                    // sanctioned way to stand down. The placeholder is
-                    // replaced within the same call, so nothing is shown.
-                    if (!isFgStarted) {
-                        ensureForeground(createMergedNotification(0, emptyList(), emptyList()))
-                    }
                     val payload = intent.getStringExtra("payload") ?: "{}"
                     handleUpdateSessions(payload)
                     START_STICKY
@@ -278,14 +247,8 @@ class ForegroundService : Service() {
         }
 
         val sessions = mutableListOf<SessionItem>()
-        // Whether the app still needs the process kept out of the freezer even
-        // with nothing connected — see `TermSessionManager._serviceWanted`.
-        // Without this an empty list meant "stop being a foreground service",
-        // which is exactly what a backgrounded app can never undo.
-        var keepAlive = false
         try {
             val obj = JSONObject(payload)
-            keepAlive = obj.optBoolean("keepAlive", false)
             val arr: JSONArray = obj.optJSONArray("sessions") ?: JSONArray()
             for (i in 0 until arr.length()) {
                 val s = arr.optJSONObject(i) ?: continue
@@ -299,23 +262,12 @@ class ForegroundService : Service() {
                 }
             }
         } catch (e: Exception) {
-            // Not read as "no sessions, no keep-alive", which is what falling
-            // through would mean: one corrupt message would then cancel the
-            // notification of a backgrounded app and take away the only thing
-            // keeping it out of the freezer. Whatever was last shown stands.
             logError("Failed to parse payload", e)
-            return
         }
 
-        // Nothing connected. Either stand down, or stay foreground with a
-        // placeholder so the app is still running when something can be
-        // connected again.
+        // Clear if empty
         if (sessions.isEmpty()) {
-            if (!keepAlive) {
-                stopForegroundService()
-                return
-            }
-            ensureForeground(createMergedNotification(0, emptyList(), emptyList()))
+            clearAll()
             return
         }
 
@@ -331,6 +283,14 @@ class ForegroundService : Service() {
         ensureForeground(mergedNotification)
     }
 
+    private fun clearAll() {
+        val nm = getSystemService(NotificationManager::class.java)
+        nm?.cancel(NOTIFICATION_ID)
+        postedIds.forEach { id -> nm?.cancel(id) }
+        postedIds.clear()
+        isFgStarted = false
+    }
+
     data class SessionItem(
         val id: String,
         val title: String,
@@ -339,32 +299,15 @@ class ForegroundService : Service() {
         val status: String,
     )
 
-    /**
-     * Leaves the foreground, takes every notification down, and stops.
-     *
-     * `stopForeground` unconditionally, not only when this instance believes
-     * it called `startForeground`: the flag is this process's view and the
-     * notification outlives it. Cancelling the notification by hand instead —
-     * which is what the callers used to do first — left the service foreground
-     * as far as the system was concerned, and reset the flag so nothing here
-     * would ever leave it.
-     */
     private fun stopForegroundService() {
         try {
-            stopForeground(STOP_FOREGROUND_REMOVE)
+            if (isFgStarted) {
+                stopForeground(STOP_FOREGROUND_REMOVE)
+                isFgStarted = false
+            }
         } catch (e: Exception) {
             logError("Error stopping foreground", e)
         }
-        isFgStarted = false
-        try {
-            val nm = getSystemService(NotificationManager::class.java)
-            nm?.cancel(NOTIFICATION_ID)
-            postedIds.forEach { id -> nm?.cancel(id) }
-        } catch (e: Exception) {
-            logError("Error cancelling notifications", e)
-        }
-        postedIds.clear()
-        notificationIdMap.clear()
         stopSelf()
         Log.d("ForegroundService", "ForegroundService stopped")
     }

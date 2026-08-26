@@ -64,10 +64,8 @@ class SshDataSource implements ServerDataSource {
   /// SSH exposes no stored history — the app's own buffer is the only place
   /// these samples ever exist
   @override
-  Future<List<StatusHistorySample>> fetchHistory({
-    int minutes = 60,
-    int maxPoints = StatusHistory.capacity,
-  }) async => const [];
+  Future<List<StatusHistorySample>> fetchHistory({int minutes = 60}) async =>
+      const [];
 
   /// The SSH client is owned by `ServerNotifier`, which closes it
   @override

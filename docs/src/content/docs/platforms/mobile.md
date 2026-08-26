@@ -3,11 +3,11 @@ title: Mobile Features
 description: iOS and Android specific features
 ---
 
-Server Box provides features specific to iOS and Android.
+Server Box provides several mobile-specific features for iOS and Android devices.
 
 ## Biometric Authentication
 
-Use device biometrics to unlock the app:
+Secure your servers with biometric authentication:
 
 - **iOS**: Face ID or Touch ID
 - **Android**: Fingerprint authentication
@@ -18,7 +18,7 @@ could not work.
 
 ## Home Screen Widgets
 
-Add server status widgets to your home screen to view server status.
+Add server status widgets to your home screen for quick monitoring.
 
 ### iOS
 
@@ -41,7 +41,7 @@ Add server status widgets to your home screen to view server status.
 
 ### Android
 
-Android can keep eligible connections running in the background:
+Keep connections alive in the background:
 
 - Enable in Settings → **App** → Setting → **Android Setting** → **Background running**
 - Requires battery optimization exclusion
@@ -58,13 +58,13 @@ Background limitations apply:
 ## Push Notifications
 
 Server alerts (offline, threshold exceeded) are pushed by a
-[monitor agent](/docs/advanced/monitor-agent/) running on your servers. Configure
-alert rules and push channels there.
+[monitor agent](/docs/advanced/monitor-agent/) running on your servers —
+configure alert rules and push channels there.
 
 ## Mobile UI Features
 
 - **Pull to Refresh**: Update server status
-- **Landscape Mode**: A wider layout for terminal use
+- **Landscape Mode**: Better terminal experience
 - **Virtual Keyboard**: Terminal shortcuts
 
 ## File Integration

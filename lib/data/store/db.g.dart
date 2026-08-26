@@ -59,26 +59,8 @@ class $PrivateKeysTable extends PrivateKeys
     type: DriftSqlType.string,
     requiredDuringInsert: true,
   );
-  static const VerificationMeta _commentMeta = const VerificationMeta(
-    'comment',
-  );
   @override
-  late final GeneratedColumn<String> comment = GeneratedColumn<String>(
-    'comment',
-    aliasedName,
-    true,
-    type: DriftSqlType.string,
-    requiredDuringInsert: false,
-  );
-  @override
-  List<GeneratedColumn> get $columns => [
-    updatedAt,
-    rev,
-    id,
-    name,
-    key,
-    comment,
-  ];
+  List<GeneratedColumn> get $columns => [updatedAt, rev, id, name, key];
   @override
   String get aliasedName => _alias ?? actualTableName;
   @override
@@ -124,12 +106,6 @@ class $PrivateKeysTable extends PrivateKeys
     } else if (isInserting) {
       context.missing(_keyMeta);
     }
-    if (data.containsKey('comment')) {
-      context.handle(
-        _commentMeta,
-        comment.isAcceptableOrUnknown(data['comment']!, _commentMeta),
-      );
-    }
     return context;
   }
 
@@ -159,10 +135,6 @@ class $PrivateKeysTable extends PrivateKeys
         DriftSqlType.string,
         data['${effectivePrefix}key'],
       )!,
-      comment: attachedDatabase.typeMapping.read(
-        DriftSqlType.string,
-        data['${effectivePrefix}comment'],
-      ),
     );
   }
 
@@ -181,25 +153,12 @@ class PrivateKeyRow extends DataClass implements Insertable<PrivateKeyRow> {
   final String id;
   final String name;
   final String key;
-
-  /// The OpenSSH comment to put at the end of the public key line.
-  ///
-  /// Held here rather than rewritten into the key: the key file carries its own
-  /// copy, inside the part that gets encrypted, so changing that one means
-  /// opening the key and writing it out again — a passphrase prompt and a
-  /// rewrite of key material, to edit a label.
-  ///
-  /// Null for a key stored before this column, and for one whose comment has
-  /// never been edited. The key's own comment is read in that case, which is
-  /// what keeps an imported key showing what it arrived with.
-  final String? comment;
   const PrivateKeyRow({
     required this.updatedAt,
     required this.rev,
     required this.id,
     required this.name,
     required this.key,
-    this.comment,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -209,9 +168,6 @@ class PrivateKeyRow extends DataClass implements Insertable<PrivateKeyRow> {
     map['id'] = Variable<String>(id);
     map['name'] = Variable<String>(name);
     map['key'] = Variable<String>(key);
-    if (!nullToAbsent || comment != null) {
-      map['comment'] = Variable<String>(comment);
-    }
     return map;
   }
 
@@ -222,9 +178,6 @@ class PrivateKeyRow extends DataClass implements Insertable<PrivateKeyRow> {
       id: Value(id),
       name: Value(name),
       key: Value(key),
-      comment: comment == null && nullToAbsent
-          ? const Value.absent()
-          : Value(comment),
     );
   }
 
@@ -239,7 +192,6 @@ class PrivateKeyRow extends DataClass implements Insertable<PrivateKeyRow> {
       id: serializer.fromJson<String>(json['id']),
       name: serializer.fromJson<String>(json['name']),
       key: serializer.fromJson<String>(json['key']),
-      comment: serializer.fromJson<String?>(json['comment']),
     );
   }
   @override
@@ -251,7 +203,6 @@ class PrivateKeyRow extends DataClass implements Insertable<PrivateKeyRow> {
       'id': serializer.toJson<String>(id),
       'name': serializer.toJson<String>(name),
       'key': serializer.toJson<String>(key),
-      'comment': serializer.toJson<String?>(comment),
     };
   }
 
@@ -261,14 +212,12 @@ class PrivateKeyRow extends DataClass implements Insertable<PrivateKeyRow> {
     String? id,
     String? name,
     String? key,
-    Value<String?> comment = const Value.absent(),
   }) => PrivateKeyRow(
     updatedAt: updatedAt ?? this.updatedAt,
     rev: rev ?? this.rev,
     id: id ?? this.id,
     name: name ?? this.name,
     key: key ?? this.key,
-    comment: comment.present ? comment.value : this.comment,
   );
   PrivateKeyRow copyWithCompanion(PrivateKeysCompanion data) {
     return PrivateKeyRow(
@@ -277,7 +226,6 @@ class PrivateKeyRow extends DataClass implements Insertable<PrivateKeyRow> {
       id: data.id.present ? data.id.value : this.id,
       name: data.name.present ? data.name.value : this.name,
       key: data.key.present ? data.key.value : this.key,
-      comment: data.comment.present ? data.comment.value : this.comment,
     );
   }
 
@@ -288,14 +236,13 @@ class PrivateKeyRow extends DataClass implements Insertable<PrivateKeyRow> {
           ..write('rev: $rev, ')
           ..write('id: $id, ')
           ..write('name: $name, ')
-          ..write('key: $key, ')
-          ..write('comment: $comment')
+          ..write('key: $key')
           ..write(')'))
         .toString();
   }
 
   @override
-  int get hashCode => Object.hash(updatedAt, rev, id, name, key, comment);
+  int get hashCode => Object.hash(updatedAt, rev, id, name, key);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -304,8 +251,7 @@ class PrivateKeyRow extends DataClass implements Insertable<PrivateKeyRow> {
           other.rev == this.rev &&
           other.id == this.id &&
           other.name == this.name &&
-          other.key == this.key &&
-          other.comment == this.comment);
+          other.key == this.key);
 }
 
 class PrivateKeysCompanion extends UpdateCompanion<PrivateKeyRow> {
@@ -314,14 +260,12 @@ class PrivateKeysCompanion extends UpdateCompanion<PrivateKeyRow> {
   final Value<String> id;
   final Value<String> name;
   final Value<String> key;
-  final Value<String?> comment;
   const PrivateKeysCompanion({
     this.updatedAt = const Value.absent(),
     this.rev = const Value.absent(),
     this.id = const Value.absent(),
     this.name = const Value.absent(),
     this.key = const Value.absent(),
-    this.comment = const Value.absent(),
   });
   PrivateKeysCompanion.insert({
     this.updatedAt = const Value.absent(),
@@ -329,7 +273,6 @@ class PrivateKeysCompanion extends UpdateCompanion<PrivateKeyRow> {
     required String id,
     required String name,
     required String key,
-    this.comment = const Value.absent(),
   }) : id = Value(id),
        name = Value(name),
        key = Value(key);
@@ -339,7 +282,6 @@ class PrivateKeysCompanion extends UpdateCompanion<PrivateKeyRow> {
     Expression<String>? id,
     Expression<String>? name,
     Expression<String>? key,
-    Expression<String>? comment,
   }) {
     return RawValuesInsertable({
       if (updatedAt != null) 'updated_at': updatedAt,
@@ -347,7 +289,6 @@ class PrivateKeysCompanion extends UpdateCompanion<PrivateKeyRow> {
       if (id != null) 'id': id,
       if (name != null) 'name': name,
       if (key != null) 'key': key,
-      if (comment != null) 'comment': comment,
     });
   }
 
@@ -357,7 +298,6 @@ class PrivateKeysCompanion extends UpdateCompanion<PrivateKeyRow> {
     Value<String>? id,
     Value<String>? name,
     Value<String>? key,
-    Value<String?>? comment,
   }) {
     return PrivateKeysCompanion(
       updatedAt: updatedAt ?? this.updatedAt,
@@ -365,7 +305,6 @@ class PrivateKeysCompanion extends UpdateCompanion<PrivateKeyRow> {
       id: id ?? this.id,
       name: name ?? this.name,
       key: key ?? this.key,
-      comment: comment ?? this.comment,
     );
   }
 
@@ -387,9 +326,6 @@ class PrivateKeysCompanion extends UpdateCompanion<PrivateKeyRow> {
     if (key.present) {
       map['key'] = Variable<String>(key.value);
     }
-    if (comment.present) {
-      map['comment'] = Variable<String>(comment.value);
-    }
     return map;
   }
 
@@ -400,391 +336,7 @@ class PrivateKeysCompanion extends UpdateCompanion<PrivateKeyRow> {
           ..write('rev: $rev, ')
           ..write('id: $id, ')
           ..write('name: $name, ')
-          ..write('key: $key, ')
-          ..write('comment: $comment')
-          ..write(')'))
-        .toString();
-  }
-}
-
-class $BmcCredentialsTable extends BmcCredentials
-    with TableInfo<$BmcCredentialsTable, BmcCredentialRow> {
-  @override
-  final GeneratedDatabase attachedDatabase;
-  final String? _alias;
-  $BmcCredentialsTable(this.attachedDatabase, [this._alias]);
-  static const VerificationMeta _updatedAtMeta = const VerificationMeta(
-    'updatedAt',
-  );
-  @override
-  late final GeneratedColumn<int> updatedAt = GeneratedColumn<int>(
-    'updated_at',
-    aliasedName,
-    false,
-    type: DriftSqlType.int,
-    requiredDuringInsert: false,
-    defaultValue: const Constant(0),
-  );
-  static const VerificationMeta _revMeta = const VerificationMeta('rev');
-  @override
-  late final GeneratedColumn<int> rev = GeneratedColumn<int>(
-    'rev',
-    aliasedName,
-    false,
-    type: DriftSqlType.int,
-    requiredDuringInsert: false,
-    defaultValue: const Constant(0),
-  );
-  static const VerificationMeta _idMeta = const VerificationMeta('id');
-  @override
-  late final GeneratedColumn<String> id = GeneratedColumn<String>(
-    'id',
-    aliasedName,
-    false,
-    type: DriftSqlType.string,
-    requiredDuringInsert: true,
-  );
-  static const VerificationMeta _nameMeta = const VerificationMeta('name');
-  @override
-  late final GeneratedColumn<String> name = GeneratedColumn<String>(
-    'name',
-    aliasedName,
-    false,
-    type: DriftSqlType.string,
-    requiredDuringInsert: true,
-    defaultConstraints: GeneratedColumn.constraintIsAlways('UNIQUE'),
-  );
-  static const VerificationMeta _userMeta = const VerificationMeta('user');
-  @override
-  late final GeneratedColumn<String> user = GeneratedColumn<String>(
-    'user',
-    aliasedName,
-    false,
-    type: DriftSqlType.string,
-    requiredDuringInsert: true,
-  );
-  static const VerificationMeta _pwdMeta = const VerificationMeta('pwd');
-  @override
-  late final GeneratedColumn<String> pwd = GeneratedColumn<String>(
-    'pwd',
-    aliasedName,
-    true,
-    type: DriftSqlType.string,
-    requiredDuringInsert: false,
-  );
-  @override
-  List<GeneratedColumn> get $columns => [updatedAt, rev, id, name, user, pwd];
-  @override
-  String get aliasedName => _alias ?? actualTableName;
-  @override
-  String get actualTableName => $name;
-  static const String $name = 'bmc_credential';
-  @override
-  VerificationContext validateIntegrity(
-    Insertable<BmcCredentialRow> instance, {
-    bool isInserting = false,
-  }) {
-    final context = VerificationContext();
-    final data = instance.toColumns(true);
-    if (data.containsKey('updated_at')) {
-      context.handle(
-        _updatedAtMeta,
-        updatedAt.isAcceptableOrUnknown(data['updated_at']!, _updatedAtMeta),
-      );
-    }
-    if (data.containsKey('rev')) {
-      context.handle(
-        _revMeta,
-        rev.isAcceptableOrUnknown(data['rev']!, _revMeta),
-      );
-    }
-    if (data.containsKey('id')) {
-      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
-    } else if (isInserting) {
-      context.missing(_idMeta);
-    }
-    if (data.containsKey('name')) {
-      context.handle(
-        _nameMeta,
-        name.isAcceptableOrUnknown(data['name']!, _nameMeta),
-      );
-    } else if (isInserting) {
-      context.missing(_nameMeta);
-    }
-    if (data.containsKey('user')) {
-      context.handle(
-        _userMeta,
-        user.isAcceptableOrUnknown(data['user']!, _userMeta),
-      );
-    } else if (isInserting) {
-      context.missing(_userMeta);
-    }
-    if (data.containsKey('pwd')) {
-      context.handle(
-        _pwdMeta,
-        pwd.isAcceptableOrUnknown(data['pwd']!, _pwdMeta),
-      );
-    }
-    return context;
-  }
-
-  @override
-  Set<GeneratedColumn> get $primaryKey => {id};
-  @override
-  BmcCredentialRow map(Map<String, dynamic> data, {String? tablePrefix}) {
-    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
-    return BmcCredentialRow(
-      updatedAt: attachedDatabase.typeMapping.read(
-        DriftSqlType.int,
-        data['${effectivePrefix}updated_at'],
-      )!,
-      rev: attachedDatabase.typeMapping.read(
-        DriftSqlType.int,
-        data['${effectivePrefix}rev'],
-      )!,
-      id: attachedDatabase.typeMapping.read(
-        DriftSqlType.string,
-        data['${effectivePrefix}id'],
-      )!,
-      name: attachedDatabase.typeMapping.read(
-        DriftSqlType.string,
-        data['${effectivePrefix}name'],
-      )!,
-      user: attachedDatabase.typeMapping.read(
-        DriftSqlType.string,
-        data['${effectivePrefix}user'],
-      )!,
-      pwd: attachedDatabase.typeMapping.read(
-        DriftSqlType.string,
-        data['${effectivePrefix}pwd'],
-      ),
-    );
-  }
-
-  @override
-  $BmcCredentialsTable createAlias(String alias) {
-    return $BmcCredentialsTable(attachedDatabase, alias);
-  }
-
-  @override
-  bool get withoutRowId => true;
-}
-
-class BmcCredentialRow extends DataClass
-    implements Insertable<BmcCredentialRow> {
-  final int updatedAt;
-  final int rev;
-  final String id;
-  final String name;
-  final String user;
-  final String? pwd;
-  const BmcCredentialRow({
-    required this.updatedAt,
-    required this.rev,
-    required this.id,
-    required this.name,
-    required this.user,
-    this.pwd,
-  });
-  @override
-  Map<String, Expression> toColumns(bool nullToAbsent) {
-    final map = <String, Expression>{};
-    map['updated_at'] = Variable<int>(updatedAt);
-    map['rev'] = Variable<int>(rev);
-    map['id'] = Variable<String>(id);
-    map['name'] = Variable<String>(name);
-    map['user'] = Variable<String>(user);
-    if (!nullToAbsent || pwd != null) {
-      map['pwd'] = Variable<String>(pwd);
-    }
-    return map;
-  }
-
-  BmcCredentialsCompanion toCompanion(bool nullToAbsent) {
-    return BmcCredentialsCompanion(
-      updatedAt: Value(updatedAt),
-      rev: Value(rev),
-      id: Value(id),
-      name: Value(name),
-      user: Value(user),
-      pwd: pwd == null && nullToAbsent ? const Value.absent() : Value(pwd),
-    );
-  }
-
-  factory BmcCredentialRow.fromJson(
-    Map<String, dynamic> json, {
-    ValueSerializer? serializer,
-  }) {
-    serializer ??= driftRuntimeOptions.defaultSerializer;
-    return BmcCredentialRow(
-      updatedAt: serializer.fromJson<int>(json['updatedAt']),
-      rev: serializer.fromJson<int>(json['rev']),
-      id: serializer.fromJson<String>(json['id']),
-      name: serializer.fromJson<String>(json['name']),
-      user: serializer.fromJson<String>(json['user']),
-      pwd: serializer.fromJson<String?>(json['pwd']),
-    );
-  }
-  @override
-  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
-    serializer ??= driftRuntimeOptions.defaultSerializer;
-    return <String, dynamic>{
-      'updatedAt': serializer.toJson<int>(updatedAt),
-      'rev': serializer.toJson<int>(rev),
-      'id': serializer.toJson<String>(id),
-      'name': serializer.toJson<String>(name),
-      'user': serializer.toJson<String>(user),
-      'pwd': serializer.toJson<String?>(pwd),
-    };
-  }
-
-  BmcCredentialRow copyWith({
-    int? updatedAt,
-    int? rev,
-    String? id,
-    String? name,
-    String? user,
-    Value<String?> pwd = const Value.absent(),
-  }) => BmcCredentialRow(
-    updatedAt: updatedAt ?? this.updatedAt,
-    rev: rev ?? this.rev,
-    id: id ?? this.id,
-    name: name ?? this.name,
-    user: user ?? this.user,
-    pwd: pwd.present ? pwd.value : this.pwd,
-  );
-  BmcCredentialRow copyWithCompanion(BmcCredentialsCompanion data) {
-    return BmcCredentialRow(
-      updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
-      rev: data.rev.present ? data.rev.value : this.rev,
-      id: data.id.present ? data.id.value : this.id,
-      name: data.name.present ? data.name.value : this.name,
-      user: data.user.present ? data.user.value : this.user,
-      pwd: data.pwd.present ? data.pwd.value : this.pwd,
-    );
-  }
-
-  @override
-  String toString() {
-    return (StringBuffer('BmcCredentialRow(')
-          ..write('updatedAt: $updatedAt, ')
-          ..write('rev: $rev, ')
-          ..write('id: $id, ')
-          ..write('name: $name, ')
-          ..write('user: $user, ')
-          ..write('pwd: $pwd')
-          ..write(')'))
-        .toString();
-  }
-
-  @override
-  int get hashCode => Object.hash(updatedAt, rev, id, name, user, pwd);
-  @override
-  bool operator ==(Object other) =>
-      identical(this, other) ||
-      (other is BmcCredentialRow &&
-          other.updatedAt == this.updatedAt &&
-          other.rev == this.rev &&
-          other.id == this.id &&
-          other.name == this.name &&
-          other.user == this.user &&
-          other.pwd == this.pwd);
-}
-
-class BmcCredentialsCompanion extends UpdateCompanion<BmcCredentialRow> {
-  final Value<int> updatedAt;
-  final Value<int> rev;
-  final Value<String> id;
-  final Value<String> name;
-  final Value<String> user;
-  final Value<String?> pwd;
-  const BmcCredentialsCompanion({
-    this.updatedAt = const Value.absent(),
-    this.rev = const Value.absent(),
-    this.id = const Value.absent(),
-    this.name = const Value.absent(),
-    this.user = const Value.absent(),
-    this.pwd = const Value.absent(),
-  });
-  BmcCredentialsCompanion.insert({
-    this.updatedAt = const Value.absent(),
-    this.rev = const Value.absent(),
-    required String id,
-    required String name,
-    required String user,
-    this.pwd = const Value.absent(),
-  }) : id = Value(id),
-       name = Value(name),
-       user = Value(user);
-  static Insertable<BmcCredentialRow> custom({
-    Expression<int>? updatedAt,
-    Expression<int>? rev,
-    Expression<String>? id,
-    Expression<String>? name,
-    Expression<String>? user,
-    Expression<String>? pwd,
-  }) {
-    return RawValuesInsertable({
-      if (updatedAt != null) 'updated_at': updatedAt,
-      if (rev != null) 'rev': rev,
-      if (id != null) 'id': id,
-      if (name != null) 'name': name,
-      if (user != null) 'user': user,
-      if (pwd != null) 'pwd': pwd,
-    });
-  }
-
-  BmcCredentialsCompanion copyWith({
-    Value<int>? updatedAt,
-    Value<int>? rev,
-    Value<String>? id,
-    Value<String>? name,
-    Value<String>? user,
-    Value<String?>? pwd,
-  }) {
-    return BmcCredentialsCompanion(
-      updatedAt: updatedAt ?? this.updatedAt,
-      rev: rev ?? this.rev,
-      id: id ?? this.id,
-      name: name ?? this.name,
-      user: user ?? this.user,
-      pwd: pwd ?? this.pwd,
-    );
-  }
-
-  @override
-  Map<String, Expression> toColumns(bool nullToAbsent) {
-    final map = <String, Expression>{};
-    if (updatedAt.present) {
-      map['updated_at'] = Variable<int>(updatedAt.value);
-    }
-    if (rev.present) {
-      map['rev'] = Variable<int>(rev.value);
-    }
-    if (id.present) {
-      map['id'] = Variable<String>(id.value);
-    }
-    if (name.present) {
-      map['name'] = Variable<String>(name.value);
-    }
-    if (user.present) {
-      map['user'] = Variable<String>(user.value);
-    }
-    if (pwd.present) {
-      map['pwd'] = Variable<String>(pwd.value);
-    }
-    return map;
-  }
-
-  @override
-  String toString() {
-    return (StringBuffer('BmcCredentialsCompanion(')
-          ..write('updatedAt: $updatedAt, ')
-          ..write('rev: $rev, ')
-          ..write('id: $id, ')
-          ..write('name: $name, ')
-          ..write('user: $user, ')
-          ..write('pwd: $pwd')
+          ..write('key: $key')
           ..write(')'))
         .toString();
   }
@@ -948,28 +500,6 @@ class $ServersTable extends Servers with TableInfo<$ServersTable, ServerRow> {
     type: DriftSqlType.string,
     requiredDuringInsert: false,
   );
-  static const VerificationMeta _sshFileTransportMeta = const VerificationMeta(
-    'sshFileTransport',
-  );
-  @override
-  late final GeneratedColumn<String> sshFileTransport = GeneratedColumn<String>(
-    'ssh_file_transport',
-    aliasedName,
-    true,
-    type: DriftSqlType.string,
-    requiredDuringInsert: false,
-  );
-  static const VerificationMeta _preferredTransportMeta =
-      const VerificationMeta('preferredTransport');
-  @override
-  late final GeneratedColumn<String> preferredTransport =
-      GeneratedColumn<String>(
-        'preferred_transport',
-        aliasedName,
-        true,
-        type: DriftSqlType.string,
-        requiredDuringInsert: false,
-      );
   static const VerificationMeta _monitorAddrMeta = const VerificationMeta(
     'monitorAddr',
   );
@@ -1017,19 +547,6 @@ class $ServersTable extends Servers with TableInfo<$ServersTable, ServerRow> {
       'CHECK ("monitor_ignore_cert" IN (0, 1))',
     ),
   );
-  static const VerificationMeta _monitorAllowInsecureMeta =
-      const VerificationMeta('monitorAllowInsecure');
-  @override
-  late final GeneratedColumn<bool> monitorAllowInsecure = GeneratedColumn<bool>(
-    'monitor_allow_insecure',
-    aliasedName,
-    true,
-    type: DriftSqlType.bool,
-    requiredDuringInsert: false,
-    defaultConstraints: GeneratedColumn.constraintIsAlways(
-      'CHECK ("monitor_allow_insecure" IN (0, 1))',
-    ),
-  );
   static const VerificationMeta _wolMacMeta = const VerificationMeta('wolMac');
   @override
   late final GeneratedColumn<String> wolMac = GeneratedColumn<String>(
@@ -1056,42 +573,6 @@ class $ServersTable extends Servers with TableInfo<$ServersTable, ServerRow> {
     true,
     type: DriftSqlType.string,
     requiredDuringInsert: false,
-  );
-  static const VerificationMeta _bmcAddrMeta = const VerificationMeta(
-    'bmcAddr',
-  );
-  @override
-  late final GeneratedColumn<String> bmcAddr = GeneratedColumn<String>(
-    'bmc_addr',
-    aliasedName,
-    true,
-    type: DriftSqlType.string,
-    requiredDuringInsert: false,
-  );
-  static const VerificationMeta _bmcCertSha256Meta = const VerificationMeta(
-    'bmcCertSha256',
-  );
-  @override
-  late final GeneratedColumn<String> bmcCertSha256 = GeneratedColumn<String>(
-    'bmc_cert_sha256',
-    aliasedName,
-    true,
-    type: DriftSqlType.string,
-    requiredDuringInsert: false,
-  );
-  static const VerificationMeta _bmcCredIdMeta = const VerificationMeta(
-    'bmcCredId',
-  );
-  @override
-  late final GeneratedColumn<String> bmcCredId = GeneratedColumn<String>(
-    'bmc_cred_id',
-    aliasedName,
-    true,
-    type: DriftSqlType.string,
-    requiredDuringInsert: false,
-    defaultConstraints: GeneratedColumn.constraintIsAlways(
-      'REFERENCES bmc_credential (id) ON DELETE SET NULL',
-    ),
   );
   static const VerificationMeta _pveAddrMeta = const VerificationMeta(
     'pveAddr',
@@ -1201,19 +682,13 @@ class $ServersTable extends Servers with TableInfo<$ServersTable, ServerRow> {
     sshKeyPath,
     sshAlterUrl,
     sshProxyCommand,
-    sshFileTransport,
-    preferredTransport,
     monitorAddr,
     monitorUser,
     monitorPwd,
     monitorIgnoreCert,
-    monitorAllowInsecure,
     wolMac,
     wolIp,
     wolPwd,
-    bmcAddr,
-    bmcCertSha256,
-    bmcCredId,
     pveAddr,
     pveIgnoreCert,
     pvePwd,
@@ -1332,24 +807,6 @@ class $ServersTable extends Servers with TableInfo<$ServersTable, ServerRow> {
         ),
       );
     }
-    if (data.containsKey('ssh_file_transport')) {
-      context.handle(
-        _sshFileTransportMeta,
-        sshFileTransport.isAcceptableOrUnknown(
-          data['ssh_file_transport']!,
-          _sshFileTransportMeta,
-        ),
-      );
-    }
-    if (data.containsKey('preferred_transport')) {
-      context.handle(
-        _preferredTransportMeta,
-        preferredTransport.isAcceptableOrUnknown(
-          data['preferred_transport']!,
-          _preferredTransportMeta,
-        ),
-      );
-    }
     if (data.containsKey('monitor_addr')) {
       context.handle(
         _monitorAddrMeta,
@@ -1383,15 +840,6 @@ class $ServersTable extends Servers with TableInfo<$ServersTable, ServerRow> {
         ),
       );
     }
-    if (data.containsKey('monitor_allow_insecure')) {
-      context.handle(
-        _monitorAllowInsecureMeta,
-        monitorAllowInsecure.isAcceptableOrUnknown(
-          data['monitor_allow_insecure']!,
-          _monitorAllowInsecureMeta,
-        ),
-      );
-    }
     if (data.containsKey('wol_mac')) {
       context.handle(
         _wolMacMeta,
@@ -1408,27 +856,6 @@ class $ServersTable extends Servers with TableInfo<$ServersTable, ServerRow> {
       context.handle(
         _wolPwdMeta,
         wolPwd.isAcceptableOrUnknown(data['wol_pwd']!, _wolPwdMeta),
-      );
-    }
-    if (data.containsKey('bmc_addr')) {
-      context.handle(
-        _bmcAddrMeta,
-        bmcAddr.isAcceptableOrUnknown(data['bmc_addr']!, _bmcAddrMeta),
-      );
-    }
-    if (data.containsKey('bmc_cert_sha256')) {
-      context.handle(
-        _bmcCertSha256Meta,
-        bmcCertSha256.isAcceptableOrUnknown(
-          data['bmc_cert_sha256']!,
-          _bmcCertSha256Meta,
-        ),
-      );
-    }
-    if (data.containsKey('bmc_cred_id')) {
-      context.handle(
-        _bmcCredIdMeta,
-        bmcCredId.isAcceptableOrUnknown(data['bmc_cred_id']!, _bmcCredIdMeta),
       );
     }
     if (data.containsKey('pve_addr')) {
@@ -1553,14 +980,6 @@ class $ServersTable extends Servers with TableInfo<$ServersTable, ServerRow> {
         DriftSqlType.string,
         data['${effectivePrefix}ssh_proxy_command'],
       ),
-      sshFileTransport: attachedDatabase.typeMapping.read(
-        DriftSqlType.string,
-        data['${effectivePrefix}ssh_file_transport'],
-      ),
-      preferredTransport: attachedDatabase.typeMapping.read(
-        DriftSqlType.string,
-        data['${effectivePrefix}preferred_transport'],
-      ),
       monitorAddr: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
         data['${effectivePrefix}monitor_addr'],
@@ -1577,10 +996,6 @@ class $ServersTable extends Servers with TableInfo<$ServersTable, ServerRow> {
         DriftSqlType.bool,
         data['${effectivePrefix}monitor_ignore_cert'],
       ),
-      monitorAllowInsecure: attachedDatabase.typeMapping.read(
-        DriftSqlType.bool,
-        data['${effectivePrefix}monitor_allow_insecure'],
-      ),
       wolMac: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
         data['${effectivePrefix}wol_mac'],
@@ -1592,18 +1007,6 @@ class $ServersTable extends Servers with TableInfo<$ServersTable, ServerRow> {
       wolPwd: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
         data['${effectivePrefix}wol_pwd'],
-      ),
-      bmcAddr: attachedDatabase.typeMapping.read(
-        DriftSqlType.string,
-        data['${effectivePrefix}bmc_addr'],
-      ),
-      bmcCertSha256: attachedDatabase.typeMapping.read(
-        DriftSqlType.string,
-        data['${effectivePrefix}bmc_cert_sha256'],
-      ),
-      bmcCredId: attachedDatabase.typeMapping.read(
-        DriftSqlType.string,
-        data['${effectivePrefix}bmc_cred_id'],
       ),
       pveAddr: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
@@ -1667,42 +1070,13 @@ class ServerRow extends DataClass implements Insertable<ServerRow> {
   final String? sshKeyPath;
   final String? sshAlterUrl;
   final String? sshProxyCommand;
-
-  /// `SshFileTransport`, by name. Null is `sftp`, which is what every row
-  /// written before the column existed meant — see `m014`.
-  final String? sshFileTransport;
-
-  /// Which way of reaching this server is tried first, by
-  /// `ServerTransport.name`. Null means "whichever is configured", which is
-  /// the only answer for a server that has just one — and the only shape rows
-  /// written before v18 are in, when carrying both was not possible.
-  final String? preferredTransport;
   final String? monitorAddr;
   final String? monitorUser;
   final String? monitorPwd;
   final bool? monitorIgnoreCert;
-  final bool? monitorAllowInsecure;
   final String? wolMac;
   final String? wolIp;
   final String? wolPwd;
-
-  /// The BMC, a side channel beside the Wake-on-LAN fields above.
-  ///
-  /// Deliberately outside the SSH/monitor constraint below: a BMC is not a way
-  /// of reaching the host, so it neither satisfies that requirement nor
-  /// conflicts with either side of it. A server may carry one alongside SSH or
-  /// alongside a monitor agent.
-  ///
-  /// [bmcCertSha256] is what the user reviewed, not what a CA said — see
-  /// `BmcCfg.certSha256`. Null means nothing has been reviewed and a
-  /// connection is refused rather than trusted.
-  final String? bmcAddr;
-  final String? bmcCertSha256;
-
-  /// Deleting an account must not delete the servers that used it; it must
-  /// leave them with an address and nothing to log in with, which the editor
-  /// can then say. Same rule as [sshKeyId].
-  final String? bmcCredId;
   final String? pveAddr;
   final bool pveIgnoreCert;
   final String? pvePwd;
@@ -1726,19 +1100,13 @@ class ServerRow extends DataClass implements Insertable<ServerRow> {
     this.sshKeyPath,
     this.sshAlterUrl,
     this.sshProxyCommand,
-    this.sshFileTransport,
-    this.preferredTransport,
     this.monitorAddr,
     this.monitorUser,
     this.monitorPwd,
     this.monitorIgnoreCert,
-    this.monitorAllowInsecure,
     this.wolMac,
     this.wolIp,
     this.wolPwd,
-    this.bmcAddr,
-    this.bmcCertSha256,
-    this.bmcCredId,
     this.pveAddr,
     required this.pveIgnoreCert,
     this.pvePwd,
@@ -1783,12 +1151,6 @@ class ServerRow extends DataClass implements Insertable<ServerRow> {
     if (!nullToAbsent || sshProxyCommand != null) {
       map['ssh_proxy_command'] = Variable<String>(sshProxyCommand);
     }
-    if (!nullToAbsent || sshFileTransport != null) {
-      map['ssh_file_transport'] = Variable<String>(sshFileTransport);
-    }
-    if (!nullToAbsent || preferredTransport != null) {
-      map['preferred_transport'] = Variable<String>(preferredTransport);
-    }
     if (!nullToAbsent || monitorAddr != null) {
       map['monitor_addr'] = Variable<String>(monitorAddr);
     }
@@ -1801,9 +1163,6 @@ class ServerRow extends DataClass implements Insertable<ServerRow> {
     if (!nullToAbsent || monitorIgnoreCert != null) {
       map['monitor_ignore_cert'] = Variable<bool>(monitorIgnoreCert);
     }
-    if (!nullToAbsent || monitorAllowInsecure != null) {
-      map['monitor_allow_insecure'] = Variable<bool>(monitorAllowInsecure);
-    }
     if (!nullToAbsent || wolMac != null) {
       map['wol_mac'] = Variable<String>(wolMac);
     }
@@ -1812,15 +1171,6 @@ class ServerRow extends DataClass implements Insertable<ServerRow> {
     }
     if (!nullToAbsent || wolPwd != null) {
       map['wol_pwd'] = Variable<String>(wolPwd);
-    }
-    if (!nullToAbsent || bmcAddr != null) {
-      map['bmc_addr'] = Variable<String>(bmcAddr);
-    }
-    if (!nullToAbsent || bmcCertSha256 != null) {
-      map['bmc_cert_sha256'] = Variable<String>(bmcCertSha256);
-    }
-    if (!nullToAbsent || bmcCredId != null) {
-      map['bmc_cred_id'] = Variable<String>(bmcCredId);
     }
     if (!nullToAbsent || pveAddr != null) {
       map['pve_addr'] = Variable<String>(pveAddr);
@@ -1879,12 +1229,6 @@ class ServerRow extends DataClass implements Insertable<ServerRow> {
       sshProxyCommand: sshProxyCommand == null && nullToAbsent
           ? const Value.absent()
           : Value(sshProxyCommand),
-      sshFileTransport: sshFileTransport == null && nullToAbsent
-          ? const Value.absent()
-          : Value(sshFileTransport),
-      preferredTransport: preferredTransport == null && nullToAbsent
-          ? const Value.absent()
-          : Value(preferredTransport),
       monitorAddr: monitorAddr == null && nullToAbsent
           ? const Value.absent()
           : Value(monitorAddr),
@@ -1897,9 +1241,6 @@ class ServerRow extends DataClass implements Insertable<ServerRow> {
       monitorIgnoreCert: monitorIgnoreCert == null && nullToAbsent
           ? const Value.absent()
           : Value(monitorIgnoreCert),
-      monitorAllowInsecure: monitorAllowInsecure == null && nullToAbsent
-          ? const Value.absent()
-          : Value(monitorAllowInsecure),
       wolMac: wolMac == null && nullToAbsent
           ? const Value.absent()
           : Value(wolMac),
@@ -1909,15 +1250,6 @@ class ServerRow extends DataClass implements Insertable<ServerRow> {
       wolPwd: wolPwd == null && nullToAbsent
           ? const Value.absent()
           : Value(wolPwd),
-      bmcAddr: bmcAddr == null && nullToAbsent
-          ? const Value.absent()
-          : Value(bmcAddr),
-      bmcCertSha256: bmcCertSha256 == null && nullToAbsent
-          ? const Value.absent()
-          : Value(bmcCertSha256),
-      bmcCredId: bmcCredId == null && nullToAbsent
-          ? const Value.absent()
-          : Value(bmcCredId),
       pveAddr: pveAddr == null && nullToAbsent
           ? const Value.absent()
           : Value(pveAddr),
@@ -1961,23 +1293,13 @@ class ServerRow extends DataClass implements Insertable<ServerRow> {
       sshKeyPath: serializer.fromJson<String?>(json['sshKeyPath']),
       sshAlterUrl: serializer.fromJson<String?>(json['sshAlterUrl']),
       sshProxyCommand: serializer.fromJson<String?>(json['sshProxyCommand']),
-      sshFileTransport: serializer.fromJson<String?>(json['sshFileTransport']),
-      preferredTransport: serializer.fromJson<String?>(
-        json['preferredTransport'],
-      ),
       monitorAddr: serializer.fromJson<String?>(json['monitorAddr']),
       monitorUser: serializer.fromJson<String?>(json['monitorUser']),
       monitorPwd: serializer.fromJson<String?>(json['monitorPwd']),
       monitorIgnoreCert: serializer.fromJson<bool?>(json['monitorIgnoreCert']),
-      monitorAllowInsecure: serializer.fromJson<bool?>(
-        json['monitorAllowInsecure'],
-      ),
       wolMac: serializer.fromJson<String?>(json['wolMac']),
       wolIp: serializer.fromJson<String?>(json['wolIp']),
       wolPwd: serializer.fromJson<String?>(json['wolPwd']),
-      bmcAddr: serializer.fromJson<String?>(json['bmcAddr']),
-      bmcCertSha256: serializer.fromJson<String?>(json['bmcCertSha256']),
-      bmcCredId: serializer.fromJson<String?>(json['bmcCredId']),
       pveAddr: serializer.fromJson<String?>(json['pveAddr']),
       pveIgnoreCert: serializer.fromJson<bool>(json['pveIgnoreCert']),
       pvePwd: serializer.fromJson<String?>(json['pvePwd']),
@@ -2006,19 +1328,13 @@ class ServerRow extends DataClass implements Insertable<ServerRow> {
       'sshKeyPath': serializer.toJson<String?>(sshKeyPath),
       'sshAlterUrl': serializer.toJson<String?>(sshAlterUrl),
       'sshProxyCommand': serializer.toJson<String?>(sshProxyCommand),
-      'sshFileTransport': serializer.toJson<String?>(sshFileTransport),
-      'preferredTransport': serializer.toJson<String?>(preferredTransport),
       'monitorAddr': serializer.toJson<String?>(monitorAddr),
       'monitorUser': serializer.toJson<String?>(monitorUser),
       'monitorPwd': serializer.toJson<String?>(monitorPwd),
       'monitorIgnoreCert': serializer.toJson<bool?>(monitorIgnoreCert),
-      'monitorAllowInsecure': serializer.toJson<bool?>(monitorAllowInsecure),
       'wolMac': serializer.toJson<String?>(wolMac),
       'wolIp': serializer.toJson<String?>(wolIp),
       'wolPwd': serializer.toJson<String?>(wolPwd),
-      'bmcAddr': serializer.toJson<String?>(bmcAddr),
-      'bmcCertSha256': serializer.toJson<String?>(bmcCertSha256),
-      'bmcCredId': serializer.toJson<String?>(bmcCredId),
       'pveAddr': serializer.toJson<String?>(pveAddr),
       'pveIgnoreCert': serializer.toJson<bool>(pveIgnoreCert),
       'pvePwd': serializer.toJson<String?>(pvePwd),
@@ -2045,19 +1361,13 @@ class ServerRow extends DataClass implements Insertable<ServerRow> {
     Value<String?> sshKeyPath = const Value.absent(),
     Value<String?> sshAlterUrl = const Value.absent(),
     Value<String?> sshProxyCommand = const Value.absent(),
-    Value<String?> sshFileTransport = const Value.absent(),
-    Value<String?> preferredTransport = const Value.absent(),
     Value<String?> monitorAddr = const Value.absent(),
     Value<String?> monitorUser = const Value.absent(),
     Value<String?> monitorPwd = const Value.absent(),
     Value<bool?> monitorIgnoreCert = const Value.absent(),
-    Value<bool?> monitorAllowInsecure = const Value.absent(),
     Value<String?> wolMac = const Value.absent(),
     Value<String?> wolIp = const Value.absent(),
     Value<String?> wolPwd = const Value.absent(),
-    Value<String?> bmcAddr = const Value.absent(),
-    Value<String?> bmcCertSha256 = const Value.absent(),
-    Value<String?> bmcCredId = const Value.absent(),
     Value<String?> pveAddr = const Value.absent(),
     bool? pveIgnoreCert,
     Value<String?> pvePwd = const Value.absent(),
@@ -2083,29 +1393,15 @@ class ServerRow extends DataClass implements Insertable<ServerRow> {
     sshProxyCommand: sshProxyCommand.present
         ? sshProxyCommand.value
         : this.sshProxyCommand,
-    sshFileTransport: sshFileTransport.present
-        ? sshFileTransport.value
-        : this.sshFileTransport,
-    preferredTransport: preferredTransport.present
-        ? preferredTransport.value
-        : this.preferredTransport,
     monitorAddr: monitorAddr.present ? monitorAddr.value : this.monitorAddr,
     monitorUser: monitorUser.present ? monitorUser.value : this.monitorUser,
     monitorPwd: monitorPwd.present ? monitorPwd.value : this.monitorPwd,
     monitorIgnoreCert: monitorIgnoreCert.present
         ? monitorIgnoreCert.value
         : this.monitorIgnoreCert,
-    monitorAllowInsecure: monitorAllowInsecure.present
-        ? monitorAllowInsecure.value
-        : this.monitorAllowInsecure,
     wolMac: wolMac.present ? wolMac.value : this.wolMac,
     wolIp: wolIp.present ? wolIp.value : this.wolIp,
     wolPwd: wolPwd.present ? wolPwd.value : this.wolPwd,
-    bmcAddr: bmcAddr.present ? bmcAddr.value : this.bmcAddr,
-    bmcCertSha256: bmcCertSha256.present
-        ? bmcCertSha256.value
-        : this.bmcCertSha256,
-    bmcCredId: bmcCredId.present ? bmcCredId.value : this.bmcCredId,
     pveAddr: pveAddr.present ? pveAddr.value : this.pveAddr,
     pveIgnoreCert: pveIgnoreCert ?? this.pveIgnoreCert,
     pvePwd: pvePwd.present ? pvePwd.value : this.pvePwd,
@@ -2143,12 +1439,6 @@ class ServerRow extends DataClass implements Insertable<ServerRow> {
       sshProxyCommand: data.sshProxyCommand.present
           ? data.sshProxyCommand.value
           : this.sshProxyCommand,
-      sshFileTransport: data.sshFileTransport.present
-          ? data.sshFileTransport.value
-          : this.sshFileTransport,
-      preferredTransport: data.preferredTransport.present
-          ? data.preferredTransport.value
-          : this.preferredTransport,
       monitorAddr: data.monitorAddr.present
           ? data.monitorAddr.value
           : this.monitorAddr,
@@ -2161,17 +1451,9 @@ class ServerRow extends DataClass implements Insertable<ServerRow> {
       monitorIgnoreCert: data.monitorIgnoreCert.present
           ? data.monitorIgnoreCert.value
           : this.monitorIgnoreCert,
-      monitorAllowInsecure: data.monitorAllowInsecure.present
-          ? data.monitorAllowInsecure.value
-          : this.monitorAllowInsecure,
       wolMac: data.wolMac.present ? data.wolMac.value : this.wolMac,
       wolIp: data.wolIp.present ? data.wolIp.value : this.wolIp,
       wolPwd: data.wolPwd.present ? data.wolPwd.value : this.wolPwd,
-      bmcAddr: data.bmcAddr.present ? data.bmcAddr.value : this.bmcAddr,
-      bmcCertSha256: data.bmcCertSha256.present
-          ? data.bmcCertSha256.value
-          : this.bmcCertSha256,
-      bmcCredId: data.bmcCredId.present ? data.bmcCredId.value : this.bmcCredId,
       pveAddr: data.pveAddr.present ? data.pveAddr.value : this.pveAddr,
       pveIgnoreCert: data.pveIgnoreCert.present
           ? data.pveIgnoreCert.value
@@ -2206,19 +1488,13 @@ class ServerRow extends DataClass implements Insertable<ServerRow> {
           ..write('sshKeyPath: $sshKeyPath, ')
           ..write('sshAlterUrl: $sshAlterUrl, ')
           ..write('sshProxyCommand: $sshProxyCommand, ')
-          ..write('sshFileTransport: $sshFileTransport, ')
-          ..write('preferredTransport: $preferredTransport, ')
           ..write('monitorAddr: $monitorAddr, ')
           ..write('monitorUser: $monitorUser, ')
           ..write('monitorPwd: $monitorPwd, ')
           ..write('monitorIgnoreCert: $monitorIgnoreCert, ')
-          ..write('monitorAllowInsecure: $monitorAllowInsecure, ')
           ..write('wolMac: $wolMac, ')
           ..write('wolIp: $wolIp, ')
           ..write('wolPwd: $wolPwd, ')
-          ..write('bmcAddr: $bmcAddr, ')
-          ..write('bmcCertSha256: $bmcCertSha256, ')
-          ..write('bmcCredId: $bmcCredId, ')
           ..write('pveAddr: $pveAddr, ')
           ..write('pveIgnoreCert: $pveIgnoreCert, ')
           ..write('pvePwd: $pvePwd, ')
@@ -2247,19 +1523,13 @@ class ServerRow extends DataClass implements Insertable<ServerRow> {
     sshKeyPath,
     sshAlterUrl,
     sshProxyCommand,
-    sshFileTransport,
-    preferredTransport,
     monitorAddr,
     monitorUser,
     monitorPwd,
     monitorIgnoreCert,
-    monitorAllowInsecure,
     wolMac,
     wolIp,
     wolPwd,
-    bmcAddr,
-    bmcCertSha256,
-    bmcCredId,
     pveAddr,
     pveIgnoreCert,
     pvePwd,
@@ -2287,19 +1557,13 @@ class ServerRow extends DataClass implements Insertable<ServerRow> {
           other.sshKeyPath == this.sshKeyPath &&
           other.sshAlterUrl == this.sshAlterUrl &&
           other.sshProxyCommand == this.sshProxyCommand &&
-          other.sshFileTransport == this.sshFileTransport &&
-          other.preferredTransport == this.preferredTransport &&
           other.monitorAddr == this.monitorAddr &&
           other.monitorUser == this.monitorUser &&
           other.monitorPwd == this.monitorPwd &&
           other.monitorIgnoreCert == this.monitorIgnoreCert &&
-          other.monitorAllowInsecure == this.monitorAllowInsecure &&
           other.wolMac == this.wolMac &&
           other.wolIp == this.wolIp &&
           other.wolPwd == this.wolPwd &&
-          other.bmcAddr == this.bmcAddr &&
-          other.bmcCertSha256 == this.bmcCertSha256 &&
-          other.bmcCredId == this.bmcCredId &&
           other.pveAddr == this.pveAddr &&
           other.pveIgnoreCert == this.pveIgnoreCert &&
           other.pvePwd == this.pvePwd &&
@@ -2325,19 +1589,13 @@ class ServersCompanion extends UpdateCompanion<ServerRow> {
   final Value<String?> sshKeyPath;
   final Value<String?> sshAlterUrl;
   final Value<String?> sshProxyCommand;
-  final Value<String?> sshFileTransport;
-  final Value<String?> preferredTransport;
   final Value<String?> monitorAddr;
   final Value<String?> monitorUser;
   final Value<String?> monitorPwd;
   final Value<bool?> monitorIgnoreCert;
-  final Value<bool?> monitorAllowInsecure;
   final Value<String?> wolMac;
   final Value<String?> wolIp;
   final Value<String?> wolPwd;
-  final Value<String?> bmcAddr;
-  final Value<String?> bmcCertSha256;
-  final Value<String?> bmcCredId;
   final Value<String?> pveAddr;
   final Value<bool> pveIgnoreCert;
   final Value<String?> pvePwd;
@@ -2361,19 +1619,13 @@ class ServersCompanion extends UpdateCompanion<ServerRow> {
     this.sshKeyPath = const Value.absent(),
     this.sshAlterUrl = const Value.absent(),
     this.sshProxyCommand = const Value.absent(),
-    this.sshFileTransport = const Value.absent(),
-    this.preferredTransport = const Value.absent(),
     this.monitorAddr = const Value.absent(),
     this.monitorUser = const Value.absent(),
     this.monitorPwd = const Value.absent(),
     this.monitorIgnoreCert = const Value.absent(),
-    this.monitorAllowInsecure = const Value.absent(),
     this.wolMac = const Value.absent(),
     this.wolIp = const Value.absent(),
     this.wolPwd = const Value.absent(),
-    this.bmcAddr = const Value.absent(),
-    this.bmcCertSha256 = const Value.absent(),
-    this.bmcCredId = const Value.absent(),
     this.pveAddr = const Value.absent(),
     this.pveIgnoreCert = const Value.absent(),
     this.pvePwd = const Value.absent(),
@@ -2398,19 +1650,13 @@ class ServersCompanion extends UpdateCompanion<ServerRow> {
     this.sshKeyPath = const Value.absent(),
     this.sshAlterUrl = const Value.absent(),
     this.sshProxyCommand = const Value.absent(),
-    this.sshFileTransport = const Value.absent(),
-    this.preferredTransport = const Value.absent(),
     this.monitorAddr = const Value.absent(),
     this.monitorUser = const Value.absent(),
     this.monitorPwd = const Value.absent(),
     this.monitorIgnoreCert = const Value.absent(),
-    this.monitorAllowInsecure = const Value.absent(),
     this.wolMac = const Value.absent(),
     this.wolIp = const Value.absent(),
     this.wolPwd = const Value.absent(),
-    this.bmcAddr = const Value.absent(),
-    this.bmcCertSha256 = const Value.absent(),
-    this.bmcCredId = const Value.absent(),
     this.pveAddr = const Value.absent(),
     this.pveIgnoreCert = const Value.absent(),
     this.pvePwd = const Value.absent(),
@@ -2436,19 +1682,13 @@ class ServersCompanion extends UpdateCompanion<ServerRow> {
     Expression<String>? sshKeyPath,
     Expression<String>? sshAlterUrl,
     Expression<String>? sshProxyCommand,
-    Expression<String>? sshFileTransport,
-    Expression<String>? preferredTransport,
     Expression<String>? monitorAddr,
     Expression<String>? monitorUser,
     Expression<String>? monitorPwd,
     Expression<bool>? monitorIgnoreCert,
-    Expression<bool>? monitorAllowInsecure,
     Expression<String>? wolMac,
     Expression<String>? wolIp,
     Expression<String>? wolPwd,
-    Expression<String>? bmcAddr,
-    Expression<String>? bmcCertSha256,
-    Expression<String>? bmcCredId,
     Expression<String>? pveAddr,
     Expression<bool>? pveIgnoreCert,
     Expression<String>? pvePwd,
@@ -2473,20 +1713,13 @@ class ServersCompanion extends UpdateCompanion<ServerRow> {
       if (sshKeyPath != null) 'ssh_key_path': sshKeyPath,
       if (sshAlterUrl != null) 'ssh_alter_url': sshAlterUrl,
       if (sshProxyCommand != null) 'ssh_proxy_command': sshProxyCommand,
-      if (sshFileTransport != null) 'ssh_file_transport': sshFileTransport,
-      if (preferredTransport != null) 'preferred_transport': preferredTransport,
       if (monitorAddr != null) 'monitor_addr': monitorAddr,
       if (monitorUser != null) 'monitor_user': monitorUser,
       if (monitorPwd != null) 'monitor_pwd': monitorPwd,
       if (monitorIgnoreCert != null) 'monitor_ignore_cert': monitorIgnoreCert,
-      if (monitorAllowInsecure != null)
-        'monitor_allow_insecure': monitorAllowInsecure,
       if (wolMac != null) 'wol_mac': wolMac,
       if (wolIp != null) 'wol_ip': wolIp,
       if (wolPwd != null) 'wol_pwd': wolPwd,
-      if (bmcAddr != null) 'bmc_addr': bmcAddr,
-      if (bmcCertSha256 != null) 'bmc_cert_sha256': bmcCertSha256,
-      if (bmcCredId != null) 'bmc_cred_id': bmcCredId,
       if (pveAddr != null) 'pve_addr': pveAddr,
       if (pveIgnoreCert != null) 'pve_ignore_cert': pveIgnoreCert,
       if (pvePwd != null) 'pve_pwd': pvePwd,
@@ -2513,19 +1746,13 @@ class ServersCompanion extends UpdateCompanion<ServerRow> {
     Value<String?>? sshKeyPath,
     Value<String?>? sshAlterUrl,
     Value<String?>? sshProxyCommand,
-    Value<String?>? sshFileTransport,
-    Value<String?>? preferredTransport,
     Value<String?>? monitorAddr,
     Value<String?>? monitorUser,
     Value<String?>? monitorPwd,
     Value<bool?>? monitorIgnoreCert,
-    Value<bool?>? monitorAllowInsecure,
     Value<String?>? wolMac,
     Value<String?>? wolIp,
     Value<String?>? wolPwd,
-    Value<String?>? bmcAddr,
-    Value<String?>? bmcCertSha256,
-    Value<String?>? bmcCredId,
     Value<String?>? pveAddr,
     Value<bool>? pveIgnoreCert,
     Value<String?>? pvePwd,
@@ -2550,19 +1777,13 @@ class ServersCompanion extends UpdateCompanion<ServerRow> {
       sshKeyPath: sshKeyPath ?? this.sshKeyPath,
       sshAlterUrl: sshAlterUrl ?? this.sshAlterUrl,
       sshProxyCommand: sshProxyCommand ?? this.sshProxyCommand,
-      sshFileTransport: sshFileTransport ?? this.sshFileTransport,
-      preferredTransport: preferredTransport ?? this.preferredTransport,
       monitorAddr: monitorAddr ?? this.monitorAddr,
       monitorUser: monitorUser ?? this.monitorUser,
       monitorPwd: monitorPwd ?? this.monitorPwd,
       monitorIgnoreCert: monitorIgnoreCert ?? this.monitorIgnoreCert,
-      monitorAllowInsecure: monitorAllowInsecure ?? this.monitorAllowInsecure,
       wolMac: wolMac ?? this.wolMac,
       wolIp: wolIp ?? this.wolIp,
       wolPwd: wolPwd ?? this.wolPwd,
-      bmcAddr: bmcAddr ?? this.bmcAddr,
-      bmcCertSha256: bmcCertSha256 ?? this.bmcCertSha256,
-      bmcCredId: bmcCredId ?? this.bmcCredId,
       pveAddr: pveAddr ?? this.pveAddr,
       pveIgnoreCert: pveIgnoreCert ?? this.pveIgnoreCert,
       pvePwd: pvePwd ?? this.pvePwd,
@@ -2619,12 +1840,6 @@ class ServersCompanion extends UpdateCompanion<ServerRow> {
     if (sshProxyCommand.present) {
       map['ssh_proxy_command'] = Variable<String>(sshProxyCommand.value);
     }
-    if (sshFileTransport.present) {
-      map['ssh_file_transport'] = Variable<String>(sshFileTransport.value);
-    }
-    if (preferredTransport.present) {
-      map['preferred_transport'] = Variable<String>(preferredTransport.value);
-    }
     if (monitorAddr.present) {
       map['monitor_addr'] = Variable<String>(monitorAddr.value);
     }
@@ -2637,11 +1852,6 @@ class ServersCompanion extends UpdateCompanion<ServerRow> {
     if (monitorIgnoreCert.present) {
       map['monitor_ignore_cert'] = Variable<bool>(monitorIgnoreCert.value);
     }
-    if (monitorAllowInsecure.present) {
-      map['monitor_allow_insecure'] = Variable<bool>(
-        monitorAllowInsecure.value,
-      );
-    }
     if (wolMac.present) {
       map['wol_mac'] = Variable<String>(wolMac.value);
     }
@@ -2650,15 +1860,6 @@ class ServersCompanion extends UpdateCompanion<ServerRow> {
     }
     if (wolPwd.present) {
       map['wol_pwd'] = Variable<String>(wolPwd.value);
-    }
-    if (bmcAddr.present) {
-      map['bmc_addr'] = Variable<String>(bmcAddr.value);
-    }
-    if (bmcCertSha256.present) {
-      map['bmc_cert_sha256'] = Variable<String>(bmcCertSha256.value);
-    }
-    if (bmcCredId.present) {
-      map['bmc_cred_id'] = Variable<String>(bmcCredId.value);
     }
     if (pveAddr.present) {
       map['pve_addr'] = Variable<String>(pveAddr.value);
@@ -2704,19 +1905,13 @@ class ServersCompanion extends UpdateCompanion<ServerRow> {
           ..write('sshKeyPath: $sshKeyPath, ')
           ..write('sshAlterUrl: $sshAlterUrl, ')
           ..write('sshProxyCommand: $sshProxyCommand, ')
-          ..write('sshFileTransport: $sshFileTransport, ')
-          ..write('preferredTransport: $preferredTransport, ')
           ..write('monitorAddr: $monitorAddr, ')
           ..write('monitorUser: $monitorUser, ')
           ..write('monitorPwd: $monitorPwd, ')
           ..write('monitorIgnoreCert: $monitorIgnoreCert, ')
-          ..write('monitorAllowInsecure: $monitorAllowInsecure, ')
           ..write('wolMac: $wolMac, ')
           ..write('wolIp: $wolIp, ')
           ..write('wolPwd: $wolPwd, ')
-          ..write('bmcAddr: $bmcAddr, ')
-          ..write('bmcCertSha256: $bmcCertSha256, ')
-          ..write('bmcCredId: $bmcCredId, ')
           ..write('pveAddr: $pveAddr, ')
           ..write('pveIgnoreCert: $pveIgnoreCert, ')
           ..write('pvePwd: $pvePwd, ')
@@ -6532,272 +5727,6 @@ class ConnStatsCompanion extends UpdateCompanion<ConnStatRow> {
   }
 }
 
-class $ServerDistsTable extends ServerDists
-    with TableInfo<$ServerDistsTable, ServerDistRow> {
-  @override
-  final GeneratedDatabase attachedDatabase;
-  final String? _alias;
-  $ServerDistsTable(this.attachedDatabase, [this._alias]);
-  static const VerificationMeta _serverIdMeta = const VerificationMeta(
-    'serverId',
-  );
-  @override
-  late final GeneratedColumn<String> serverId = GeneratedColumn<String>(
-    'server_id',
-    aliasedName,
-    false,
-    type: DriftSqlType.string,
-    requiredDuringInsert: true,
-    defaultConstraints: GeneratedColumn.constraintIsAlways(
-      'REFERENCES server (id) ON DELETE CASCADE',
-    ),
-  );
-  static const VerificationMeta _distMeta = const VerificationMeta('dist');
-  @override
-  late final GeneratedColumn<String> dist = GeneratedColumn<String>(
-    'dist',
-    aliasedName,
-    false,
-    type: DriftSqlType.string,
-    requiredDuringInsert: true,
-  );
-  static const VerificationMeta _updatedAtMeta = const VerificationMeta(
-    'updatedAt',
-  );
-  @override
-  late final GeneratedColumn<int> updatedAt = GeneratedColumn<int>(
-    'updated_at',
-    aliasedName,
-    false,
-    type: DriftSqlType.int,
-    requiredDuringInsert: true,
-  );
-  @override
-  List<GeneratedColumn> get $columns => [serverId, dist, updatedAt];
-  @override
-  String get aliasedName => _alias ?? actualTableName;
-  @override
-  String get actualTableName => $name;
-  static const String $name = 'server_dist';
-  @override
-  VerificationContext validateIntegrity(
-    Insertable<ServerDistRow> instance, {
-    bool isInserting = false,
-  }) {
-    final context = VerificationContext();
-    final data = instance.toColumns(true);
-    if (data.containsKey('server_id')) {
-      context.handle(
-        _serverIdMeta,
-        serverId.isAcceptableOrUnknown(data['server_id']!, _serverIdMeta),
-      );
-    } else if (isInserting) {
-      context.missing(_serverIdMeta);
-    }
-    if (data.containsKey('dist')) {
-      context.handle(
-        _distMeta,
-        dist.isAcceptableOrUnknown(data['dist']!, _distMeta),
-      );
-    } else if (isInserting) {
-      context.missing(_distMeta);
-    }
-    if (data.containsKey('updated_at')) {
-      context.handle(
-        _updatedAtMeta,
-        updatedAt.isAcceptableOrUnknown(data['updated_at']!, _updatedAtMeta),
-      );
-    } else if (isInserting) {
-      context.missing(_updatedAtMeta);
-    }
-    return context;
-  }
-
-  @override
-  Set<GeneratedColumn> get $primaryKey => {serverId};
-  @override
-  ServerDistRow map(Map<String, dynamic> data, {String? tablePrefix}) {
-    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
-    return ServerDistRow(
-      serverId: attachedDatabase.typeMapping.read(
-        DriftSqlType.string,
-        data['${effectivePrefix}server_id'],
-      )!,
-      dist: attachedDatabase.typeMapping.read(
-        DriftSqlType.string,
-        data['${effectivePrefix}dist'],
-      )!,
-      updatedAt: attachedDatabase.typeMapping.read(
-        DriftSqlType.int,
-        data['${effectivePrefix}updated_at'],
-      )!,
-    );
-  }
-
-  @override
-  $ServerDistsTable createAlias(String alias) {
-    return $ServerDistsTable(attachedDatabase, alias);
-  }
-
-  @override
-  bool get withoutRowId => true;
-}
-
-class ServerDistRow extends DataClass implements Insertable<ServerDistRow> {
-  final String serverId;
-
-  /// A `Dist` name. By name, never by index — an index silently changes
-  /// meaning when a case is inserted, and this outlives the build that wrote
-  /// it. A name no build knows reads back as null, which draws the fallback.
-  final String dist;
-
-  /// When it was last seen, so a reading can be aged out if that is ever
-  /// wanted. Nothing reads it yet.
-  final int updatedAt;
-  const ServerDistRow({
-    required this.serverId,
-    required this.dist,
-    required this.updatedAt,
-  });
-  @override
-  Map<String, Expression> toColumns(bool nullToAbsent) {
-    final map = <String, Expression>{};
-    map['server_id'] = Variable<String>(serverId);
-    map['dist'] = Variable<String>(dist);
-    map['updated_at'] = Variable<int>(updatedAt);
-    return map;
-  }
-
-  ServerDistsCompanion toCompanion(bool nullToAbsent) {
-    return ServerDistsCompanion(
-      serverId: Value(serverId),
-      dist: Value(dist),
-      updatedAt: Value(updatedAt),
-    );
-  }
-
-  factory ServerDistRow.fromJson(
-    Map<String, dynamic> json, {
-    ValueSerializer? serializer,
-  }) {
-    serializer ??= driftRuntimeOptions.defaultSerializer;
-    return ServerDistRow(
-      serverId: serializer.fromJson<String>(json['serverId']),
-      dist: serializer.fromJson<String>(json['dist']),
-      updatedAt: serializer.fromJson<int>(json['updatedAt']),
-    );
-  }
-  @override
-  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
-    serializer ??= driftRuntimeOptions.defaultSerializer;
-    return <String, dynamic>{
-      'serverId': serializer.toJson<String>(serverId),
-      'dist': serializer.toJson<String>(dist),
-      'updatedAt': serializer.toJson<int>(updatedAt),
-    };
-  }
-
-  ServerDistRow copyWith({String? serverId, String? dist, int? updatedAt}) =>
-      ServerDistRow(
-        serverId: serverId ?? this.serverId,
-        dist: dist ?? this.dist,
-        updatedAt: updatedAt ?? this.updatedAt,
-      );
-  ServerDistRow copyWithCompanion(ServerDistsCompanion data) {
-    return ServerDistRow(
-      serverId: data.serverId.present ? data.serverId.value : this.serverId,
-      dist: data.dist.present ? data.dist.value : this.dist,
-      updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
-    );
-  }
-
-  @override
-  String toString() {
-    return (StringBuffer('ServerDistRow(')
-          ..write('serverId: $serverId, ')
-          ..write('dist: $dist, ')
-          ..write('updatedAt: $updatedAt')
-          ..write(')'))
-        .toString();
-  }
-
-  @override
-  int get hashCode => Object.hash(serverId, dist, updatedAt);
-  @override
-  bool operator ==(Object other) =>
-      identical(this, other) ||
-      (other is ServerDistRow &&
-          other.serverId == this.serverId &&
-          other.dist == this.dist &&
-          other.updatedAt == this.updatedAt);
-}
-
-class ServerDistsCompanion extends UpdateCompanion<ServerDistRow> {
-  final Value<String> serverId;
-  final Value<String> dist;
-  final Value<int> updatedAt;
-  const ServerDistsCompanion({
-    this.serverId = const Value.absent(),
-    this.dist = const Value.absent(),
-    this.updatedAt = const Value.absent(),
-  });
-  ServerDistsCompanion.insert({
-    required String serverId,
-    required String dist,
-    required int updatedAt,
-  }) : serverId = Value(serverId),
-       dist = Value(dist),
-       updatedAt = Value(updatedAt);
-  static Insertable<ServerDistRow> custom({
-    Expression<String>? serverId,
-    Expression<String>? dist,
-    Expression<int>? updatedAt,
-  }) {
-    return RawValuesInsertable({
-      if (serverId != null) 'server_id': serverId,
-      if (dist != null) 'dist': dist,
-      if (updatedAt != null) 'updated_at': updatedAt,
-    });
-  }
-
-  ServerDistsCompanion copyWith({
-    Value<String>? serverId,
-    Value<String>? dist,
-    Value<int>? updatedAt,
-  }) {
-    return ServerDistsCompanion(
-      serverId: serverId ?? this.serverId,
-      dist: dist ?? this.dist,
-      updatedAt: updatedAt ?? this.updatedAt,
-    );
-  }
-
-  @override
-  Map<String, Expression> toColumns(bool nullToAbsent) {
-    final map = <String, Expression>{};
-    if (serverId.present) {
-      map['server_id'] = Variable<String>(serverId.value);
-    }
-    if (dist.present) {
-      map['dist'] = Variable<String>(dist.value);
-    }
-    if (updatedAt.present) {
-      map['updated_at'] = Variable<int>(updatedAt.value);
-    }
-    return map;
-  }
-
-  @override
-  String toString() {
-    return (StringBuffer('ServerDistsCompanion(')
-          ..write('serverId: $serverId, ')
-          ..write('dist: $dist, ')
-          ..write('updatedAt: $updatedAt')
-          ..write(')'))
-        .toString();
-  }
-}
-
 class $AgentConversationsTable extends AgentConversations
     with TableInfo<$AgentConversationsTable, AgentConversationRow> {
   @override
@@ -7769,7 +6698,6 @@ abstract class _$AppDb extends GeneratedDatabase {
   _$AppDb(QueryExecutor e) : super(e);
   $AppDbManager get managers => $AppDbManager(this);
   late final $PrivateKeysTable privateKeys = $PrivateKeysTable(this);
-  late final $BmcCredentialsTable bmcCredentials = $BmcCredentialsTable(this);
   late final $ServersTable servers = $ServersTable(this);
   late final $ServerTagsTable serverTags = $ServerTagsTable(this);
   late final $ServerEnvsTable serverEnvs = $ServerEnvsTable(this);
@@ -7790,7 +6718,6 @@ abstract class _$AppDb extends GeneratedDatabase {
   late final $ContainerRuntimesTable containerRuntimes =
       $ContainerRuntimesTable(this);
   late final $ConnStatsTable connStats = $ConnStatsTable(this);
-  late final $ServerDistsTable serverDists = $ServerDistsTable(this);
   late final $AgentConversationsTable agentConversations =
       $AgentConversationsTable(this);
   late final $AgentActiveConversationsTable agentActiveConversations =
@@ -7803,7 +6730,6 @@ abstract class _$AppDb extends GeneratedDatabase {
   @override
   List<DatabaseSchemaEntity> get allSchemaEntities => [
     privateKeys,
-    bmcCredentials,
     servers,
     serverTags,
     serverEnvs,
@@ -7818,7 +6744,6 @@ abstract class _$AppDb extends GeneratedDatabase {
     containerHosts,
     containerRuntimes,
     connStats,
-    serverDists,
     agentConversations,
     agentActiveConversations,
     tombstones,
@@ -7829,13 +6754,6 @@ abstract class _$AppDb extends GeneratedDatabase {
     WritePropagation(
       on: TableUpdateQuery.onTableName(
         'private_key',
-        limitUpdateKind: UpdateKind.delete,
-      ),
-      result: [TableUpdate('server', kind: UpdateKind.update)],
-    ),
-    WritePropagation(
-      on: TableUpdateQuery.onTableName(
-        'bmc_credential',
         limitUpdateKind: UpdateKind.delete,
       ),
       result: [TableUpdate('server', kind: UpdateKind.update)],
@@ -7940,13 +6858,6 @@ abstract class _$AppDb extends GeneratedDatabase {
     ),
     WritePropagation(
       on: TableUpdateQuery.onTableName(
-        'server',
-        limitUpdateKind: UpdateKind.delete,
-      ),
-      result: [TableUpdate('server_dist', kind: UpdateKind.delete)],
-    ),
-    WritePropagation(
-      on: TableUpdateQuery.onTableName(
         'agent_conversation',
         limitUpdateKind: UpdateKind.delete,
       ),
@@ -7964,7 +6875,6 @@ typedef $$PrivateKeysTableCreateCompanionBuilder =
       required String id,
       required String name,
       required String key,
-      Value<String?> comment,
     });
 typedef $$PrivateKeysTableUpdateCompanionBuilder =
     PrivateKeysCompanion Function({
@@ -7973,7 +6883,6 @@ typedef $$PrivateKeysTableUpdateCompanionBuilder =
       Value<String> id,
       Value<String> name,
       Value<String> key,
-      Value<String?> comment,
     });
 
 final class $$PrivateKeysTableReferences
@@ -8031,11 +6940,6 @@ class $$PrivateKeysTableFilterComposer
 
   ColumnFilters<String> get key => $composableBuilder(
     column: $table.key,
-    builder: (column) => ColumnFilters(column),
-  );
-
-  ColumnFilters<String> get comment => $composableBuilder(
-    column: $table.comment,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -8098,11 +7002,6 @@ class $$PrivateKeysTableOrderingComposer
     column: $table.key,
     builder: (column) => ColumnOrderings(column),
   );
-
-  ColumnOrderings<String> get comment => $composableBuilder(
-    column: $table.comment,
-    builder: (column) => ColumnOrderings(column),
-  );
 }
 
 class $$PrivateKeysTableAnnotationComposer
@@ -8128,9 +7027,6 @@ class $$PrivateKeysTableAnnotationComposer
 
   GeneratedColumn<String> get key =>
       $composableBuilder(column: $table.key, builder: (column) => column);
-
-  GeneratedColumn<String> get comment =>
-      $composableBuilder(column: $table.comment, builder: (column) => column);
 
   Expression<T> serversRefs<T extends Object>(
     Expression<T> Function($$ServersTableAnnotationComposer a) f,
@@ -8191,14 +7087,12 @@ class $$PrivateKeysTableTableManager
                 Value<String> id = const Value.absent(),
                 Value<String> name = const Value.absent(),
                 Value<String> key = const Value.absent(),
-                Value<String?> comment = const Value.absent(),
               }) => PrivateKeysCompanion(
                 updatedAt: updatedAt,
                 rev: rev,
                 id: id,
                 name: name,
                 key: key,
-                comment: comment,
               ),
           createCompanionCallback:
               ({
@@ -8207,14 +7101,12 @@ class $$PrivateKeysTableTableManager
                 required String id,
                 required String name,
                 required String key,
-                Value<String?> comment = const Value.absent(),
               }) => PrivateKeysCompanion.insert(
                 updatedAt: updatedAt,
                 rev: rev,
                 id: id,
                 name: name,
                 key: key,
-                comment: comment,
               ),
           withReferenceMapper: (p0) => p0
               .map(
@@ -8272,325 +7164,6 @@ typedef $$PrivateKeysTableProcessedTableManager =
       PrivateKeyRow,
       PrefetchHooks Function({bool serversRefs})
     >;
-typedef $$BmcCredentialsTableCreateCompanionBuilder =
-    BmcCredentialsCompanion Function({
-      Value<int> updatedAt,
-      Value<int> rev,
-      required String id,
-      required String name,
-      required String user,
-      Value<String?> pwd,
-    });
-typedef $$BmcCredentialsTableUpdateCompanionBuilder =
-    BmcCredentialsCompanion Function({
-      Value<int> updatedAt,
-      Value<int> rev,
-      Value<String> id,
-      Value<String> name,
-      Value<String> user,
-      Value<String?> pwd,
-    });
-
-final class $$BmcCredentialsTableReferences
-    extends BaseReferences<_$AppDb, $BmcCredentialsTable, BmcCredentialRow> {
-  $$BmcCredentialsTableReferences(
-    super.$_db,
-    super.$_table,
-    super.$_typedResult,
-  );
-
-  static MultiTypedResultKey<$ServersTable, List<ServerRow>> _serversRefsTable(
-    _$AppDb db,
-  ) => MultiTypedResultKey.fromTable(
-    db.servers,
-    aliasName: 'bmc_credential__id__server__bmc_cred_id',
-  );
-
-  $$ServersTableProcessedTableManager get serversRefs {
-    final manager = $$ServersTableTableManager(
-      $_db,
-      $_db.servers,
-    ).filter((f) => f.bmcCredId.id.sqlEquals($_itemColumn<String>('id')!));
-
-    final cache = $_typedResult.readTableOrNull(_serversRefsTable($_db));
-    return ProcessedTableManager(
-      manager.$state.copyWith(prefetchedData: cache),
-    );
-  }
-}
-
-class $$BmcCredentialsTableFilterComposer
-    extends Composer<_$AppDb, $BmcCredentialsTable> {
-  $$BmcCredentialsTableFilterComposer({
-    required super.$db,
-    required super.$table,
-    super.joinBuilder,
-    super.$addJoinBuilderToRootComposer,
-    super.$removeJoinBuilderFromRootComposer,
-  });
-  ColumnFilters<int> get updatedAt => $composableBuilder(
-    column: $table.updatedAt,
-    builder: (column) => ColumnFilters(column),
-  );
-
-  ColumnFilters<int> get rev => $composableBuilder(
-    column: $table.rev,
-    builder: (column) => ColumnFilters(column),
-  );
-
-  ColumnFilters<String> get id => $composableBuilder(
-    column: $table.id,
-    builder: (column) => ColumnFilters(column),
-  );
-
-  ColumnFilters<String> get name => $composableBuilder(
-    column: $table.name,
-    builder: (column) => ColumnFilters(column),
-  );
-
-  ColumnFilters<String> get user => $composableBuilder(
-    column: $table.user,
-    builder: (column) => ColumnFilters(column),
-  );
-
-  ColumnFilters<String> get pwd => $composableBuilder(
-    column: $table.pwd,
-    builder: (column) => ColumnFilters(column),
-  );
-
-  Expression<bool> serversRefs(
-    Expression<bool> Function($$ServersTableFilterComposer f) f,
-  ) {
-    final $$ServersTableFilterComposer composer = $composerBuilder(
-      composer: this,
-      getCurrentColumn: (t) => t.id,
-      referencedTable: $db.servers,
-      getReferencedColumn: (t) => t.bmcCredId,
-      builder:
-          (
-            joinBuilder, {
-            $addJoinBuilderToRootComposer,
-            $removeJoinBuilderFromRootComposer,
-          }) => $$ServersTableFilterComposer(
-            $db: $db,
-            $table: $db.servers,
-            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
-            joinBuilder: joinBuilder,
-            $removeJoinBuilderFromRootComposer:
-                $removeJoinBuilderFromRootComposer,
-          ),
-    );
-    return f(composer);
-  }
-}
-
-class $$BmcCredentialsTableOrderingComposer
-    extends Composer<_$AppDb, $BmcCredentialsTable> {
-  $$BmcCredentialsTableOrderingComposer({
-    required super.$db,
-    required super.$table,
-    super.joinBuilder,
-    super.$addJoinBuilderToRootComposer,
-    super.$removeJoinBuilderFromRootComposer,
-  });
-  ColumnOrderings<int> get updatedAt => $composableBuilder(
-    column: $table.updatedAt,
-    builder: (column) => ColumnOrderings(column),
-  );
-
-  ColumnOrderings<int> get rev => $composableBuilder(
-    column: $table.rev,
-    builder: (column) => ColumnOrderings(column),
-  );
-
-  ColumnOrderings<String> get id => $composableBuilder(
-    column: $table.id,
-    builder: (column) => ColumnOrderings(column),
-  );
-
-  ColumnOrderings<String> get name => $composableBuilder(
-    column: $table.name,
-    builder: (column) => ColumnOrderings(column),
-  );
-
-  ColumnOrderings<String> get user => $composableBuilder(
-    column: $table.user,
-    builder: (column) => ColumnOrderings(column),
-  );
-
-  ColumnOrderings<String> get pwd => $composableBuilder(
-    column: $table.pwd,
-    builder: (column) => ColumnOrderings(column),
-  );
-}
-
-class $$BmcCredentialsTableAnnotationComposer
-    extends Composer<_$AppDb, $BmcCredentialsTable> {
-  $$BmcCredentialsTableAnnotationComposer({
-    required super.$db,
-    required super.$table,
-    super.joinBuilder,
-    super.$addJoinBuilderToRootComposer,
-    super.$removeJoinBuilderFromRootComposer,
-  });
-  GeneratedColumn<int> get updatedAt =>
-      $composableBuilder(column: $table.updatedAt, builder: (column) => column);
-
-  GeneratedColumn<int> get rev =>
-      $composableBuilder(column: $table.rev, builder: (column) => column);
-
-  GeneratedColumn<String> get id =>
-      $composableBuilder(column: $table.id, builder: (column) => column);
-
-  GeneratedColumn<String> get name =>
-      $composableBuilder(column: $table.name, builder: (column) => column);
-
-  GeneratedColumn<String> get user =>
-      $composableBuilder(column: $table.user, builder: (column) => column);
-
-  GeneratedColumn<String> get pwd =>
-      $composableBuilder(column: $table.pwd, builder: (column) => column);
-
-  Expression<T> serversRefs<T extends Object>(
-    Expression<T> Function($$ServersTableAnnotationComposer a) f,
-  ) {
-    final $$ServersTableAnnotationComposer composer = $composerBuilder(
-      composer: this,
-      getCurrentColumn: (t) => t.id,
-      referencedTable: $db.servers,
-      getReferencedColumn: (t) => t.bmcCredId,
-      builder:
-          (
-            joinBuilder, {
-            $addJoinBuilderToRootComposer,
-            $removeJoinBuilderFromRootComposer,
-          }) => $$ServersTableAnnotationComposer(
-            $db: $db,
-            $table: $db.servers,
-            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
-            joinBuilder: joinBuilder,
-            $removeJoinBuilderFromRootComposer:
-                $removeJoinBuilderFromRootComposer,
-          ),
-    );
-    return f(composer);
-  }
-}
-
-class $$BmcCredentialsTableTableManager
-    extends
-        RootTableManager<
-          _$AppDb,
-          $BmcCredentialsTable,
-          BmcCredentialRow,
-          $$BmcCredentialsTableFilterComposer,
-          $$BmcCredentialsTableOrderingComposer,
-          $$BmcCredentialsTableAnnotationComposer,
-          $$BmcCredentialsTableCreateCompanionBuilder,
-          $$BmcCredentialsTableUpdateCompanionBuilder,
-          (BmcCredentialRow, $$BmcCredentialsTableReferences),
-          BmcCredentialRow,
-          PrefetchHooks Function({bool serversRefs})
-        > {
-  $$BmcCredentialsTableTableManager(_$AppDb db, $BmcCredentialsTable table)
-    : super(
-        TableManagerState(
-          db: db,
-          table: table,
-          createFilteringComposer: () =>
-              $$BmcCredentialsTableFilterComposer($db: db, $table: table),
-          createOrderingComposer: () =>
-              $$BmcCredentialsTableOrderingComposer($db: db, $table: table),
-          createComputedFieldComposer: () =>
-              $$BmcCredentialsTableAnnotationComposer($db: db, $table: table),
-          updateCompanionCallback:
-              ({
-                Value<int> updatedAt = const Value.absent(),
-                Value<int> rev = const Value.absent(),
-                Value<String> id = const Value.absent(),
-                Value<String> name = const Value.absent(),
-                Value<String> user = const Value.absent(),
-                Value<String?> pwd = const Value.absent(),
-              }) => BmcCredentialsCompanion(
-                updatedAt: updatedAt,
-                rev: rev,
-                id: id,
-                name: name,
-                user: user,
-                pwd: pwd,
-              ),
-          createCompanionCallback:
-              ({
-                Value<int> updatedAt = const Value.absent(),
-                Value<int> rev = const Value.absent(),
-                required String id,
-                required String name,
-                required String user,
-                Value<String?> pwd = const Value.absent(),
-              }) => BmcCredentialsCompanion.insert(
-                updatedAt: updatedAt,
-                rev: rev,
-                id: id,
-                name: name,
-                user: user,
-                pwd: pwd,
-              ),
-          withReferenceMapper: (p0) => p0
-              .map(
-                (e) => (
-                  e.readTable(table),
-                  $$BmcCredentialsTableReferences(db, table, e),
-                ),
-              )
-              .toList(),
-          prefetchHooksCallback: ({serversRefs = false}) {
-            return PrefetchHooks(
-              db: db,
-              explicitlyWatchedTables: [if (serversRefs) db.servers],
-              addJoins: null,
-              getPrefetchedDataCallback: (items) async {
-                return [
-                  if (serversRefs)
-                    await $_getPrefetchedData<
-                      BmcCredentialRow,
-                      $BmcCredentialsTable,
-                      ServerRow
-                    >(
-                      currentTable: table,
-                      referencedTable: $$BmcCredentialsTableReferences
-                          ._serversRefsTable(db),
-                      managerFromTypedResult: (p0) =>
-                          $$BmcCredentialsTableReferences(
-                            db,
-                            table,
-                            p0,
-                          ).serversRefs,
-                      referencedItemsForCurrentItem: (item, referencedItems) =>
-                          referencedItems.where((e) => e.bmcCredId == item.id),
-                      typedResults: items,
-                    ),
-                ];
-              },
-            );
-          },
-        ),
-      );
-}
-
-typedef $$BmcCredentialsTableProcessedTableManager =
-    ProcessedTableManager<
-      _$AppDb,
-      $BmcCredentialsTable,
-      BmcCredentialRow,
-      $$BmcCredentialsTableFilterComposer,
-      $$BmcCredentialsTableOrderingComposer,
-      $$BmcCredentialsTableAnnotationComposer,
-      $$BmcCredentialsTableCreateCompanionBuilder,
-      $$BmcCredentialsTableUpdateCompanionBuilder,
-      (BmcCredentialRow, $$BmcCredentialsTableReferences),
-      BmcCredentialRow,
-      PrefetchHooks Function({bool serversRefs})
-    >;
 typedef $$ServersTableCreateCompanionBuilder =
     ServersCompanion Function({
       Value<int> updatedAt,
@@ -8607,19 +7180,13 @@ typedef $$ServersTableCreateCompanionBuilder =
       Value<String?> sshKeyPath,
       Value<String?> sshAlterUrl,
       Value<String?> sshProxyCommand,
-      Value<String?> sshFileTransport,
-      Value<String?> preferredTransport,
       Value<String?> monitorAddr,
       Value<String?> monitorUser,
       Value<String?> monitorPwd,
       Value<bool?> monitorIgnoreCert,
-      Value<bool?> monitorAllowInsecure,
       Value<String?> wolMac,
       Value<String?> wolIp,
       Value<String?> wolPwd,
-      Value<String?> bmcAddr,
-      Value<String?> bmcCertSha256,
-      Value<String?> bmcCredId,
       Value<String?> pveAddr,
       Value<bool> pveIgnoreCert,
       Value<String?> pvePwd,
@@ -8645,19 +7212,13 @@ typedef $$ServersTableUpdateCompanionBuilder =
       Value<String?> sshKeyPath,
       Value<String?> sshAlterUrl,
       Value<String?> sshProxyCommand,
-      Value<String?> sshFileTransport,
-      Value<String?> preferredTransport,
       Value<String?> monitorAddr,
       Value<String?> monitorUser,
       Value<String?> monitorPwd,
       Value<bool?> monitorIgnoreCert,
-      Value<bool?> monitorAllowInsecure,
       Value<String?> wolMac,
       Value<String?> wolIp,
       Value<String?> wolPwd,
-      Value<String?> bmcAddr,
-      Value<String?> bmcCertSha256,
-      Value<String?> bmcCredId,
       Value<String?> pveAddr,
       Value<bool> pveIgnoreCert,
       Value<String?> pvePwd,
@@ -8683,23 +7244,6 @@ final class $$ServersTableReferences
       $_db.privateKeys,
     ).filter((f) => f.id.sqlEquals($_column));
     final item = $_typedResult.readTableOrNull(_sshKeyIdTable($_db));
-    if (item == null) return manager;
-    return ProcessedTableManager(
-      manager.$state.copyWith(prefetchedData: [item]),
-    );
-  }
-
-  static $BmcCredentialsTable _bmcCredIdTable(_$AppDb db) =>
-      db.bmcCredentials.createAlias('server__bmc_cred_id__bmc_credential__id');
-
-  $$BmcCredentialsTableProcessedTableManager? get bmcCredId {
-    final $_column = $_itemColumn<String>('bmc_cred_id');
-    if ($_column == null) return null;
-    final manager = $$BmcCredentialsTableTableManager(
-      $_db,
-      $_db.bmcCredentials,
-    ).filter((f) => f.id.sqlEquals($_column));
-    final item = $_typedResult.readTableOrNull(_bmcCredIdTable($_db));
     if (item == null) return manager;
     return ProcessedTableManager(
       manager.$state.copyWith(prefetchedData: [item]),
@@ -8896,24 +7440,6 @@ final class $$ServersTableReferences
       manager.$state.copyWith(prefetchedData: cache),
     );
   }
-
-  static MultiTypedResultKey<$ServerDistsTable, List<ServerDistRow>>
-  _serverDistsRefsTable(_$AppDb db) => MultiTypedResultKey.fromTable(
-    db.serverDists,
-    aliasName: 'server__id__server_dist__server_id',
-  );
-
-  $$ServerDistsTableProcessedTableManager get serverDistsRefs {
-    final manager = $$ServerDistsTableTableManager(
-      $_db,
-      $_db.serverDists,
-    ).filter((f) => f.serverId.id.sqlEquals($_itemColumn<String>('id')!));
-
-    final cache = $_typedResult.readTableOrNull(_serverDistsRefsTable($_db));
-    return ProcessedTableManager(
-      manager.$state.copyWith(prefetchedData: cache),
-    );
-  }
 }
 
 class $$ServersTableFilterComposer extends Composer<_$AppDb, $ServersTable> {
@@ -8989,16 +7515,6 @@ class $$ServersTableFilterComposer extends Composer<_$AppDb, $ServersTable> {
     builder: (column) => ColumnFilters(column),
   );
 
-  ColumnFilters<String> get sshFileTransport => $composableBuilder(
-    column: $table.sshFileTransport,
-    builder: (column) => ColumnFilters(column),
-  );
-
-  ColumnFilters<String> get preferredTransport => $composableBuilder(
-    column: $table.preferredTransport,
-    builder: (column) => ColumnFilters(column),
-  );
-
   ColumnFilters<String> get monitorAddr => $composableBuilder(
     column: $table.monitorAddr,
     builder: (column) => ColumnFilters(column),
@@ -9019,11 +7535,6 @@ class $$ServersTableFilterComposer extends Composer<_$AppDb, $ServersTable> {
     builder: (column) => ColumnFilters(column),
   );
 
-  ColumnFilters<bool> get monitorAllowInsecure => $composableBuilder(
-    column: $table.monitorAllowInsecure,
-    builder: (column) => ColumnFilters(column),
-  );
-
   ColumnFilters<String> get wolMac => $composableBuilder(
     column: $table.wolMac,
     builder: (column) => ColumnFilters(column),
@@ -9036,16 +7547,6 @@ class $$ServersTableFilterComposer extends Composer<_$AppDb, $ServersTable> {
 
   ColumnFilters<String> get wolPwd => $composableBuilder(
     column: $table.wolPwd,
-    builder: (column) => ColumnFilters(column),
-  );
-
-  ColumnFilters<String> get bmcAddr => $composableBuilder(
-    column: $table.bmcAddr,
-    builder: (column) => ColumnFilters(column),
-  );
-
-  ColumnFilters<String> get bmcCertSha256 => $composableBuilder(
-    column: $table.bmcCertSha256,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -9103,29 +7604,6 @@ class $$ServersTableFilterComposer extends Composer<_$AppDb, $ServersTable> {
           }) => $$PrivateKeysTableFilterComposer(
             $db: $db,
             $table: $db.privateKeys,
-            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
-            joinBuilder: joinBuilder,
-            $removeJoinBuilderFromRootComposer:
-                $removeJoinBuilderFromRootComposer,
-          ),
-    );
-    return composer;
-  }
-
-  $$BmcCredentialsTableFilterComposer get bmcCredId {
-    final $$BmcCredentialsTableFilterComposer composer = $composerBuilder(
-      composer: this,
-      getCurrentColumn: (t) => t.bmcCredId,
-      referencedTable: $db.bmcCredentials,
-      getReferencedColumn: (t) => t.id,
-      builder:
-          (
-            joinBuilder, {
-            $addJoinBuilderToRootComposer,
-            $removeJoinBuilderFromRootComposer,
-          }) => $$BmcCredentialsTableFilterComposer(
-            $db: $db,
-            $table: $db.bmcCredentials,
             $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
             joinBuilder: joinBuilder,
             $removeJoinBuilderFromRootComposer:
@@ -9384,31 +7862,6 @@ class $$ServersTableFilterComposer extends Composer<_$AppDb, $ServersTable> {
     );
     return f(composer);
   }
-
-  Expression<bool> serverDistsRefs(
-    Expression<bool> Function($$ServerDistsTableFilterComposer f) f,
-  ) {
-    final $$ServerDistsTableFilterComposer composer = $composerBuilder(
-      composer: this,
-      getCurrentColumn: (t) => t.id,
-      referencedTable: $db.serverDists,
-      getReferencedColumn: (t) => t.serverId,
-      builder:
-          (
-            joinBuilder, {
-            $addJoinBuilderToRootComposer,
-            $removeJoinBuilderFromRootComposer,
-          }) => $$ServerDistsTableFilterComposer(
-            $db: $db,
-            $table: $db.serverDists,
-            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
-            joinBuilder: joinBuilder,
-            $removeJoinBuilderFromRootComposer:
-                $removeJoinBuilderFromRootComposer,
-          ),
-    );
-    return f(composer);
-  }
 }
 
 class $$ServersTableOrderingComposer extends Composer<_$AppDb, $ServersTable> {
@@ -9484,16 +7937,6 @@ class $$ServersTableOrderingComposer extends Composer<_$AppDb, $ServersTable> {
     builder: (column) => ColumnOrderings(column),
   );
 
-  ColumnOrderings<String> get sshFileTransport => $composableBuilder(
-    column: $table.sshFileTransport,
-    builder: (column) => ColumnOrderings(column),
-  );
-
-  ColumnOrderings<String> get preferredTransport => $composableBuilder(
-    column: $table.preferredTransport,
-    builder: (column) => ColumnOrderings(column),
-  );
-
   ColumnOrderings<String> get monitorAddr => $composableBuilder(
     column: $table.monitorAddr,
     builder: (column) => ColumnOrderings(column),
@@ -9514,11 +7957,6 @@ class $$ServersTableOrderingComposer extends Composer<_$AppDb, $ServersTable> {
     builder: (column) => ColumnOrderings(column),
   );
 
-  ColumnOrderings<bool> get monitorAllowInsecure => $composableBuilder(
-    column: $table.monitorAllowInsecure,
-    builder: (column) => ColumnOrderings(column),
-  );
-
   ColumnOrderings<String> get wolMac => $composableBuilder(
     column: $table.wolMac,
     builder: (column) => ColumnOrderings(column),
@@ -9531,16 +7969,6 @@ class $$ServersTableOrderingComposer extends Composer<_$AppDb, $ServersTable> {
 
   ColumnOrderings<String> get wolPwd => $composableBuilder(
     column: $table.wolPwd,
-    builder: (column) => ColumnOrderings(column),
-  );
-
-  ColumnOrderings<String> get bmcAddr => $composableBuilder(
-    column: $table.bmcAddr,
-    builder: (column) => ColumnOrderings(column),
-  );
-
-  ColumnOrderings<String> get bmcCertSha256 => $composableBuilder(
-    column: $table.bmcCertSha256,
     builder: (column) => ColumnOrderings(column),
   );
 
@@ -9598,29 +8026,6 @@ class $$ServersTableOrderingComposer extends Composer<_$AppDb, $ServersTable> {
           }) => $$PrivateKeysTableOrderingComposer(
             $db: $db,
             $table: $db.privateKeys,
-            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
-            joinBuilder: joinBuilder,
-            $removeJoinBuilderFromRootComposer:
-                $removeJoinBuilderFromRootComposer,
-          ),
-    );
-    return composer;
-  }
-
-  $$BmcCredentialsTableOrderingComposer get bmcCredId {
-    final $$BmcCredentialsTableOrderingComposer composer = $composerBuilder(
-      composer: this,
-      getCurrentColumn: (t) => t.bmcCredId,
-      referencedTable: $db.bmcCredentials,
-      getReferencedColumn: (t) => t.id,
-      builder:
-          (
-            joinBuilder, {
-            $addJoinBuilderToRootComposer,
-            $removeJoinBuilderFromRootComposer,
-          }) => $$BmcCredentialsTableOrderingComposer(
-            $db: $db,
-            $table: $db.bmcCredentials,
             $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
             joinBuilder: joinBuilder,
             $removeJoinBuilderFromRootComposer:
@@ -9689,16 +8094,6 @@ class $$ServersTableAnnotationComposer
     builder: (column) => column,
   );
 
-  GeneratedColumn<String> get sshFileTransport => $composableBuilder(
-    column: $table.sshFileTransport,
-    builder: (column) => column,
-  );
-
-  GeneratedColumn<String> get preferredTransport => $composableBuilder(
-    column: $table.preferredTransport,
-    builder: (column) => column,
-  );
-
   GeneratedColumn<String> get monitorAddr => $composableBuilder(
     column: $table.monitorAddr,
     builder: (column) => column,
@@ -9719,11 +8114,6 @@ class $$ServersTableAnnotationComposer
     builder: (column) => column,
   );
 
-  GeneratedColumn<bool> get monitorAllowInsecure => $composableBuilder(
-    column: $table.monitorAllowInsecure,
-    builder: (column) => column,
-  );
-
   GeneratedColumn<String> get wolMac =>
       $composableBuilder(column: $table.wolMac, builder: (column) => column);
 
@@ -9732,14 +8122,6 @@ class $$ServersTableAnnotationComposer
 
   GeneratedColumn<String> get wolPwd =>
       $composableBuilder(column: $table.wolPwd, builder: (column) => column);
-
-  GeneratedColumn<String> get bmcAddr =>
-      $composableBuilder(column: $table.bmcAddr, builder: (column) => column);
-
-  GeneratedColumn<String> get bmcCertSha256 => $composableBuilder(
-    column: $table.bmcCertSha256,
-    builder: (column) => column,
-  );
 
   GeneratedColumn<String> get pveAddr =>
       $composableBuilder(column: $table.pveAddr, builder: (column) => column);
@@ -9785,29 +8167,6 @@ class $$ServersTableAnnotationComposer
           }) => $$PrivateKeysTableAnnotationComposer(
             $db: $db,
             $table: $db.privateKeys,
-            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
-            joinBuilder: joinBuilder,
-            $removeJoinBuilderFromRootComposer:
-                $removeJoinBuilderFromRootComposer,
-          ),
-    );
-    return composer;
-  }
-
-  $$BmcCredentialsTableAnnotationComposer get bmcCredId {
-    final $$BmcCredentialsTableAnnotationComposer composer = $composerBuilder(
-      composer: this,
-      getCurrentColumn: (t) => t.bmcCredId,
-      referencedTable: $db.bmcCredentials,
-      getReferencedColumn: (t) => t.id,
-      builder:
-          (
-            joinBuilder, {
-            $addJoinBuilderToRootComposer,
-            $removeJoinBuilderFromRootComposer,
-          }) => $$BmcCredentialsTableAnnotationComposer(
-            $db: $db,
-            $table: $db.bmcCredentials,
             $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
             joinBuilder: joinBuilder,
             $removeJoinBuilderFromRootComposer:
@@ -10068,31 +8427,6 @@ class $$ServersTableAnnotationComposer
     );
     return f(composer);
   }
-
-  Expression<T> serverDistsRefs<T extends Object>(
-    Expression<T> Function($$ServerDistsTableAnnotationComposer a) f,
-  ) {
-    final $$ServerDistsTableAnnotationComposer composer = $composerBuilder(
-      composer: this,
-      getCurrentColumn: (t) => t.id,
-      referencedTable: $db.serverDists,
-      getReferencedColumn: (t) => t.serverId,
-      builder:
-          (
-            joinBuilder, {
-            $addJoinBuilderToRootComposer,
-            $removeJoinBuilderFromRootComposer,
-          }) => $$ServerDistsTableAnnotationComposer(
-            $db: $db,
-            $table: $db.serverDists,
-            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
-            joinBuilder: joinBuilder,
-            $removeJoinBuilderFromRootComposer:
-                $removeJoinBuilderFromRootComposer,
-          ),
-    );
-    return f(composer);
-  }
 }
 
 class $$ServersTableTableManager
@@ -10110,7 +8444,6 @@ class $$ServersTableTableManager
           ServerRow,
           PrefetchHooks Function({
             bool sshKeyId,
-            bool bmcCredId,
             bool serverTagsRefs,
             bool serverEnvsRefs,
             bool serverDisabledCmdsRefs,
@@ -10121,7 +8454,6 @@ class $$ServersTableTableManager
             bool containerHostsRefs,
             bool containerRuntimesRefs,
             bool connStatsRefs,
-            bool serverDistsRefs,
           })
         > {
   $$ServersTableTableManager(_$AppDb db, $ServersTable table)
@@ -10151,19 +8483,13 @@ class $$ServersTableTableManager
                 Value<String?> sshKeyPath = const Value.absent(),
                 Value<String?> sshAlterUrl = const Value.absent(),
                 Value<String?> sshProxyCommand = const Value.absent(),
-                Value<String?> sshFileTransport = const Value.absent(),
-                Value<String?> preferredTransport = const Value.absent(),
                 Value<String?> monitorAddr = const Value.absent(),
                 Value<String?> monitorUser = const Value.absent(),
                 Value<String?> monitorPwd = const Value.absent(),
                 Value<bool?> monitorIgnoreCert = const Value.absent(),
-                Value<bool?> monitorAllowInsecure = const Value.absent(),
                 Value<String?> wolMac = const Value.absent(),
                 Value<String?> wolIp = const Value.absent(),
                 Value<String?> wolPwd = const Value.absent(),
-                Value<String?> bmcAddr = const Value.absent(),
-                Value<String?> bmcCertSha256 = const Value.absent(),
-                Value<String?> bmcCredId = const Value.absent(),
                 Value<String?> pveAddr = const Value.absent(),
                 Value<bool> pveIgnoreCert = const Value.absent(),
                 Value<String?> pvePwd = const Value.absent(),
@@ -10187,19 +8513,13 @@ class $$ServersTableTableManager
                 sshKeyPath: sshKeyPath,
                 sshAlterUrl: sshAlterUrl,
                 sshProxyCommand: sshProxyCommand,
-                sshFileTransport: sshFileTransport,
-                preferredTransport: preferredTransport,
                 monitorAddr: monitorAddr,
                 monitorUser: monitorUser,
                 monitorPwd: monitorPwd,
                 monitorIgnoreCert: monitorIgnoreCert,
-                monitorAllowInsecure: monitorAllowInsecure,
                 wolMac: wolMac,
                 wolIp: wolIp,
                 wolPwd: wolPwd,
-                bmcAddr: bmcAddr,
-                bmcCertSha256: bmcCertSha256,
-                bmcCredId: bmcCredId,
                 pveAddr: pveAddr,
                 pveIgnoreCert: pveIgnoreCert,
                 pvePwd: pvePwd,
@@ -10225,19 +8545,13 @@ class $$ServersTableTableManager
                 Value<String?> sshKeyPath = const Value.absent(),
                 Value<String?> sshAlterUrl = const Value.absent(),
                 Value<String?> sshProxyCommand = const Value.absent(),
-                Value<String?> sshFileTransport = const Value.absent(),
-                Value<String?> preferredTransport = const Value.absent(),
                 Value<String?> monitorAddr = const Value.absent(),
                 Value<String?> monitorUser = const Value.absent(),
                 Value<String?> monitorPwd = const Value.absent(),
                 Value<bool?> monitorIgnoreCert = const Value.absent(),
-                Value<bool?> monitorAllowInsecure = const Value.absent(),
                 Value<String?> wolMac = const Value.absent(),
                 Value<String?> wolIp = const Value.absent(),
                 Value<String?> wolPwd = const Value.absent(),
-                Value<String?> bmcAddr = const Value.absent(),
-                Value<String?> bmcCertSha256 = const Value.absent(),
-                Value<String?> bmcCredId = const Value.absent(),
                 Value<String?> pveAddr = const Value.absent(),
                 Value<bool> pveIgnoreCert = const Value.absent(),
                 Value<String?> pvePwd = const Value.absent(),
@@ -10261,19 +8575,13 @@ class $$ServersTableTableManager
                 sshKeyPath: sshKeyPath,
                 sshAlterUrl: sshAlterUrl,
                 sshProxyCommand: sshProxyCommand,
-                sshFileTransport: sshFileTransport,
-                preferredTransport: preferredTransport,
                 monitorAddr: monitorAddr,
                 monitorUser: monitorUser,
                 monitorPwd: monitorPwd,
                 monitorIgnoreCert: monitorIgnoreCert,
-                monitorAllowInsecure: monitorAllowInsecure,
                 wolMac: wolMac,
                 wolIp: wolIp,
                 wolPwd: wolPwd,
-                bmcAddr: bmcAddr,
-                bmcCertSha256: bmcCertSha256,
-                bmcCredId: bmcCredId,
                 pveAddr: pveAddr,
                 pveIgnoreCert: pveIgnoreCert,
                 pvePwd: pvePwd,
@@ -10294,7 +8602,6 @@ class $$ServersTableTableManager
           prefetchHooksCallback:
               ({
                 sshKeyId = false,
-                bmcCredId = false,
                 serverTagsRefs = false,
                 serverEnvsRefs = false,
                 serverDisabledCmdsRefs = false,
@@ -10305,7 +8612,6 @@ class $$ServersTableTableManager
                 containerHostsRefs = false,
                 containerRuntimesRefs = false,
                 connStatsRefs = false,
-                serverDistsRefs = false,
               }) {
                 return PrefetchHooks(
                   db: db,
@@ -10320,7 +8626,6 @@ class $$ServersTableTableManager
                     if (containerHostsRefs) db.containerHosts,
                     if (containerRuntimesRefs) db.containerRuntimes,
                     if (connStatsRefs) db.connStats,
-                    if (serverDistsRefs) db.serverDists,
                   ],
                   addJoins:
                       <
@@ -10347,19 +8652,6 @@ class $$ServersTableTableManager
                                         ._sshKeyIdTable(db),
                                     referencedColumn: $$ServersTableReferences
                                         ._sshKeyIdTable(db)
-                                        .id,
-                                  )
-                                  as T;
-                        }
-                        if (bmcCredId) {
-                          state =
-                              state.withJoin(
-                                    currentTable: table,
-                                    currentColumn: table.bmcCredId,
-                                    referencedTable: $$ServersTableReferences
-                                        ._bmcCredIdTable(db),
-                                    referencedColumn: $$ServersTableReferences
-                                        ._bmcCredIdTable(db)
                                         .id,
                                   )
                                   as T;
@@ -10579,27 +8871,6 @@ class $$ServersTableTableManager
                               ),
                           typedResults: items,
                         ),
-                      if (serverDistsRefs)
-                        await $_getPrefetchedData<
-                          ServerRow,
-                          $ServersTable,
-                          ServerDistRow
-                        >(
-                          currentTable: table,
-                          referencedTable: $$ServersTableReferences
-                              ._serverDistsRefsTable(db),
-                          managerFromTypedResult: (p0) =>
-                              $$ServersTableReferences(
-                                db,
-                                table,
-                                p0,
-                              ).serverDistsRefs,
-                          referencedItemsForCurrentItem:
-                              (item, referencedItems) => referencedItems.where(
-                                (e) => e.serverId == item.id,
-                              ),
-                          typedResults: items,
-                        ),
                     ];
                   },
                 );
@@ -10622,7 +8893,6 @@ typedef $$ServersTableProcessedTableManager =
       ServerRow,
       PrefetchHooks Function({
         bool sshKeyId,
-        bool bmcCredId,
         bool serverTagsRefs,
         bool serverEnvsRefs,
         bool serverDisabledCmdsRefs,
@@ -10633,7 +8903,6 @@ typedef $$ServersTableProcessedTableManager =
         bool containerHostsRefs,
         bool containerRuntimesRefs,
         bool connStatsRefs,
-        bool serverDistsRefs,
       })
     >;
 typedef $$ServerTagsTableCreateCompanionBuilder =
@@ -14640,279 +12909,6 @@ typedef $$ConnStatsTableProcessedTableManager =
       ConnStatRow,
       PrefetchHooks Function({bool serverId})
     >;
-typedef $$ServerDistsTableCreateCompanionBuilder =
-    ServerDistsCompanion Function({
-      required String serverId,
-      required String dist,
-      required int updatedAt,
-    });
-typedef $$ServerDistsTableUpdateCompanionBuilder =
-    ServerDistsCompanion Function({
-      Value<String> serverId,
-      Value<String> dist,
-      Value<int> updatedAt,
-    });
-
-final class $$ServerDistsTableReferences
-    extends BaseReferences<_$AppDb, $ServerDistsTable, ServerDistRow> {
-  $$ServerDistsTableReferences(super.$_db, super.$_table, super.$_typedResult);
-
-  static $ServersTable _serverIdTable(_$AppDb db) =>
-      db.servers.createAlias('server_dist__server_id__server__id');
-
-  $$ServersTableProcessedTableManager get serverId {
-    final $_column = $_itemColumn<String>('server_id')!;
-
-    final manager = $$ServersTableTableManager(
-      $_db,
-      $_db.servers,
-    ).filter((f) => f.id.sqlEquals($_column));
-    final item = $_typedResult.readTableOrNull(_serverIdTable($_db));
-    if (item == null) return manager;
-    return ProcessedTableManager(
-      manager.$state.copyWith(prefetchedData: [item]),
-    );
-  }
-}
-
-class $$ServerDistsTableFilterComposer
-    extends Composer<_$AppDb, $ServerDistsTable> {
-  $$ServerDistsTableFilterComposer({
-    required super.$db,
-    required super.$table,
-    super.joinBuilder,
-    super.$addJoinBuilderToRootComposer,
-    super.$removeJoinBuilderFromRootComposer,
-  });
-  ColumnFilters<String> get dist => $composableBuilder(
-    column: $table.dist,
-    builder: (column) => ColumnFilters(column),
-  );
-
-  ColumnFilters<int> get updatedAt => $composableBuilder(
-    column: $table.updatedAt,
-    builder: (column) => ColumnFilters(column),
-  );
-
-  $$ServersTableFilterComposer get serverId {
-    final $$ServersTableFilterComposer composer = $composerBuilder(
-      composer: this,
-      getCurrentColumn: (t) => t.serverId,
-      referencedTable: $db.servers,
-      getReferencedColumn: (t) => t.id,
-      builder:
-          (
-            joinBuilder, {
-            $addJoinBuilderToRootComposer,
-            $removeJoinBuilderFromRootComposer,
-          }) => $$ServersTableFilterComposer(
-            $db: $db,
-            $table: $db.servers,
-            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
-            joinBuilder: joinBuilder,
-            $removeJoinBuilderFromRootComposer:
-                $removeJoinBuilderFromRootComposer,
-          ),
-    );
-    return composer;
-  }
-}
-
-class $$ServerDistsTableOrderingComposer
-    extends Composer<_$AppDb, $ServerDistsTable> {
-  $$ServerDistsTableOrderingComposer({
-    required super.$db,
-    required super.$table,
-    super.joinBuilder,
-    super.$addJoinBuilderToRootComposer,
-    super.$removeJoinBuilderFromRootComposer,
-  });
-  ColumnOrderings<String> get dist => $composableBuilder(
-    column: $table.dist,
-    builder: (column) => ColumnOrderings(column),
-  );
-
-  ColumnOrderings<int> get updatedAt => $composableBuilder(
-    column: $table.updatedAt,
-    builder: (column) => ColumnOrderings(column),
-  );
-
-  $$ServersTableOrderingComposer get serverId {
-    final $$ServersTableOrderingComposer composer = $composerBuilder(
-      composer: this,
-      getCurrentColumn: (t) => t.serverId,
-      referencedTable: $db.servers,
-      getReferencedColumn: (t) => t.id,
-      builder:
-          (
-            joinBuilder, {
-            $addJoinBuilderToRootComposer,
-            $removeJoinBuilderFromRootComposer,
-          }) => $$ServersTableOrderingComposer(
-            $db: $db,
-            $table: $db.servers,
-            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
-            joinBuilder: joinBuilder,
-            $removeJoinBuilderFromRootComposer:
-                $removeJoinBuilderFromRootComposer,
-          ),
-    );
-    return composer;
-  }
-}
-
-class $$ServerDistsTableAnnotationComposer
-    extends Composer<_$AppDb, $ServerDistsTable> {
-  $$ServerDistsTableAnnotationComposer({
-    required super.$db,
-    required super.$table,
-    super.joinBuilder,
-    super.$addJoinBuilderToRootComposer,
-    super.$removeJoinBuilderFromRootComposer,
-  });
-  GeneratedColumn<String> get dist =>
-      $composableBuilder(column: $table.dist, builder: (column) => column);
-
-  GeneratedColumn<int> get updatedAt =>
-      $composableBuilder(column: $table.updatedAt, builder: (column) => column);
-
-  $$ServersTableAnnotationComposer get serverId {
-    final $$ServersTableAnnotationComposer composer = $composerBuilder(
-      composer: this,
-      getCurrentColumn: (t) => t.serverId,
-      referencedTable: $db.servers,
-      getReferencedColumn: (t) => t.id,
-      builder:
-          (
-            joinBuilder, {
-            $addJoinBuilderToRootComposer,
-            $removeJoinBuilderFromRootComposer,
-          }) => $$ServersTableAnnotationComposer(
-            $db: $db,
-            $table: $db.servers,
-            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
-            joinBuilder: joinBuilder,
-            $removeJoinBuilderFromRootComposer:
-                $removeJoinBuilderFromRootComposer,
-          ),
-    );
-    return composer;
-  }
-}
-
-class $$ServerDistsTableTableManager
-    extends
-        RootTableManager<
-          _$AppDb,
-          $ServerDistsTable,
-          ServerDistRow,
-          $$ServerDistsTableFilterComposer,
-          $$ServerDistsTableOrderingComposer,
-          $$ServerDistsTableAnnotationComposer,
-          $$ServerDistsTableCreateCompanionBuilder,
-          $$ServerDistsTableUpdateCompanionBuilder,
-          (ServerDistRow, $$ServerDistsTableReferences),
-          ServerDistRow,
-          PrefetchHooks Function({bool serverId})
-        > {
-  $$ServerDistsTableTableManager(_$AppDb db, $ServerDistsTable table)
-    : super(
-        TableManagerState(
-          db: db,
-          table: table,
-          createFilteringComposer: () =>
-              $$ServerDistsTableFilterComposer($db: db, $table: table),
-          createOrderingComposer: () =>
-              $$ServerDistsTableOrderingComposer($db: db, $table: table),
-          createComputedFieldComposer: () =>
-              $$ServerDistsTableAnnotationComposer($db: db, $table: table),
-          updateCompanionCallback:
-              ({
-                Value<String> serverId = const Value.absent(),
-                Value<String> dist = const Value.absent(),
-                Value<int> updatedAt = const Value.absent(),
-              }) => ServerDistsCompanion(
-                serverId: serverId,
-                dist: dist,
-                updatedAt: updatedAt,
-              ),
-          createCompanionCallback:
-              ({
-                required String serverId,
-                required String dist,
-                required int updatedAt,
-              }) => ServerDistsCompanion.insert(
-                serverId: serverId,
-                dist: dist,
-                updatedAt: updatedAt,
-              ),
-          withReferenceMapper: (p0) => p0
-              .map(
-                (e) => (
-                  e.readTable(table),
-                  $$ServerDistsTableReferences(db, table, e),
-                ),
-              )
-              .toList(),
-          prefetchHooksCallback: ({serverId = false}) {
-            return PrefetchHooks(
-              db: db,
-              explicitlyWatchedTables: [],
-              addJoins:
-                  <
-                    T extends TableManagerState<
-                      dynamic,
-                      dynamic,
-                      dynamic,
-                      dynamic,
-                      dynamic,
-                      dynamic,
-                      dynamic,
-                      dynamic,
-                      dynamic,
-                      dynamic,
-                      dynamic
-                    >
-                  >(state) {
-                    if (serverId) {
-                      state =
-                          state.withJoin(
-                                currentTable: table,
-                                currentColumn: table.serverId,
-                                referencedTable: $$ServerDistsTableReferences
-                                    ._serverIdTable(db),
-                                referencedColumn: $$ServerDistsTableReferences
-                                    ._serverIdTable(db)
-                                    .id,
-                              )
-                              as T;
-                    }
-
-                    return state;
-                  },
-              getPrefetchedDataCallback: (items) async {
-                return [];
-              },
-            );
-          },
-        ),
-      );
-}
-
-typedef $$ServerDistsTableProcessedTableManager =
-    ProcessedTableManager<
-      _$AppDb,
-      $ServerDistsTable,
-      ServerDistRow,
-      $$ServerDistsTableFilterComposer,
-      $$ServerDistsTableOrderingComposer,
-      $$ServerDistsTableAnnotationComposer,
-      $$ServerDistsTableCreateCompanionBuilder,
-      $$ServerDistsTableUpdateCompanionBuilder,
-      (ServerDistRow, $$ServerDistsTableReferences),
-      ServerDistRow,
-      PrefetchHooks Function({bool serverId})
-    >;
 typedef $$AgentConversationsTableCreateCompanionBuilder =
     AgentConversationsCompanion Function({
       required String id,
@@ -15778,8 +13774,6 @@ class $AppDbManager {
   $AppDbManager(this._db);
   $$PrivateKeysTableTableManager get privateKeys =>
       $$PrivateKeysTableTableManager(_db, _db.privateKeys);
-  $$BmcCredentialsTableTableManager get bmcCredentials =>
-      $$BmcCredentialsTableTableManager(_db, _db.bmcCredentials);
   $$ServersTableTableManager get servers =>
       $$ServersTableTableManager(_db, _db.servers);
   $$ServerTagsTableTableManager get serverTags =>
@@ -15808,8 +13802,6 @@ class $AppDbManager {
       $$ContainerRuntimesTableTableManager(_db, _db.containerRuntimes);
   $$ConnStatsTableTableManager get connStats =>
       $$ConnStatsTableTableManager(_db, _db.connStats);
-  $$ServerDistsTableTableManager get serverDists =>
-      $$ServerDistsTableTableManager(_db, _db.serverDists);
   $$AgentConversationsTableTableManager get agentConversations =>
       $$AgentConversationsTableTableManager(_db, _db.agentConversations);
   $$AgentActiveConversationsTableTableManager get agentActiveConversations =>

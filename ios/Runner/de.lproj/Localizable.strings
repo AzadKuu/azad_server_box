@@ -1,1 +1,8 @@
-"%d terminals" = "%d Terminals";
+"Terminal" = "Terminal";
+"Connected" = "Verbunden";
+"Connecting" = "Verbindung wird hergestellt";
+"Disconnected" = "Getrennt";
+"Multiple SSH sessions active" = "Mehrere aktive SSH-Sitzungen";
+"1 connection" = "1 Verbindung";
+"%d connections" = "%d Verbindungen";
+

@@ -59,7 +59,7 @@ void main() {
     expect(tables.toSet(), Tables.names.toSet());
   });
 
-  group('a server is reached somehow', () {
+  group('a server is reached one way or the other', () {
     test('SSH alone is accepted', () {
       expect(() => addServer('a'), returnsNormally);
     });
@@ -71,20 +71,14 @@ void main() {
       );
     });
 
-    test('both at once is accepted', () {
-      // It used to be refused — the constraint was an exclusive or. Both is
-      // now a configuration someone can ask for: an agent for status without
-      // holding a shell open, and sshd for what the agent has no endpoint
-      // for, with `server.preferred_transport` saying which leads.
+    test('both at once is refused', () {
       expect(
         () => addServer('c', monitorAddr: 'https://h:3770'),
-        returnsNormally,
+        throwsA(isA<SqliteException>()),
       );
     });
 
-    test('neither is still refused', () {
-      // The half of the constraint that stays. A row with no way in is not a
-      // server, it is a name.
+    test('neither is refused', () {
       expect(
         () => addServer('d', sshIp: null),
         throwsA(isA<SqliteException>()),
@@ -106,7 +100,6 @@ void main() {
     db.execute(
       "INSERT INTO conn_stat VALUES ('cs', 'srv', 'srv', 1, 'success', '', 5);",
     );
-    db.execute("INSERT INTO server_dist VALUES ('srv', 'debian', 1);");
 
     db.execute("DELETE FROM server WHERE id = 'srv';");
 
@@ -118,10 +111,6 @@ void main() {
       'known_host',
       'port_forward',
       'conn_stat',
-      // The cache of what each server was last seen running: keyed by the
-      // server and cascading with it, so a deleted server leaves no reading
-      // nothing can read.
-      'server_dist',
     ]) {
       expect(
         db.select('SELECT count(*) AS n FROM $t;').single['n'],

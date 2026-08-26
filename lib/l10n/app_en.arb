@@ -5,20 +5,25 @@
   "added2List": "Added to task list",
   "askAi": "Ask AI",
   "askAiAwaitingResponse": "Waiting for AI response...",
-  "askAiEndpointTip": "Enter a domain or a full URL. The path is completed from the protocol you pick.",
-  "askAiProtocolTip": "Auto tries Responses, then Chat Completions.",
+  "askAiEndpointTip": "Enter a service base URL or a full Chat Completions or Responses endpoint. ServerBox completes the path for the selected protocol.",
+  "askAiProtocolTip": "Auto uses Responses for the official OpenAI endpoint and Chat Completions for compatible providers.",
+  "askAiProtocolChatCompletions": "Chat Completions",
+  "askAiProtocolResponses": "Responses",
   "askAiCommandInserted": "Command inserted into terminal",
   "askAiConfigMissing": "Please configure {fields} in Settings.",
   "askAiDisclaimer": "AI may be incorrect. Review carefully before applying.",
   "askAiInsertTerminal": "Insert into terminal",
   "askAiNoResponse": "No response",
+  "askAiAgentTitle": "SSH Agent",
   "askAiAgentWelcome": "What should we do on this server?",
+  "askAiAgentWelcomeTip": "Ask for a diagnosis or a task. The Agent proposes one command at a time and waits for review before making changes.",
   "askAiAgentPromptHint": "Ask the Agent to inspect or fix something...",
-  "askAiAnalyzeSelectionPrompt": "Analyse the selected terminal output and explain what happened",
+  "askAiAgentSend": "Send to Agent",
+  "askAiAnalyzeSelectionPrompt": "Analyze the selected terminal content, explain what happened, and propose the safest next step if action is needed.",
   "askAiTerminalContext": "Terminal context",
   "askAiReviewNeeded": "Review",
   "askAiReviewAction": "Review proposed command",
-  "askAiReviewBeforeContinuing": "Review or decline the current suggestion first",
+  "askAiReviewBeforeContinuing": "Review or decline the proposed command first",
   "askAiApproveRun": "Approve & run",
   "askAiDecline": "Decline",
   "askAiActionDeclined": "The proposed command was declined.",
@@ -28,28 +33,29 @@
   "askAiRiskUnvetted": "Unvetted host",
   "askAiRiskDestructive": "High risk",
   "askAiHighRiskConfirmTitle": "Run high-risk command?",
-  "askAiHighRiskConfirmBody": "This command may make changes that are hard to undo. Check it carefully.",
+  "askAiHighRiskConfirmBody": "This command may delete data, stop services, or otherwise be difficult to undo. Review it carefully before running.",
   "askAiNoCommandOutput": "Command completed without output.",
   "askAiOutputTruncated": "Long output was truncated before it was sent back to the Agent.",
   "askAiAutoApproved": "Auto-approved",
   "askAiAutoRunSafeCommands": "Auto-run read-only commands",
-  "askAiAutoRunSafeCommandsTip": "Runs only when both the model and the local check call it read-only",
+  "askAiAutoRunSafeCommandsTip": "Only auto-run when both the model and local safety checks classify the command as read-only. Commands that change the system still require review.",
   "askAiSendOnEnter": "Enter sends",
-  "askAiSendOnEnterTip": "Enter sends, Shift+Enter for a new line. Off: Enter for a new line, Cmd/Ctrl+Enter sends.",
-  "askAiApiKeyOptional": "Leave empty for local or unauthenticated",
+  "askAiSendOnEnterTip": "Enter sends the message, Shift+Enter starts a new line. Off swaps them: Enter starts a new line and Cmd/Ctrl+Enter sends.",
+  "askAiApiKeyOptional": "Optional for local or unauthenticated endpoints",
   "askAiHistory": "Conversation history",
   "askAiNewConversation": "New conversation",
-  "askAiNoHistory": "No saved conversations yet",
+  "askAiNoHistory": "No saved conversations for this server",
   "askAiNoHistoryMessages": "No messages yet",
-  "askAiUntitledConversation": "Untitled",
+  "askAiUntitledConversation": "New conversation",
   "askAiRenameConversation": "Rename conversation",
   "askAiDeleteConversationTitle": "Delete this conversation?",
-  "askAiDeleteConversationTip": "Deletes it from this device. Cannot be undone.",
+  "askAiDeleteConversationTip": "This removes the conversation from this device and cannot be undone.",
   "askAiClearHistoryTitle": "Clear this server's Agent history?",
-  "askAiClearHistoryTip": "Every saved Agent conversation for this server will be deleted.",
-  "askAiRestoredReview": "This command came from history. Review it again",
+  "askAiClearHistoryTip": "All Agent conversations saved for this server will be removed from this device.",
+  "askAiRestoredReview": "Restored from history. Review it again before running; it will never run automatically.",
+  "agentTitle": "Agent",
   "agentWelcome": "What should we do across your servers?",
-  "agentWelcomeTip": "Have the Agent diagnose a problem or carry out a task",
+  "agentWelcomeTip": "Ask for a diagnosis or an operational task. The Agent uses live ServerBox state and proposes one reviewed action at a time.",
   "agentPromptHint": "Ask the Agent to inspect or operate your servers...",
   "agentNoHistory": "No saved global Agent conversations",
   "agentClearHistoryTitle": "Clear global Agent history?",
@@ -57,6 +63,7 @@
   "agentToolShell": "Shell",
   "agentToolReadFile": "Read file",
   "agentToolWriteFile": "Write file",
+  "agentToolServerBox": "ServerBox",
   "agentToolFailed": "Tool execution failed.",
   "agentToolCallsFmt": "{count} tool calls",
   "agentFloat": "Float over other tabs",
@@ -64,12 +71,13 @@
   "agentToolSshDisconnect": "Disconnect SSH",
   "agentSshConnectTitle": "Connect to a new host",
   "agentAuthMethod": "Authentication",
-  "agentSshConnectTip": "The Agent wants an SSH connection. Enter the password here",
+  "agentSshConnectTip": "The Agent wants to open an SSH connection. Type the password here — never into the conversation, where it would be stored and sent to the model.",
   "agentAdHocSessions": "Temporary connections",
   "agentSaveServerTitle": "Save as a server",
-  "agentSaveServerTip": "This host and the password you enter are saved on this device",
+  "agentSaveServerTip": "This host and the password you entered will be stored on this device.",
   "agentMonitorOptional": "Monitor agent (optional)",
-  "authFailTip": "Authentication failed. Check the details",
+  "atLeastOneTab": "At least one tab must be selected",
+  "authFailTip": "Authentication failed, please check whether credentials are correct",
   "autoBackupConflict": "Only one automatic backup can be turned on at the same time.",
   "autoConnect": "Auto connect",
   "autoRun": "Auto run",
@@ -82,32 +90,8 @@
   "backupPasswordSet": "Backup password set",
   "backupPasswordTip": "Set a password to encrypt backup files. Leave empty to disable encryption.",
   "backupPasswordWrong": "Incorrect backup password",
-  "connectAll": "Connect all",
-  "disconnectAll": "Disconnect all",
-  "distIcon": "Distribution marks",
-  "distIconConsent": "Only to indicate the distribution a server may be running.",
-  "distIconIntroLegal": "A mark says only what this device read from the remote system, which can be wrong or out of date, and identifies neither a derivative, a rebuild, nor any particular version. Where it cannot be identified, a plain icon is drawn.\n\nEach mark is a trademark of its respective owner and is used only to refer to the system it identifies.",
-  "distIconTip": "Show a small mark beside each server for the system it appears to be running.",
-  "distNameMap": "Name overrides",
-  "distNameMapTip": "Only for a distribution whose file is named something else where you host the marks. The key is the name this app uses; the value is the name to fetch. Leave it empty unless a mark is missing.",
-  "logoUrl": "Logo URL",
-  "logoUrlTip": "The large image at the top of a server's own page, drawn in its own colours.",
-  "markUrl": "Mark URL",
-  "markUrlTip": "The small mark beside a server's name in lists. Empty means none is drawn.\n\nNot the same picture as the logo",
-  "navTabMenuTip": "Long press a tab — or right-click it — to connect or disconnect everything on it at once.",
-  "nTags": "{count} Tags",
   "remoteBackupPasswordRequired": "Remote backups require a non-empty backup password",
-  "monitorHttpsRequired": "A remote monitor agent needs HTTPS, unless HTTP is allowed for it.",
-  "monitorAllowInsecureHttp": "Allow HTTP",
-  "monitorAllowInsecureHttpTip": "Only on a trusted private network that encrypts the transport itself, such as Tailscale",
-  "monitorHttpTip": "Read this server's status from a **monitor** agent's HTTP API instead of running commands over SSH.\n\nThe agent has to be installed on the server first, and it is what makes trends, the watch app and the home-screen widgets possible.\n\n[Setting up a monitor agent]({url})",
-  "@monitorHttpTip": {
-    "placeholders": {
-      "url": {
-        "type": "String"
-      }
-    }
-  },
+  "monitorHttpsRequired": "Remote monitor agents require HTTPS; HTTP is allowed only on loopback.",
   "backupTip": "The exported data can be encrypted with password. \nPlease keep it safe.",
   "icloudBackupStatusTitle": "Backup status",
   "icloudBackupStatusLoading": "Loading iCloud backup status...",
@@ -120,7 +104,6 @@
   "icloudBackupStatusSummary": "Last backup: {lastModified}\nStatus: {remoteState}",
   "bgRun": "Run in background",
   "bgRunTip": "This switch only means the program will try to run in the background. Whether it can run in the background depends on whether the permission is enabled or not. For AOSP-based Android ROMs, please disable \"Battery Optimization\" in this app. For MIUI / HyperOS, please change the power saving policy to \"Unlimited\".",
-  "bgRunNeedsNotification": "Running in the background needs an ongoing notification, and this app has no notification permission. Tap to allow notifications.",
   "clearAllStatsContent": "Are you sure you want to clear all server connection statistics? This action cannot be undone.",
   "clearAllStatsTitle": "Clear All Statistics",
   "clearServerStatsContent": "Are you sure you want to clear connection statistics for server \"{serverName}\"? This action cannot be undone.",
@@ -146,14 +129,6 @@
   "discoverSshServers": "Discover SSH Servers",
   "discoveryFailed": "Discovery failed",
   "discoverySettings": "Discovery Settings",
-  "distro": "Distribution",
-  "distroSwitchTip": "Replace {from} with {to}. Everything installed inside {from} is deleted, and {to} is downloaded and unpacked in its place.",
-  "@distroSwitchTip": {
-    "placeholders": {
-      "from": {},
-      "to": {}
-    }
-  },
   "diskHealth": "Disk Health",
   "displayCpuIndex": "Display CPU index",
   "dl2Local": "Download {fileName} to local?",
@@ -164,7 +139,7 @@
   "dockerStatistics": "Docker Statistics",
   "doubleColumnMode": "Double column mode",
   "doubleColumnTip": "This option only enables the feature, whether it can actually be enabled depends on the width of the device",
-  "editVirtKeys": "Virtual keys",
+  "editVirtKeys": "Edit virtual keys",
   "editorHighlightTip": "The current code highlighting performance is not ideal and can be optionally turned off to improve.",
   "enableMdns": "Enable mDNS",
   "enableMdnsDesc": "Use mDNS/Bonjour to discover SSH services",
@@ -174,62 +149,35 @@
   "fdroidReleaseTip": "If you downloaded this app from F-Droid, it is recommended to turn off this option.",
   "fileTooLarge": "File '{file}' too large {size}, max {sizeMax}",
   "fileDirGone": "This folder is no longer here",
-  "fileDirGoneTip": "It was deleted or renamed",
-  "fullScreen": "Full screen",
+  "fileDirGoneTip": "It was deleted or renamed. Use the bar below to go back, go home, or jump elsewhere.",
+  "fullScreen": "Full screen mode",
   "fullScreenJitter": "Full screen jitter",
   "fullScreenJitterHelp": "To avoid screen burn-in",
   "fullScreenTip": "Should full-screen mode be enabled when the device is rotated to landscape mode? This option only applies to the server tab.",
+  "githubGist": "GitHub Gist",
   "githubGistIdOptional": "Gist ID (optional)",
   "githubGistToken": "GitHub Gist token",
   "githubGistTokenEmpty": "Token is empty",
   "goto": "Go to",
   "homeTabs": "Home Tabs",
   "homeTabsCustomizeDesc": "Customize which tabs appear on the home page and their order",
+  "homeWidgetUrlConfig": "Config home widget url",
   "ignoreCert": "Ignore certificate",
   "image": "Image",
-  "@image": {
-    "description": "A container image, as in Docker. NOT a picture — do not replace this with libL10n.image, whose German is \"Bild\" and Japanese \"画像\"."
-  },
-  "macDmgBody": "The App Store requires this app to be sandboxed, and a sandbox cannot open a terminal. The DMG build can.\n\nThe App Store build may stop being updated.",
-  "macDmgImportDenied": "macOS would not let this read the previous build’s data",
-  "macDmgImported": "Imported the previous build’s data",
-  "macDmgImportFailed": "Could not read the previous build’s data",
-  "macDmgTip": "Local terminal and running snippets locally (DMG build)",
+  "macDmgBody": "The App Store requires this app to be sandboxed, and a sandboxed process cannot open a pseudo-terminal. So the App Store build has no terminal on this Mac and cannot run a snippet or an agent command here. The DMG build is the same app signed without the sandbox, and has both.\n\nThe App Store build still works and still updates. It may stop being updated later.\n\nThe two builds keep their data in different places. The DMG build copies it over on its first launch, so servers, keys and history come along. If that fails it says so, and you can carry a backup file across instead (Backup, in settings).",
+  "macDmgImportDenied": "macOS did not allow reading the data of the previously installed build. Grant Full Disk Access and reopen the app, or export a backup there and restore it here.",
+  "macDmgImported": "Imported the data of the previously installed build.",
+  "macDmgImportFailed": "Could not read the data of the previously installed build. Export a backup there, then restore it here.",
+  "macDmgTip": "A terminal on this Mac, and running snippets on it, exist only in the DMG build.",
   "macDmgTitle": "DMG build",
   "showHiddenFiles": "Show hidden files",
-  "sshKeyAlgorithm": "Algorithm",
-  "sshKeyComment": "Comment",
-  "sshKeyGenerate": "Generate key pair",
-  "sshKeyGenerating": "Generating…",
-  "sshKeyLockedFmt": "The private key [{name}] was not unlocked.",
-  "@sshKeyLockedFmt": {
-    "placeholders": {
-      "name": {
-        "type": "String"
-      }
-    }
-  },
-  "sshKeyPassphraseTip": "Optional. A key with a passphrase is stored encrypted, and you are asked for it the first time a connection uses the key.",
-  "sshKeyPassphraseWrong": "Wrong passphrase.",
-  "sshKeyPublicKey": "Public key",
-  "sshKeyPublicKeyTip": "Append this line to ~/.ssh/authorized_keys on the server.",
-  "sshKeyRecommended": "Recommended",
-  "sshKeyUnlockTip": "Enter the passphrase for the private key [{name}].",
-  "@sshKeyUnlockTip": {
-    "placeholders": {
-      "name": {
-        "type": "String"
-      }
-    }
-  },
-  "ungrouped": "Ungrouped",
   "unused": "Unused",
   "dangling": "Dangling",
   "pruneUnusedImages": "Prune unused images",
   "pruneDanglingImages": "Prune dangling images",
   "pruneImages": "Prune images",
   "unusedTaggedImages": "Unused tagged",
-  "pruneDanglingImagesTip": "Removes dangling images only.",
+  "pruneDanglingImagesTip": "Only remove dangling images (untagged layers).",
   "pruneUnusedImagesTip": "Also remove tagged images not used by any container.",
   "includeUnusedVolumesTip": "Also remove volumes not used by any container.",
   "pruneCommandPreview": "Command preview",
@@ -254,9 +202,6 @@
   },
   "noJumpServerAvailable": "No jump server available.",
   "jumpServerAndProxyCommandCannotBeUsedTogether": "Jump server and ProxyCommand cannot be used together.",
-  "noConnectionMethod": "Configure SSH, a monitor agent, or both",
-  "preferredTransport": "Try first",
-  "preferredTransportTip": "Where status is read from, and which connection a command opens first. The other stays available.",
   "keepForeground": "Keep app foreground!",
   "keepStatusWhenErr": "Preserve the last server state",
   "keepStatusWhenErrTip": "Only in the event of an error during script execution",
@@ -265,8 +210,6 @@
   "lastSuccess": "Last Success",
   "letterCache": "Normal keyboard input",
   "letterCacheTip": "When enabled, input goes through the regular IME, which can avoid secure keyboard prompts in the terminal on some systems.",
-  "linuxShellTip": "Which shell a terminal starts. Empty restores /bin/sh.",
-  "linuxNetTip": "DNS servers. Empty restores the defaults",
   "madeWithLove": "Made with ❤️ by {myGithub}",
   "maxConcurrency": "Max Concurrency",
   "maxRetryCount": "Number of server reconnections",
@@ -276,7 +219,6 @@
       "system": {}
     }
   },
-  "mirror": "Mirror",
   "needRestart": "App needs to be restarted",
   "netViewType": "Network view type",
   "newContainer": "New container",
@@ -284,6 +226,7 @@
   "noLineChart": "Do not use line charts",
   "noPrivateKeyTip": "The private key does not exist, it may have been deleted or there is a configuration error.",
   "noPromptAgain": "Do not prompt again",
+  "onlyOneLine": "Only display as one line (scrollable)",
   "openLastPath": "Open the last path",
   "openLastPathTip": "Different servers will have different logs, and the log is the path to the exit",
   "parseContainerStatsTip": "Parsing the occupancy status of Docker is relatively slow.",
@@ -291,51 +234,7 @@
   "preferDiskAmount": "Prioritize displaying disk capacity",
   "privateKey": "Private Key",
   "privateKeyNotFoundFmt": "Private key [{keyId}] not found.",
-  "bmcPowerOnAction": "Power on",
-  "bmcShutdown": "Shut down",
-  "bmcForceOff": "Force off",
-  "restart": "Restart",
-  "bmcPowerCycle": "Power cycle",
-  "bmcPowerConfirm": "Send this to {server}? The service will be asked for \"{resetType}\"",
-  "@bmcPowerConfirm": {
-    "placeholders": {
-      "server": {
-        "type": "String"
-      },
-      "resetType": {
-        "type": "String"
-      }
-    }
-  },
-  "bmcPowerDone": "The power state changed",
-  "bmcPowerAccepted": "Accepted, but the power state has not changed. A graceful operation depends on the OS",
-  "bmcPowerUnsupported": "This service allows nothing for that action",
-  "bmcUnauthorized": "The BMC refused the account",
-  "bmcAccountMissing": "No account is set for this BMC",
-  "bmcPowerOn": "Powered on",
-  "bmcPowerOff": "Powered off",
-  "bmcCertRejected": "Certificate refused — review it in the server settings",
-  "bmcNotAService": "No Redfish service at this address",
-  "bmcNoSystem": "The service reports no system",
-  "bmcSensorsTruncated": "Only the first sensors are shown",
-  "bmcMultipleSystems": "Only the first system is shown",
-  "bmcTip": "The BMC is a separate computer on the motherboard, reachable when the host OS is not. Configured here, it can report power state and hardware sensors while the server is off or hung. Needs Redfish, which most enterprise hardware from about 2016 on has.",
-  "bmcCert": "Certificate",
-  "bmcCertPinned": "Reviewed and pinned",
-  "bmcCertUnreviewed": "Not reviewed yet — tap to see the certificate",
-  "bmcCertReview": "A self-signed certificate. Compare it before accepting. Only this exact one is trusted afterwards.",
-  "bmcCertChanged": "The certificate does not match. Check it.",
-  "bmcCertExpired": "Expired.",
-  "bmcCertWas": "Previously accepted: {fingerprint}",
-  "@bmcCertWas": {
-    "placeholders": {
-      "fingerprint": {
-        "type": "String"
-      }
-    }
-  },
-  "bmcAddrInvalid": "The BMC address must be a URL, e.g. https://10.0.0.9",
-  "proxyCommandSandboxed": "This build is sandboxed: the command gets an empty home, not yours, so anything reading ~/.ssh fails. The DMG build is not.",
+  "proxyCommandSandboxed": "This build runs in a sandbox: the command sees an empty home directory instead of yours, so anything reading ~/.ssh (ssh -W, cloudflared) fails — often as a timeout naming the wrong host. Commands that only use the network still work. The DMG build has no sandbox.",
   "privateKeyFileUnreadable": "Cannot read the private key file {path}: {reason}",
   "@privateKeyFileUnreadable": {
     "placeholders": {
@@ -382,52 +281,42 @@
   "rememberPwdInMem": "Remember password in memory",
   "rememberPwdInMemTip": "Used for containers, suspending, etc.",
   "remotePath": "Remote path",
-  "rootfsUpdateTip": "{distro} {installed} is installed; {latest} is available. Updating replaces the whole container: {pm} data is lost",
+  "rootfsUpdateTip": "Alpine {installed} is installed and {latest} is available. Updating downloads it again and replaces the container: anything installed inside it with apk is lost. The current one keeps working if you skip this.",
   "@rootfsUpdateTip": {
     "placeholders": {
-      "distro": {},
       "installed": {},
-      "latest": {},
-      "pm": {}
-    }
-  },
-  "linuxSystemInUse": "Close the terminals on {name} before deleting it",
-  "@linuxSystemInUse": {
-    "placeholders": {
-      "name": {}
+      "latest": {}
     }
   },
   "rootfsSubtitle": "A Linux userland on this device",
-  "rootfsInstallTip": "Downloads {distro} {version} (about {size} MB) and unpacks it on this device.",
+  "rootfsInstallTip": "Download Alpine Linux {version} (about 3 MB) and unpack it on this device. It gives this app a shell with a package manager, and can be deleted at any time.",
   "@rootfsInstallTip": {
     "placeholders": {
-      "distro": {},
-      "version": {},
-      "size": {}
+      "version": {}
     }
   },
   "sameIdServerExist": "A server with the same ID already exists",
   "second": "s",
-  "serverFilesUnavailableTip": "Needs SSH to this server, or server_box_monitor installed with its file API on.",
+  "serverFilesUnavailableTip": "Reachable either through this server's SSH, or through a monitor agent with its file API switched on.",
   "back": "Back",
   "history": "History",
   "homeDir": "Home",
+  "selectItem": "Select",
   "selected": "{count} selected",
   "sendTo": "Send to…",
   "serverDetailOrder": "Detail page widget order",
   "serverFuncBtns": "Server function buttons",
   "serverOrder": "Server order",
   "serverTabRequired": "Server tab cannot be removed",
-  "shareServerRiskTip": "This QR code holds the server’s connection settings in clear text. Anyone who scans or photographs it can connect.",
+  "shareServerRiskTip": "This QR code contains the server's connection settings in plain text, passwords included. Anyone who scans or photographs it can connect to this server.",
   "sftpDlPrepare": "Preparing to connect...",
-  "sftpEditorTip": "Empty uses the built-in editor. For example `vim` (reading `EDITOR` is suggested).",
+  "sftpEditorTip": "If empty, use the built-in file editor of the app. If a value is present, use the remote server’s editor, e.g., `vim` (recommended to automatically detect according to `EDITOR`).",
   "sftpRmrDirSummary": "Use `rm -r` to delete a folder in SFTP.",
   "sftpSSHConnected": "SFTP Connected",
+  "sftp": "SFTP",
   "sftpShowFoldersFirst": "Display folders first",
-  "sftpUnavailableUseScp": "If this host has no SFTP subsystem, as many embedded devices do not, set its file transfer to SCP in the server settings.",
-  "sshFileTransportTip": "SFTP suits anything current. Choose SCP for an old or embedded host whose SSH server has no SFTP subsystem: it needs the `scp` command and a shell that also has the usual file utilities (`find`, `stat`, `mv`, `chmod`).",
   "specifyDev": "Specify device",
-  "specifyDevTip": "Network traffic counts every device by default; name one here instead",
+  "specifyDevTip": "For example, network traffic statistics are by default for all devices. You can specify a particular device here.",
   "tempIsCelsiusTip": "When enabled, the temperature value will be treated as Celsius instead of millicelsius. Turn on only if the temperature displays incorrectly (e.g., showing 0.1°C instead of 58°C).",
   "spentTime": "Spent time: {time}",
   "sshConfigAllExist": "All servers already exist ({duplicateCount} duplicates found)",
@@ -442,9 +331,11 @@
   "sshConfigImportTip": "Prompt to read ~/.ssh/config on first server creation",
   "sshConfigImported": "Imported {count} servers from SSH config",
   "sshHostKeyChangedDesc": "The SSH host key changed for {serverName}. Only continue if you trust this server.",
+  "sshHostKeyFingerprintMd5Base64": "Fingerprint (MD5 base64): {fingerprint}",
+  "sshHostKeyFingerprintMd5Hex": "Fingerprint (SHA256): {fingerprint}",
   "sshHostKeyType": "SSH host key type",
-  "sshKnownHostKeys": "Known hosts",
-  "sshKnownHostKeysTip": "The host keys this app has accepted",
+  "sshKnownHostKeys": "Known host keys",
+  "sshKnownHostKeysTip": "Host keys this app has accepted. Forget one to be asked about it again the next time you connect.",
   "@sshHostKeyType": {
     "description": "Label for the SSH host key type displayed in the host key verification dialog."
   },
@@ -465,6 +356,7 @@
   "switchTo": "Switch to {val}",
   "syncAppSettings": "Sync app settings",
   "syncAppSettingsTip": "Include theme, layout, editor, terminal and other device preferences in automatic sync.",
+  "system": "System",
   "termFontSizeTip": "This setting will affect the terminal size (width and height). You can zoom in on the terminal page to adjust the font size of the current session.",
   "textScalerTip": "1.0 => 100% (original size), only works on server page part of the font, not recommended to change.",
   "times": "Times",
@@ -479,18 +371,6 @@
   "virtKeyHelpClipboard": "Copy to the clipboard if the selected terminal is not empty, otherwise paste the content of the clipboard to the terminal.",
   "virtKeyHelpIME": "Turn on/off the keyboard",
   "virtKeyHelpSFTP": "Open current directory in SFTP.",
-  "virtKeyHelpSnippet": "Pick a snippet and run it in this terminal.",
-  "virtKeyHelpTmux": "Switch between tmux sessions and windows.",
-  "virtKeyIntroActions": "Shortcuts",
-  "virtKeyIntroActionsTip": "These open something instead of typing. Hold one to read what it does.",
-  "virtKeyIntroCustomizeTip": "Reorder these keys, or hide the ones you never reach for, in the terminal settings.",
-  "virtKeyIntroModifiers": "Modifiers",
-  "virtKeyIntroModifiersTip": "Tap one to arm it, then tap a letter on the keyboard. It stays on for that one key.",
-  "virtKeyIntroNav": "Navigation",
-  "virtKeyIntroNavTip": "These move the cursor. Hold an arrow to repeat it.",
-  "virtKeyIntroSelect": "Drag sideways over the terminal to select text, whenever it has something to scroll.",
-  "virtKeyRows": "Rows shown at once",
-  "virtKeyRowsTip": "The rest go on a page of their own, swiped sideways.",
   "waitConnection": "Please wait for the connection to be established.",
   "wakeLock": "Keep awake",
   "watchNotPaired": "No paired Apple Watch",
@@ -502,7 +382,7 @@
   "writeScriptTip": "After connecting to the server, a script will be written to `~/.config/server_box` \n | `/tmp/server_box` to monitor the system status. You can review the script content.",
   "menuGitHubRepository": "GitHub Repository",
   "podmanDockerEmulationDetected": "Podman Docker emulation detected. Please switch to Podman in settings.",
-  "betaTip": "This feature is still in beta testing. Functionality is not guaranteed.",
+  "portForwardBeta": "This feature is still in beta testing. Functionality is not guaranteed.",
   "portForward_startPrompt": "Add a port forward rule to get started",
   "portForward_localHost": "Local Host",
   "portForward_localPort": "Local Port",
@@ -570,6 +450,7 @@
     }
   },
   "containerOperationInProgress": "Another container operation is already in progress",
+  "systemd": "Systemd",
   "processCount": "{count, plural, one{1 process} other{{count} processes}}",
   "@processCount": {
     "placeholders": {
@@ -584,10 +465,10 @@
   "processParseInvalidWindowsRows": "Some Windows process entries could not be read.",
   "processKillTargetChanged": "The process changed or exited. Refresh and try again.",
   "watchServers": "Servers on the watch",
-  "watchServersTip": "The watch fetches from the monitor on its own, so only servers with one can be picked.",
+  "watchServersTip": "The watch reads these servers from their monitor agent by itself, so only servers with one configured can be picked.",
   "watchNoMonitorServer": "No server has a monitor agent configured",
-  "legacyStatusGoneTitle": "Status URLs no longer work",
-  "legacyStatusGoneBody": "The watch app and home widgets used to read a `/status` address typed by hand. That endpoint is gone: it could only report current values as text, which is why they could never show a chart.\n\nThey now read the monitor agent's authenticated API, so they draw trends and stay in step with the app on their own. Configure the server in the app once, and every watch and widget picks it up.",
+  "watchLegacyUrls": "Legacy status URLs",
+  "accessoryWidgetServer": "Lock screen widget server",
   "systemdMissing": "No systemd on this server",
   "systemdMissingTip": "`systemctl` is not installed here, so there are no units to list.",
   "initSystemFmt": "This machine appears to use {init}.",
@@ -609,8 +490,8 @@
   "continueInTerminal": "Continue in terminal",
   "askAiRiskUnknown": "Unclassified",
   "agentLocalExec": "Run commands on this device",
-  "agentLocalExecTip": "Lets the Agent work on the machine running ServerBox. Even read-only commands are reviewed",
-  "agentLocalExecRootfsTip": "Lets the Agent work locally, confined to the Linux container ServerBox installed",
+  "agentLocalExecTip": "Lets the Agent work on the machine ServerBox is running on, not only on servers. Nothing runs here unattended: every command needs review, however read-only it looks. This is where the app's data, your keys and your files are.",
+  "agentLocalExecRootfsTip": "Lets the Agent work on this device, inside the Alpine Linux container ServerBox installs. It cannot see the phone's own filesystem, the app's data or your files. Every command still needs review.",
   "macDmgImportedPartly": "Imported the data of the previously installed build. Downloaded files were left where they were, in {path}.",
   "@macDmgImportedPartly": {
     "placeholders": {
@@ -618,29 +499,5 @@
         "type": "String"
       }
     }
-  },
-  "bmcAccount": "Account",
-  "bmcAccountUnset": "None picked - tap to choose or create one",
-  "bmcAccountShared": "Used by {count} servers",
-  "@bmcAccountShared": {
-    "placeholders": {
-      "count": {
-        "type": "int"
-      }
-    }
-  },
-  "bmcAccounts": "BMC accounts",
-  "bmcAccountSharedTip": "Editing this changes what all of them use.",
-  "bmcAccountInUse": "{count} servers use it. They keep their address and lose the account.",
-  "@bmcAccountInUse": {
-    "placeholders": {
-      "count": {
-        "type": "int"
-      }
-    }
-  },
-  "bmcStaleWrite": "The BMC changed while this was being written. Try again.",
-  "send": "Send",
-  "privacyBlur": "Background privacy",
-  "privacyBlurTip": "Hide app content in the app switcher"
+  }
 }

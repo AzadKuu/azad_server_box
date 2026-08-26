@@ -12,6 +12,8 @@ import Foundation
 /// `WatchShared.swift`), so the literal is duplicated there on purpose.
 let appGroupId = "group.com.lollipopkit.toolbox"
 
+let accessoryKey = "accessory_widget_url"
+
 let helpUrl = URL(string: "https://github.com/lollipopkit/flutter_server_box/wiki#home-widget--watchos-app")!
 
 extension Date {
@@ -24,3 +26,21 @@ extension Date {
     }
 }
 
+enum ErrType: Error {
+    case url(String)
+    case http(String)
+}
+
+enum ContentState {
+    case loading
+    case error(ErrType)
+    case normal(Status)
+}
+
+struct Status {
+    let name: String
+    let cpu: String
+    let mem: String
+    let disk: String
+    let net: String
+}

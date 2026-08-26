@@ -8,7 +8,7 @@
 	branch = master
 [submodule "fl_lib"]
 	path = packages/fl_lib
-	url = https://github.com/lollipopkit/fl_lib
+	url = https://github.com/AzadKuu/fl_lib.git
 	branch = main
 [submodule "fl_build"]
 	path = packages/fl_build
@@ -33,8 +33,4 @@
 [submodule "packages/flutter_pty"]
 	path = packages/flutter_pty
 	url = https://github.com/lollipopkit/flutter_pty
-	branch = main
-[submodule "packages/redfish"]
-	path = packages/redfish
-	url = https://github.com/lollipopkit/redfish
 	branch = main

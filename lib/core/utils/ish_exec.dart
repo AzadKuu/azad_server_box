@@ -158,44 +158,27 @@ class IshExec extends LocalExec {
       // bounded buffer and waits when it is full. Short by construction —
       // `runWithSudo`'s password is what this exists for — and a caller with a
       // whole script to send is refused above rather than left to wedge here.
-      IosRootfs.write(id, utf8.encode(stdin));
-      IosRootfs.write(id, utf8.encode(_eof));
+      IosRootfs.write(id, stdin);
+      IosRootfs.write(id, _eof);
     }
 
     int? exitCode;
-    // The console answers in bytes, and a multi-byte character can land across
-    // two reads. A chunked decoder holds the incomplete tail back until the
-    // rest of it arrives; decoding each read on its own would turn every such
-    // character into replacement marks.
-    //
-    // Reported as stderr because that is where a reader is already looking for
-    // a command that went wrong, and because that is what this is.
-    //
-    // `allowMalformed` because the tail is not always followed by the rest of
-    // it: a session hung up mid-character leaves the decoder holding an
-    // incomplete sequence, and the strict decoder answers `close()` with a
-    // `FormatException` — thrown from the one place that was about to return
-    // the command's output. Replacement marks are the right answer there.
-    final console = const Utf8Decoder(allowMalformed: true)
-        .startChunkedConversion(
-          _SinkOf<String>((text) {
-            if (text.isEmpty) return;
-            err.adopt(text);
-            onStderr?.call(text);
-          }),
-        );
     try {
       while (true) {
         // Zero, so this returns whatever is there and no more; null means the
         // session has ended and its console is drained.
-        final chunk = IosRootfs.read(id, timeout: Duration.zero);
-        if (chunk == null) break;
-        if (chunk.isNotEmpty) console.add(chunk);
+        final console = IosRootfs.read(id, timeout: Duration.zero);
+        if (console == null) break;
+        // Reported as stderr because that is where a reader is already looking
+        // for a command that went wrong, and because that is what this is.
+        if (console.isNotEmpty) {
+          err.adopt(console);
+          onStderr?.call(console);
+        }
         await out.poll();
         await err.poll();
         await Future<void>.delayed(_interval);
       }
-      console.close();
       // Before closing: a closed session has no exit code left to report.
       exitCode = IosRootfs.exitCode(id);
       await out.poll();
@@ -242,13 +225,6 @@ class IshExec extends LocalExec {
       ..writeln("exec >'$out' 2>'$err'${readsStdin ? '' : ' </dev/null'}");
     if (env != null) {
       for (final entry in env.entries) {
-        if (!_envName.hasMatch(entry.key)) {
-          throw ArgumentError.value(
-            entry.key,
-            'env',
-            '${libL10n.invalid}: ${libL10n.name}',
-          );
-        }
         buffer.writeln("export ${entry.key}='${_quoted(entry.value)}'");
       }
     }
@@ -257,8 +233,6 @@ class IshExec extends LocalExec {
 
   /// A value for the inside of single quotes, where the only thing that can end
   /// them is a quote of its own.
-  static final _envName = RegExp(r'^[A-Za-z_][A-Za-z0-9_]*$');
-
   static String _quoted(String value) => value.replaceAll("'", r"'\''");
 
   static Future<void> _remove(List<File> files) async {
@@ -271,20 +245,4 @@ class IshExec extends LocalExec {
       }
     }
   }
-}
-
-/// A [Sink] that is one callback, for feeding a chunked converter.
-///
-/// `dart:convert`'s own sinks either buffer everything until `close` or want a
-/// `StringSink`, and what the console needs is each piece as it decodes.
-class _SinkOf<T> implements Sink<T> {
-  const _SinkOf(this.onData);
-
-  final void Function(T data) onData;
-
-  @override
-  void add(T data) => onData(data);
-
-  @override
-  void close() {}
 }

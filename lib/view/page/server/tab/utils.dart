@@ -165,7 +165,6 @@ extension _Utils on _ServerPageState {
 
   void _startAvoidJitterTimer() {
     if (!Stores.setting.fullScreenJitter.fetch()) return;
-    _timer?.cancel();
     _timer = Timer.periodic(const Duration(seconds: 30), (_) {
       if (mounted) {
         _updateOffset();

@@ -2,12 +2,10 @@ import 'package:fl_lib/fl_lib.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:server_box/core/extension/context/inset.dart';
 import 'package:server_box/core/extension/context/locale.dart';
 import 'package:server_box/data/model/server/server_private_info.dart';
 import 'package:server_box/data/provider/server/all.dart';
 import 'package:server_box/view/page/setting/seq/reorder_proxy_decorator.dart';
-import 'package:server_box/view/widget/dist_icon.dart';
 
 class ServerOrderPage extends ConsumerStatefulWidget {
     /// Whether it is being shown inside the settings pane rather than pushed.
@@ -47,9 +45,7 @@ class _ServerOrderPageState extends ConsumerState<ServerOrderPage> {
       });
     });
 
-    // Not the bottom: the list takes that as padding of its own, so it can
-    // be scrolled through rather than cutting the page short of it.
-    final body = SafeArea(bottom: false, child: _buildBody(context));
+    final body = SafeArea(child: _buildBody());
     if (widget.embedded) return body;
     return Scaffold(
       appBar: CustomAppBar(title: Text(l10n.serverOrder)),
@@ -57,7 +53,7 @@ class _ServerOrderPageState extends ConsumerState<ServerOrderPage> {
     );
   }
 
-  Widget _buildBody(BuildContext context) {
+  Widget _buildBody() {
     final serverState = ref.watch(serversProvider);
     final order = _order;
 
@@ -81,7 +77,7 @@ class _ServerOrderPageState extends ConsumerState<ServerOrderPage> {
         });
         await ref.read(serversProvider.notifier).updateServerOrder(newOrder);
       },
-      padding: context.padBottom(const EdgeInsets.all(8)),
+      padding: const EdgeInsets.all(8),
       buildDefaultDragHandles: false,
       itemBuilder: (_, idx) {
         final id = order[idx];
@@ -109,15 +105,15 @@ class _ServerOrderPageState extends ConsumerState<ServerOrderPage> {
       return const SizedBox();
     }
 
+    final name = spi.name.characters.firstOrNull ?? '?';
+
     return ListTile(
       title: Text(
         spi.name,
         style: const TextStyle(fontWeight: FontWeight.w500),
       ),
       subtitle: Text(spi.oldId, style: UIs.textGrey),
-      // The distribution rather than the name's first letter, which said
-      // nothing a row already showing the name did not.
-      leading: distIcon(spi.id, size: 22),
+      leading: CircleAvatar(child: Text(name)),
       trailing: ReorderableDragStartListener(
         index: index,
         child: const Icon(Icons.drag_handle),

@@ -8,6 +8,7 @@ import 'package:server_box/data/model/server/systemd.dart';
 import 'package:server_box/data/provider/systemd.dart';
 import 'package:server_box/data/ssh/terminal_source.dart';
 import 'package:server_box/view/page/ssh/page/page.dart';
+import 'package:server_box/view/widget/page_issue.dart';
 
 final class SystemdPage extends ConsumerStatefulWidget {
   final SpiRequiredArgs args;
@@ -39,7 +40,7 @@ final class _SystemdPageState extends ConsumerState<SystemdPage> {
     return Scaffold(
       appBar: CustomAppBar(
         centerTitle: true,
-        title: TwoLineText(up: 'Systemd', down: widget.args.spi.name),
+        title: TwoLineText(up: l10n.systemd, down: widget.args.spi.name),
         actions: isDesktop
             ? [
                 Btn.icon(text: libL10n.refresh, 

@@ -29,56 +29,10 @@ abstract final class SSHConfig {
   /// reported by the open that fails on it than silently turned into
   /// something else.
   static String expandHome(String path) {
-    return _expandTilde(path);
-  }
-
-  static String expandIdentityFile(
-    String path, {
-    required String hostname,
-    required String remoteUser,
-    String? originalHost,
-    int port = 22,
-  }) {
-    final home = _homePath ?? '';
-    final localUser =
-        Platform.environment['USER'] ?? Platform.environment['USERNAME'] ?? '';
-    const escapedPercent = '\u0000SSH_PERCENT\u0000';
-    final expanded = path
-        .replaceAll('%%', escapedPercent)
-        .replaceAll('%d', home)
-        .replaceAll('%u', localUser)
-        .replaceAll('%h', hostname)
-        .replaceAll('%n', originalHost ?? hostname)
-        .replaceAll('%p', '$port')
-        .replaceAll('%r', remoteUser)
-        .replaceAll(escapedPercent, '%');
-    return _expandTilde(expanded);
-  }
-
-  static String _expandTilde(String path) {
     if (!path.startsWith('~')) return path;
-    final separator = path.indexOf(RegExp(r'[/\\]'));
-    final user = path.substring(1, separator == -1 ? path.length : separator);
-    final suffix = separator == -1 ? '' : path.substring(separator);
-    if (user.isEmpty) {
-      final home = _homePath;
-      return home == null ? path : '$home$suffix';
-    }
-
-    final localUser =
-        Platform.environment['USER'] ?? Platform.environment['USERNAME'];
-    if (user == localUser && _homePath != null) return '$_homePath$suffix';
-    if (!Platform.isWindows && RegExp(r'^[A-Za-z0-9._-]+$').hasMatch(user)) {
-      try {
-        for (final line in File('/etc/passwd').readAsLinesSync()) {
-          final fields = line.split(':');
-          if (fields.length > 5 && fields.first == user) {
-            return '${fields[5]}$suffix';
-          }
-        }
-      } catch (_) {}
-    }
-    return path;
+    final home = _homePath;
+    if (home == null) return path;
+    return path.replaceFirst('~', home);
   }
 
   /// Get possible SSH config file paths, with macOS-specific handling
@@ -105,7 +59,7 @@ abstract final class SSHConfig {
 
   /// Parse SSH config file and return a list of Spi objects
   static Future<List<Spi>> parseConfig([String? configPath]) async {
-    final (file, exists) = await configExistsAsync(configPath);
+    final (file, exists) = configExists(configPath);
     if (!exists || file == null) {
       Loggers.app.info(
         'SSH config file does not exist at path: ${configPath ?? _defaultPath}',
@@ -113,355 +67,150 @@ abstract final class SSHConfig {
       return [];
     }
 
-    // Guard against unbounded config files.
-    const maxSize = 1024 * 1024; // 1 MB
-    final stat = await file.stat();
-    if (stat.size > maxSize) {
-      Loggers.app.warning(
-        'SSH config file too large (${stat.size} bytes), refusing to read',
-      );
-      return [];
-    }
     final content = await file.readAsString();
     return _parseSSHConfig(content);
   }
 
   /// Parse SSH config content
   static List<Spi> _parseSSHConfig(String content) {
-    final blocks = <_SSHConfigBlock>[
-      _SSHConfigBlock(const ['*']),
-    ];
-    var current = blocks.first;
-
-    for (final line in content.split('\n')) {
-      final cleanLine = _stripInlineComment(line.trim());
-      if (cleanLine.isEmpty) continue;
-      final match = RegExp(r'^(\S+)\s+(.+)$').firstMatch(cleanLine);
-      if (match == null) continue;
-      final key = match.group(1)!.toLowerCase();
-      final rawValue = match.group(2)!.trim();
-      if (key == 'host') {
-        final patterns = _splitWords(rawValue);
-        if (patterns.isEmpty) continue;
-        current = _SSHConfigBlock(patterns);
-        blocks.add(current);
-      } else {
-        current.options.add((key, rawValue));
-      }
-    }
-
-    final aliases = <String>[];
-    for (final block in blocks.skip(1)) {
-      for (final pattern in block.patterns) {
-        if (_isConcreteHost(pattern) && !aliases.contains(pattern)) {
-          aliases.add(pattern);
-        }
-      }
-    }
-
     final servers = <Spi>[];
-    final jumpSpecs = <String, List<String>>{};
-    for (final alias in aliases) {
-      String? hostname;
-      String? user;
-      int? port;
-      String? proxyJump;
-      String? proxyCommand;
-      final identityFiles = <String>[];
+    final lines = content.split('\n');
 
-      for (final block in blocks) {
-        if (!_hostMatches(block.patterns, alias)) continue;
-        for (final option in block.options) {
-          final value = option.$1 == 'proxycommand'
-              ? option.$2.trim()
-              : _decodeValue(option.$2);
-          switch (option.$1) {
-            case 'hostname' when hostname == null:
-              hostname = value;
-            case 'user' when user == null:
-              user = value;
-            case 'port' when port == null:
-              final parsed = int.tryParse(value);
-              port = parsed != null && parsed >= 1 && parsed <= 65535
-                  ? parsed
-                  : 22;
-            case 'identityfile':
-              if (value.toLowerCase() != 'none' &&
-                  value.isNotEmpty &&
-                  !identityFiles.contains(value)) {
-                identityFiles.add(value);
-              }
-            case 'proxyjump' when proxyJump == null:
-              proxyJump = value;
-            case 'proxycommand' when proxyCommand == null:
-              proxyCommand = value;
-          }
-        }
-      }
+    String? currentHost;
+    String? hostname;
+    String? user;
+    int port = 22;
+    String? identityFile;
+    String? jumpHost;
+    String? proxyCommand;
 
-      if (hostname == null || hostname.isEmpty) continue;
-      final normalizedProxy = proxyCommand?.trim();
-      final resolvedProxy =
-          normalizedProxy == null ||
-              normalizedProxy.isEmpty ||
-              normalizedProxy.toLowerCase() == 'none'
-          ? null
-          : normalizedProxy;
-      final configuredJumps = _splitProxyJumps(proxyJump);
-      final jumps = resolvedProxy == null ? configuredJumps : const <String>[];
-      if (resolvedProxy != null && configuredJumps.isNotEmpty) {
-        Loggers.app.info(
-          'SSH config host $alias defines both ProxyJump and ProxyCommand; '
-          'preferring ProxyCommand.',
-        );
-      }
-      if (resolvedProxy != null && resolvedProxy.length > 4096) {
-        Loggers.app.warning(
-          'SSH config host $alias ProxyCommand too long, skipping host',
-        );
-        continue;
-      }
-
-      final spi = Spi(
-        id: ShortId.generate(),
-        name: alias,
-        ssh: SshCredential(
-          ip: hostname,
-          port: port ?? 22,
-          user: user ?? 'root',
-          keyPath: identityFiles.isEmpty ? null : identityFiles.first,
-          identityFiles: identityFiles.length > 1 ? identityFiles : null,
-          proxyCommand: resolvedProxy,
-        ),
-      );
-      final validationError = spi.validate();
-      if (validationError != null) {
-        Loggers.app.warning(
-          'Skipping invalid SSH config host $alias: $validationError',
-        );
-        continue;
-      }
-      servers.add(spi);
-      if (jumps.isNotEmpty) jumpSpecs[spi.id] = jumps;
-    }
-
-    final byName = {for (final server in servers) server.name: server};
-    final byHostname = <String, Spi>{};
-    for (final server in servers) {
-      final ip = server.ssh?.ip;
-      if (ip != null && ip.isNotEmpty) byHostname[ip] = server;
-    }
-    final derived = <String, Spi>{};
-    final invalidJumpOwners = <String>{};
-    for (var i = 0; i < servers.length; i++) {
-      final specs = jumpSpecs[servers[i].id];
-      if (specs == null) continue;
-      final jumpIds = <String>[];
-      for (final raw in specs) {
-        final spec = _parseJumpSpec(raw);
-        var base = byName[spec.host] ?? byHostname[spec.host];
-        var createdDirect = false;
-        if (base == null) {
-          if (spec.host.isEmpty || spec.host == servers[i].name) {
-            Loggers.app.warning(
-              'SSH config ProxyJump "$raw" has no usable host',
-            );
-            continue;
-          }
-          final cacheKey = [
-            'direct',
-            spec.host,
-            spec.user ?? '',
-            spec.port ?? '',
-          ].join('\u0000');
-          base = derived.putIfAbsent(
-            cacheKey,
-            () => Spi(
-              id: ShortId.generate(),
-              name: raw,
-              ssh: SshCredential(
-                ip: spec.host,
-                user: spec.user ?? 'root',
-                port: spec.port ?? 22,
-              ),
-            ),
+    void addServer() {
+      if (currentHost != null && currentHost != '*' && hostname != null) {
+        final normalizedProxyCommand = proxyCommand?.trim();
+        final resolvedProxyCommand =
+            normalizedProxyCommand == null || normalizedProxyCommand.isEmpty
+            ? null
+            : normalizedProxyCommand;
+        final resolvedJumpHost = resolvedProxyCommand != null ? null : jumpHost;
+        if (resolvedProxyCommand != null && jumpHost != null) {
+          Loggers.app.info(
+            'SSH config host $currentHost defines both ProxyJump and '
+            'ProxyCommand; preferring ProxyCommand.',
           );
-          createdDirect = true;
         }
-        if (base.id == servers[i].id) {
+        final spi = Spi(
+          id: ShortId.generate(),
+          name: currentHost,
+          ssh: SshCredential(
+            ip: hostname,
+            port: port,
+            user: user ?? 'root', // Default user is 'root'
+            // A path, not a store id — see `SshCredential.keyPath`. Putting it
+            // in `keyId` is what made every imported host with an IdentityFile
+            // fail to connect.
+            keyPath: identityFile,
+            jumpId: resolvedJumpHost,
+            proxyCommand: resolvedProxyCommand,
+          ),
+        );
+        final validationError = spi.validate();
+        if (validationError != null) {
           Loggers.app.warning(
-            'SSH config ProxyJump "$raw" points back to its own Host',
+            'Skipping invalid SSH config host $currentHost: $validationError',
           );
-          continue;
+          return;
         }
-        final resolvedBase = base;
-        if (createdDirect || (spec.user == null && spec.port == null)) {
-          jumpIds.add(resolvedBase.id);
-          continue;
-        }
-        final cacheKey =
-            '${resolvedBase.id}\u0000${spec.user ?? ''}\u0000${spec.port ?? ''}';
-        final override = derived.putIfAbsent(cacheKey, () {
-          final baseSsh = resolvedBase.ssh!;
-          return resolvedBase.copyWith(
-            id: ShortId.generate(),
-            name:
-                '${resolvedBase.name} (${spec.user ?? baseSsh.user}@${spec.port ?? baseSsh.port})',
-            ssh: baseSsh.copyWith(
-              user: spec.user ?? baseSsh.user,
-              port: spec.port ?? baseSsh.port,
-            ),
-          );
-        });
-        jumpIds.add(override.id);
-      }
-      if (jumpIds.isNotEmpty) {
-        final old = servers[i];
-        servers[i] = old.copyWith(
-          ssh: old.ssh!.copyWith(jumpId: jumpIds.first, jumpIds: jumpIds),
-        );
-      } else {
-        invalidJumpOwners.add(servers[i].id);
+        servers.add(spi);
       }
     }
-    servers.removeWhere((server) => invalidJumpOwners.contains(server.id));
-    servers.addAll(derived.values);
-    final validIds = servers.map((server) => server.id).toSet();
-    for (var i = 0; i < servers.length; i++) {
-      final ssh = servers[i].ssh;
-      if (ssh == null || ssh.resolvedJumpIds.isEmpty) continue;
-      final filtered = ssh.resolvedJumpIds.where(validIds.contains).toList();
-      if (filtered.length == ssh.resolvedJumpIds.length) continue;
-      servers[i] = servers[i].copyWith(
-        ssh: ssh.copyWith(
-          jumpId: filtered.firstOrNull,
-          jumpIds: filtered.isEmpty ? null : filtered,
-        ),
-      );
+
+    for (final line in lines) {
+      final trimmed = line.trim();
+      if (trimmed.isEmpty || trimmed.startsWith('#')) continue;
+
+      // Handle inline comments
+      final cleanLine = _stripInlineComment(trimmed);
+      if (cleanLine.isEmpty) continue;
+
+      final parts = cleanLine.split(RegExp(r'\s+'));
+      if (parts.length < 2) continue;
+
+      final key = parts[0].toLowerCase();
+      var value = parts.sublist(1).join(' ');
+
+      // Remove quotes from values
+      if ((value.startsWith('"') && value.endsWith('"')) ||
+          (value.startsWith("'") && value.endsWith("'"))) {
+        value = value.substring(1, value.length - 1);
+      }
+
+      switch (key) {
+        case 'host':
+          // Save previous host config
+          addServer();
+
+          // Reset for new host
+          final originalValue = parts.sublist(1).join(' ');
+          final isQuoted =
+              (originalValue.startsWith('"') && originalValue.endsWith('"')) ||
+              (originalValue.startsWith("'") && originalValue.endsWith("'"));
+
+          currentHost = value;
+          // Skip hosts with multiple patterns (contains spaces but not quoted)
+          if (currentHost.contains(' ') && !isQuoted) {
+            currentHost = null; // Mark as invalid to skip
+          }
+          hostname = null;
+          user = null;
+          port = 22;
+          identityFile = null;
+          jumpHost = null;
+          proxyCommand = null;
+          break;
+
+        case 'hostname':
+          hostname = value;
+          break;
+
+        case 'user':
+          user = value;
+          break;
+
+        case 'port':
+          port = int.tryParse(value) ?? 22;
+          break;
+
+        case 'identityfile':
+          // Kept verbatim, `~` and all: it is resolved when the connection is
+          // made, on the machine the file is on
+          identityFile = value;
+          break;
+
+        case 'proxyjump':
+          jumpHost = _extractJumpHost(value);
+          break;
+        case 'proxycommand':
+          proxyCommand = value;
+          break;
+      }
     }
+
+    // Add the last server
+    addServer();
+
     return servers;
   }
 
-  static List<String> _splitWords(String value) {
-    final words = <String>[];
-    final current = StringBuffer();
-    String? quote;
-    var escaped = false;
-    var started = false;
-    for (final rune in value.runes) {
-      final char = String.fromCharCode(rune);
-      if (escaped) {
-        current.write(char);
-        escaped = false;
-        started = true;
-      } else if (char == r'\') {
-        escaped = true;
-        started = true;
-      } else if (quote != null) {
-        if (char == quote) {
-          quote = null;
-        } else {
-          current.write(char);
-        }
-        started = true;
-      } else if (char == '"' || char == "'") {
-        quote = char;
-        started = true;
-      } else if (RegExp(r'\s').hasMatch(char)) {
-        if (started) {
-          words.add(current.toString());
-          current.clear();
-          started = false;
-        }
-      } else {
-        current.write(char);
-        started = true;
-      }
+  /// Extract jump host from ProxyJump or ProxyCommand
+  static String? _extractJumpHost(String value) {
+    if (value.isEmpty) return null;
+    // For ProxyJump, the format is usually: user@host:port
+    // For ProxyCommand, it's more complex and might need custom parsing
+    if (value.contains('@')) {
+      final parts = value.split(' ');
+      return parts.isNotEmpty ? parts[0] : null;
     }
-    if (escaped) current.write(r'\');
-    if (started) words.add(current.toString());
-    return words;
-  }
-
-  static String _decodeValue(String value) => _splitWords(value).join(' ');
-
-  static bool _isConcreteHost(String pattern) {
-    if (pattern.startsWith('!')) return false;
-    return !pattern.contains(RegExp(r'[?*\[]'));
-  }
-
-  static bool _hostMatches(List<String> patterns, String host) {
-    var matched = false;
-    for (var pattern in patterns) {
-      final negated = pattern.startsWith('!');
-      if (negated) pattern = pattern.substring(1);
-      if (!_globMatches(pattern, host)) continue;
-      if (negated) return false;
-      matched = true;
-    }
-    return matched;
-  }
-
-  static bool _globMatches(String pattern, String value) {
-    final regex = StringBuffer('^');
-    for (final rune in pattern.runes) {
-      final char = String.fromCharCode(rune);
-      switch (char) {
-        case '*':
-          regex.write('.*');
-        case '?':
-          regex.write('.');
-        default:
-          regex.write(RegExp.escape(char));
-      }
-    }
-    regex.write(r'$');
-    return RegExp(regex.toString(), caseSensitive: false).hasMatch(value);
-  }
-
-  static List<String> _splitProxyJumps(String? value) {
-    if (value == null ||
-        value.trim().isEmpty ||
-        value.toLowerCase() == 'none') {
-      return const [];
-    }
-    return value
-        .split(',')
-        .map((e) => e.trim())
-        .where((e) => e.isNotEmpty)
-        .toList();
-  }
-
-  static ({String host, String? user, int? port}) _parseJumpSpec(String value) {
-    var hostPort = value.trim();
-    String? user;
-    final at = hostPort.lastIndexOf('@');
-    if (at >= 0) {
-      user = hostPort.substring(0, at).selfNotEmptyOrNull;
-      hostPort = hostPort.substring(at + 1);
-    }
-    String host = hostPort;
-    int? port;
-    if (hostPort.startsWith('[')) {
-      final end = hostPort.indexOf(']');
-      if (end > 0) {
-        host = hostPort.substring(1, end);
-        if (end + 1 < hostPort.length && hostPort[end + 1] == ':') {
-          port = int.tryParse(hostPort.substring(end + 2));
-        }
-      }
-    } else {
-      final colon = hostPort.lastIndexOf(':');
-      if (colon > 0 && hostPort.indexOf(':') == colon) {
-        final parsed = int.tryParse(hostPort.substring(colon + 1));
-        if (parsed != null) {
-          host = hostPort.substring(0, colon);
-          port = parsed;
-        }
-      }
-    }
-    if (port != null && (port < 1 || port > 65535)) port = null;
-    return (host: host, user: user, port: port);
+    return null;
   }
 
   static String _stripInlineComment(String line) {
@@ -533,32 +282,4 @@ abstract final class SSHConfig {
     dprint('SSH config file not found in any of the expected locations');
     return (null, false);
   }
-
-  /// Async variant of [configExists] that avoids blocking the UI thread.
-  static Future<(File?, bool)> configExistsAsync([String? configPath]) async {
-    if (configPath != null) {
-      final homePath = _homePath;
-      if (homePath == null) {
-        Loggers.app.warning(
-          'Cannot determine home directory for SSH config parsing.',
-        );
-        return (null, false);
-      }
-      final expandedPath = configPath.replaceFirst('~', homePath);
-      final file = File(expandedPath);
-      return (file, await file.exists());
-    }
-    for (final path in _possibleConfigPaths) {
-      final file = File(path);
-      if (await file.exists()) return (file, true);
-    }
-    return (null, false);
-  }
-}
-
-final class _SSHConfigBlock {
-  _SSHConfigBlock(this.patterns);
-
-  final List<String> patterns;
-  final List<(String, String)> options = [];
 }

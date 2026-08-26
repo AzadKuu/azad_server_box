@@ -1,5 +1,3 @@
-import 'package:server_box/data/res/url.dart';
-
 abstract final class GithubIds {
   // Thanks
   // If you want to change your Github ID, please open an issue.
@@ -30,8 +28,7 @@ abstract final class GithubIds {
     'yuguorui',
     'moduvoice',
     'LittleWool',
-    'Sandarr95',
-    'YangYuS8'
+    'Sandarr95'
   };
 
   static const participants = <GhId>{
@@ -194,28 +191,14 @@ abstract final class GithubIds {
     'PeterSpiegler',
     '13584452567',
     'TimeRainStarSky',
-    'ArindamBhatta',
-    'LiuShu3',
-    'rayangl'
+    'ArindamBhatta'
   };
 }
 
 typedef GhId = String;
 
 extension GhIdX on GhId {
-  /// What they contributed, rather than who they are: their pull requests
-  /// against this repository. GitHub serves this path directly.
-  String get prsUrl => '${Urls.thisRepo}/pulls/$this';
+  String get url => 'https://github.com/$this';
 
-  /// Every issue here they took part in — opened, commented on, were assigned
-  /// or mentioned in. `involves:` rather than the `/issues/$this` path, which
-  /// redirects to `created_by` and so shows nothing at all for someone who only
-  /// ever commented. No `is:open` either: most of what they took part in is
-  /// closed by now, and that is the part worth reading.
-  String get issuesUrl =>
-      '${Urls.thisRepo}/issues?q=is%3Aissue+involves%3A$this';
-
-  String get prsMarkdownLink => '[$this]($prsUrl)';
-
-  String get issuesMarkdownLink => '[$this]($issuesUrl)';
+  String get markdownLink => '[$this]($url)';
 }

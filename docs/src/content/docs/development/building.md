@@ -3,20 +3,14 @@ title: Building
 description: Build instructions for different platforms
 ---
 
-The project uses `fl_build` to build the supported platforms.
+Server Box uses a custom build system (`fl_build`) for cross-platform builds.
 
 ## Prerequisites
 
 - Flutter SDK (stable channel)
-- Platform toolchains (Xcode for iOS, Android Studio for Android)
-- Rust toolchain (required: the `crates/sbm_ffi` Rust crate is built into the app
-  by the Dart build hook through `flutter_rust_bridge_hooks` and native assets)
-
-Initialize the bundled Git submodules before fetching Dart dependencies:
-
-```bash
-git submodule update --init --recursive
-```
+- Platform-specific tools (Xcode for iOS, Android Studio for Android)
+- Rust toolchain (required: the status parser is a Rust crate built into the app
+  via flutter_rust_bridge/cargokit on every platform)
 
 ## Development Build
 
@@ -28,7 +22,7 @@ flutter run
 flutter run -d <device-id>
 ```
 
-## Release Build
+## Production Build
 
 The project uses `fl_build` for building:
 
@@ -98,7 +92,7 @@ cd monitor
 # Backend
 cargo build --release
 
-# Panel, served by the agent itself when frontend/dist exists
+# Panel — served by the agent itself when frontend/dist exists
 cd frontend && npm install && npm run build
 ```
 
@@ -111,14 +105,15 @@ app's own releases. Docker is in `monitor/Dockerfile`.
 
 ## Pre/Post Build
 
-`fl_build` regenerates `lib/data/res/build_data.dart` on every build, deriving
-the build number from the Git history, and writes the matching version into the
-Xcode configs. The `fl_build:` section of `pubspec.yaml` is what names the app
-for it.
+The `make.dart` script handles:
+
+- Metadata generation
+- Version string updates
+- Platform-specific configurations
 
 ## Troubleshooting
 
-### Clean build
+### Clean Build
 
 ```bash
 flutter clean
@@ -126,9 +121,9 @@ dart run build_runner build --delete-conflicting-outputs
 flutter pub get
 ```
 
-### Dependency version mismatch
+### Version Mismatch
 
-If dependency resolution reports a version conflict, run:
+Ensure all dependencies are compatible:
 ```bash
 flutter pub upgrade
 ```

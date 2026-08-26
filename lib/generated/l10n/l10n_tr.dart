@@ -26,11 +26,17 @@ class AppLocalizationsTr extends AppLocalizations {
 
   @override
   String get askAiEndpointTip =>
-      'Alan adı veya tam URL. Yol, seçtiğin protokole göre tamamlanır.';
+      'Bir servis temel URL\'si ya da tam bir Chat Completions veya Responses uç noktası gir. ServerBox yolu seçilen protokole göre tamamlar.';
 
   @override
   String get askAiProtocolTip =>
-      'Otomatik önce Responses, sonra Chat Completions dener.';
+      'Otomatik, resmî OpenAI uç noktası için Responses\'ı, uyumlu sağlayıcılar için Chat Completions\'ı kullanır.';
+
+  @override
+  String get askAiProtocolChatCompletions => 'Chat Completions';
+
+  @override
+  String get askAiProtocolResponses => 'Responses';
 
   @override
   String get askAiCommandInserted => 'Komut terminale eklendi';
@@ -51,15 +57,25 @@ class AppLocalizationsTr extends AppLocalizations {
   String get askAiNoResponse => 'Yanıt yok';
 
   @override
+  String get askAiAgentTitle => 'SSH Agent';
+
+  @override
   String get askAiAgentWelcome => 'Bu sunucuda ne yapalım?';
+
+  @override
+  String get askAiAgentWelcomeTip =>
+      'Bir teşhis ya da görev iste. Agent her seferinde tek bir komut önerir ve değişiklik yapmadan önce onayını bekler.';
 
   @override
   String get askAiAgentPromptHint =>
       'Agent\'tan bir şeyi incelemesini veya düzeltmesini iste...';
 
   @override
+  String get askAiAgentSend => 'Agent\'a gönder';
+
+  @override
   String get askAiAnalyzeSelectionPrompt =>
-      'Seçili terminal çıktısını incele ve ne olduğunu açıkla';
+      'Seçilen terminal içeriğini incele, ne olduğunu açıkla ve işlem gerekiyorsa en güvenli sonraki adımı öner.';
 
   @override
   String get askAiTerminalContext => 'Terminal bağlamı';
@@ -72,7 +88,7 @@ class AppLocalizationsTr extends AppLocalizations {
 
   @override
   String get askAiReviewBeforeContinuing =>
-      'Önce mevcut öneriyi incele ya da reddet';
+      'Önce önerilen komutu incele ya da reddet';
 
   @override
   String get askAiApproveRun => 'Onayla ve çalıştır';
@@ -104,7 +120,7 @@ class AppLocalizationsTr extends AppLocalizations {
 
   @override
   String get askAiHighRiskConfirmBody =>
-      'Bu komut geri alması zor değişiklikler yapabilir. Dikkatle kontrol et.';
+      'Bu komut veri silebilir, servisleri durdurabilir ya da geri alınması zor olabilir. Çalıştırmadan önce dikkatle incele.';
 
   @override
   String get askAiNoCommandOutput => 'Komut çıktı üretmeden tamamlandı.';
@@ -122,18 +138,18 @@ class AppLocalizationsTr extends AppLocalizations {
 
   @override
   String get askAiAutoRunSafeCommandsTip =>
-      'Yalnızca hem model hem yerel kontrol salt okunur derse çalışır';
+      'Yalnızca hem model hem de yerel güvenlik denetimleri komutu salt okunur olarak sınıflandırdığında otomatik çalıştırılır. Sistemi değiştiren komutlar yine incelenmelidir.';
 
   @override
   String get askAiSendOnEnter => 'Enter gönderir';
 
   @override
   String get askAiSendOnEnterTip =>
-      'Enter gönderir, Shift+Enter yeni satır. Kapalı: Enter yeni satır, Cmd/Ctrl+Enter gönderir.';
+      'Enter mesajı gönderir, Shift+Enter yeni satır açar. Kapalıyken yer değiştirir: Enter yeni satır açar, Cmd/Ctrl+Enter gönderir.';
 
   @override
   String get askAiApiKeyOptional =>
-      'Yerel ya da kimlik doğrulaması gerekmiyorsa boş bırak';
+      'Yerel veya kimlik doğrulaması olmayan uç noktalar için isteğe bağlı';
 
   @override
   String get askAiHistory => 'Konuşma geçmişi';
@@ -142,13 +158,13 @@ class AppLocalizationsTr extends AppLocalizations {
   String get askAiNewConversation => 'Yeni konuşma';
 
   @override
-  String get askAiNoHistory => 'Henüz kayıtlı konuşma yok';
+  String get askAiNoHistory => 'Bu sunucu için kayıtlı konuşma yok';
 
   @override
   String get askAiNoHistoryMessages => 'Henüz mesaj yok';
 
   @override
-  String get askAiUntitledConversation => 'Adsız';
+  String get askAiUntitledConversation => 'Yeni konuşma';
 
   @override
   String get askAiRenameConversation => 'Konuşmayı yeniden adlandır';
@@ -157,7 +173,8 @@ class AppLocalizationsTr extends AppLocalizations {
   String get askAiDeleteConversationTitle => 'Bu konuşma silinsin mi?';
 
   @override
-  String get askAiDeleteConversationTip => 'Bu cihazdan siler. Geri alınamaz.';
+  String get askAiDeleteConversationTip =>
+      'Konuşma bu cihazdan kaldırılır ve geri alınamaz.';
 
   @override
   String get askAiClearHistoryTitle =>
@@ -165,17 +182,21 @@ class AppLocalizationsTr extends AppLocalizations {
 
   @override
   String get askAiClearHistoryTip =>
-      'Bu sunucu için kayıtlı tüm Agent konuşmaları silinecek.';
+      'Bu sunucu için kaydedilmiş tüm Agent konuşmaları bu cihazdan kaldırılır.';
 
   @override
-  String get askAiRestoredReview => 'Bu komut geçmişten geldi. Yeniden incele';
+  String get askAiRestoredReview =>
+      'Geçmişten geri yüklendi. Çalıştırmadan önce yeniden incele; kendiliğinden asla çalışmaz.';
+
+  @override
+  String get agentTitle => 'Agent';
 
   @override
   String get agentWelcome => 'Sunucularında ne yapalım?';
 
   @override
   String get agentWelcomeTip =>
-      'Agent bir sorunu inceleyebilir ya da bir işi yapabilir';
+      'Bir teşhis ya da işletim görevi iste. Agent, ServerBox\'ın anlık durumunu kullanır ve her seferinde incelenecek tek bir eylem önerir.';
 
   @override
   String get agentPromptHint =>
@@ -199,6 +220,9 @@ class AppLocalizationsTr extends AppLocalizations {
 
   @override
   String get agentToolWriteFile => 'Dosya yaz';
+
+  @override
+  String get agentToolServerBox => 'ServerBox';
 
   @override
   String get agentToolFailed => 'Araç çalıştırılamadı.';
@@ -225,7 +249,7 @@ class AppLocalizationsTr extends AppLocalizations {
 
   @override
   String get agentSshConnectTip =>
-      'Agent bir SSH bağlantısı istiyor. Parolayı buraya gir';
+      'Agent bir SSH bağlantısı açmak istiyor. Parolayı buraya yaz, konuşmaya yazma; orada saklanır ve modele gönderilir.';
 
   @override
   String get agentAdHocSessions => 'Geçici bağlantılar';
@@ -235,13 +259,17 @@ class AppLocalizationsTr extends AppLocalizations {
 
   @override
   String get agentSaveServerTip =>
-      'Bu host ve girdiğin parola bu cihazda saklanır';
+      'Bu sunucu ve girdiğin parola bu cihazda saklanacak.';
 
   @override
   String get agentMonitorOptional => 'monitor aracısı (isteğe bağlı)';
 
   @override
-  String get authFailTip => 'Kimlik doğrulama başarısız. Bilgileri kontrol et';
+  String get atLeastOneTab => 'En az bir sekme seçilmelidir';
+
+  @override
+  String get authFailTip =>
+      'Kimlik doğrulama başarısız oldu, lütfen kimlik bilgilerinin doğru olup olmadığını kontrol edin';
 
   @override
   String get autoBackupConflict =>
@@ -282,75 +310,12 @@ class AppLocalizationsTr extends AppLocalizations {
   String get backupPasswordWrong => 'Yanlış yedekleme parolası';
 
   @override
-  String get connectAll => 'Tümünü bağla';
-
-  @override
-  String get disconnectAll => 'Tümünün bağlantısını kes';
-
-  @override
-  String get distIcon => 'Dağıtım işaretleri';
-
-  @override
-  String get distIconConsent =>
-      'Yalnızca bir sunucunun çalıştırıyor olabileceği dağıtımı belirtmek için.';
-
-  @override
-  String get distIconIntroLegal =>
-      'Bir işaret yalnızca bu cihazın uzak sistemden okuduğunu belirtir; bu bilgi yanlış veya güncel olmayabilir ve bir türevi, yeniden derlemeyi ya da belirli bir sürümü göstermez. Belirlenemediğinde sade bir simge çizilir.\n\nHer işaret ilgili sahibinin ticari markasıdır ve burada yalnızca işaret ettiği sistemi belirtmek için kullanılır.';
-
-  @override
-  String get distIconTip =>
-      'Her sunucunun yanında, üzerinde çalıştığı görünen sistemin küçük bir işaretini göster';
-
-  @override
-  String get distNameMap => 'Ad eşleştirme';
-
-  @override
-  String get distNameMapTip =>
-      'Yalnızca işaretleri barındırdığınız yerde dosyası başka adla duran bir dağıtım için. Anahtar, bu uygulamanın kullandığı ad; değer ise indirilecek ad. Eksik bir işaret olmadıkça boş bırakın.';
-
-  @override
-  String get logoUrl => 'Logo adresi';
-
-  @override
-  String get logoUrlTip =>
-      'Bir sunucunun kendi sayfasının üstündeki büyük görsel, kendi renkleriyle.';
-
-  @override
-  String get markUrl => 'İşaret adresi';
-
-  @override
-  String get markUrlTip =>
-      'Listelerde sunucu adının yanındaki küçük işaret. Boşsa hiçbiri çizilmez.\n\nLogoyla aynı görsel değil';
-
-  @override
-  String get navTabMenuTip =>
-      'İçindeki her şeyi tek seferde bağlamak veya bağlantısını kesmek için bir sekmeye uzun basın ya da sağ tıklayın.';
-
-  @override
-  String nTags(Object count) {
-    return '$count etiket';
-  }
-
-  @override
   String get remoteBackupPasswordRequired =>
       'Uzak yedeklemeler için boş olmayan bir yedekleme parolası gerekir';
 
   @override
   String get monitorHttpsRequired =>
-      'Uzak monitor ajanı HTTPS ister, HTTP’ye izin verilmediyse.';
-
-  @override
-  String get monitorAllowInsecureHttp => 'HTTP’ye izin ver';
-
-  @override
-  String get monitorAllowInsecureHttpTip =>
-      'Yalnızca taşımayı kendisi şifreleyen güvenilir özel ağlarda, örneğin Tailscale';
-
-  @override
-  String monitorHttpTip(String url) {
-    return 'Bu sunucunun durumunu SSH ile komut çalıştırmak yerine bir **monitor** aracısının HTTP API\'sinden okur.\n\nAracının önce sunucuya kurulması gerekir; eğilimler, saat uygulaması ve ana ekran bileşenleri buna bağlıdır.\n\n[monitor aracısı nasıl kurulur]($url)';
-  }
+      'Uzak izleme aracıları HTTPS gerektirir; HTTP\'ye yalnızca geri döngü adreslerinde izin verilir.';
 
   @override
   String get backupTip =>
@@ -394,10 +359,6 @@ class AppLocalizationsTr extends AppLocalizations {
   @override
   String get bgRunTip =>
       'Bu anahtar yalnızca programın arka planda çalışmayı deneyeceği anlamına gelir. Arka planda çalışıp çalışamayacağı, iznin etkinleştirilip etkinleştirilmediğine bağlıdır. AOSP tabanlı Android ROM\'lar için lütfen bu uygulamada \"Pil Optimizasyonu\"nu devre dışı bırakın. MIUI / HyperOS için lütfen güç tasarrufu politikasını \"Sınırsız\" olarak değiştirin.';
-
-  @override
-  String get bgRunNeedsNotification =>
-      'Arka planda çalışmak kalıcı bir bildirim gerektirir ve bu uygulamanın bildirim izni yok. İzin vermek için dokunun.';
 
   @override
   String get clearAllStatsContent =>
@@ -489,14 +450,6 @@ class AppLocalizationsTr extends AppLocalizations {
   String get discoverySettings => 'Keşif Ayarları';
 
   @override
-  String get distro => 'Dağıtım';
-
-  @override
-  String distroSwitchTip(Object from, Object to) {
-    return '$from yerine $to kurulur. $from içine kurulmuş her şey silinir ve yerine $to indirilip açılır.';
-  }
-
-  @override
   String get diskHealth => 'Disk sağlığı';
 
   @override
@@ -534,7 +487,7 @@ class AppLocalizationsTr extends AppLocalizations {
       'Bu seçenek yalnızca özelliği etkinleştirir, gerçekten etkinleşip etkinleşmeyeceği cihazın genişliğine bağlıdır';
 
   @override
-  String get editVirtKeys => 'Sanal tuşlar';
+  String get editVirtKeys => 'Sanal tuşları düzenle';
 
   @override
   String get editorHighlightTip =>
@@ -569,10 +522,11 @@ class AppLocalizationsTr extends AppLocalizations {
   String get fileDirGone => 'Bu klasör artık burada değil';
 
   @override
-  String get fileDirGoneTip => 'Silinmiş ya da adı değişmiş';
+  String get fileDirGoneTip =>
+      'Silinmiş veya adı değiştirilmiş. Geri dönmek, ana klasöre gitmek ya da başka bir yere geçmek için alttaki çubuğu kullanın.';
 
   @override
-  String get fullScreen => 'Tam ekran';
+  String get fullScreen => 'Tam ekran modu';
 
   @override
   String get fullScreenJitter => 'Tam ekran titreşim';
@@ -583,6 +537,9 @@ class AppLocalizationsTr extends AppLocalizations {
   @override
   String get fullScreenTip =>
       'Cihaz yatay moda döndürüldüğünde tam ekran modu etkinleştirilsin mi? Bu seçenek yalnızca sunucu sekmesi için geçerlidir.';
+
+  @override
+  String get githubGist => 'GitHub Gist';
 
   @override
   String get githubGistIdOptional => 'Gist kimliği (isteğe bağlı)';
@@ -604,6 +561,9 @@ class AppLocalizationsTr extends AppLocalizations {
       'Ana sayfada görünecek sekmeleri ve sıralarını özelleştirin';
 
   @override
+  String get homeWidgetUrlConfig => 'Ana ekran bileşeni URL\'sini yapılandır';
+
+  @override
   String get ignoreCert => 'Sertifikayı yok say';
 
   @override
@@ -611,68 +571,29 @@ class AppLocalizationsTr extends AppLocalizations {
 
   @override
   String get macDmgBody =>
-      'App Store bu uygulamanın kum havuzunda çalışmasını ister ve kum havuzu terminal açamaz. DMG sürümü açabilir.\n\nApp Store sürümü ileride güncellenmeyebilir.';
+      'App Store bu uygulamanın kum havuzunda çalışmasını zorunlu kılıyor ve kum havuzundaki bir süreç sözde terminal açamıyor. Bu yüzden App Store sürümünde bu Mac için terminal yok; burada snippet ya da agent komutu da çalıştıramaz. DMG sürümü aynı uygulamanın kum havuzu olmadan imzalanmış hâli ve ikisini de yapabiliyor.\n\nApp Store sürümü çalışmaya ve güncellenmeye devam ediyor. İleride güncellenmesi sona erebilir.\n\nİki sürüm verilerini farklı yerlerde tutar. DMG sürümü ilk açılışında bunları kopyalar; sunucular, anahtarlar ve geçmiş sizinle gelir. Bu olmazsa bunu söyler, o zaman bir yedek dosyasıyla taşıyabilirsiniz (ayarlardaki Yedek).';
 
   @override
-  String get macDmgImportDenied => 'macOS önceki sürümün verisini okutmadı';
+  String get macDmgImportDenied =>
+      'macOS, daha önce kurulu sürümün verilerinin okunmasına izin vermedi. Tam Disk Erişimi verip uygulamayı yeniden açın ya da orada bir yedek dışa aktarıp burada geri yükleyin.';
 
   @override
-  String get macDmgImported => 'Önceki sürümün verisi içe aktarıldı';
+  String get macDmgImported =>
+      'Daha önce kurulu sürümün verileri içe aktarıldı.';
 
   @override
-  String get macDmgImportFailed => 'Önceki sürümün verisi okunamadı';
+  String get macDmgImportFailed =>
+      'Daha önce kurulu sürümün verileri okunamadı. Orada bir yedek dışa aktarıp burada geri yükleyin.';
 
   @override
   String get macDmgTip =>
-      'Yerel terminal ve snippet’leri yerelde çalıştırma (DMG sürümü)';
+      'Bu Mac\'te terminal ve burada snippet çalıştırma yalnızca DMG sürümünde var.';
 
   @override
   String get macDmgTitle => 'DMG sürümü';
 
   @override
   String get showHiddenFiles => 'Gizli dosyaları göster';
-
-  @override
-  String get sshKeyAlgorithm => 'Algoritma';
-
-  @override
-  String get sshKeyComment => 'Açıklama';
-
-  @override
-  String get sshKeyGenerate => 'Anahtar çifti oluştur';
-
-  @override
-  String get sshKeyGenerating => 'Oluşturuluyor…';
-
-  @override
-  String sshKeyLockedFmt(String name) {
-    return '[$name] özel anahtarının kilidi açılmadı.';
-  }
-
-  @override
-  String get sshKeyPassphraseTip =>
-      'İsteğe bağlı. Parola belirlenen anahtar şifreli saklanır ve bir bağlantı anahtarı ilk kez kullandığında parola sorulur.';
-
-  @override
-  String get sshKeyPassphraseWrong => 'Parola yanlış.';
-
-  @override
-  String get sshKeyPublicKey => 'Genel anahtar';
-
-  @override
-  String get sshKeyPublicKeyTip =>
-      'Bu satırı sunucudaki ~/.ssh/authorized_keys dosyasına ekleyin.';
-
-  @override
-  String get sshKeyRecommended => 'Önerilen';
-
-  @override
-  String sshKeyUnlockTip(String name) {
-    return '[$name] özel anahtarının parolasını girin.';
-  }
-
-  @override
-  String get ungrouped => 'Gruplandırılmamış';
 
   @override
   String get unused => 'Kullanılmıyor';
@@ -693,7 +614,8 @@ class AppLocalizationsTr extends AppLocalizations {
   String get unusedTaggedImages => 'Kullanılmayan etiketliler';
 
   @override
-  String get pruneDanglingImagesTip => 'Yalnızca boşta kalan imajları siler.';
+  String get pruneDanglingImagesTip =>
+      'Yalnızca askıdaki görüntüleri (etiketsiz katmanları) kaldırır.';
 
   @override
   String get pruneUnusedImagesTip =>
@@ -744,17 +666,6 @@ class AppLocalizationsTr extends AppLocalizations {
       'Atlama sunucusu ile ProxyCommand birlikte kullanılamaz.';
 
   @override
-  String get noConnectionMethod =>
-      'SSH, monitor aracısı veya ikisini birden yapılandırın';
-
-  @override
-  String get preferredTransport => 'Önce denenecek';
-
-  @override
-  String get preferredTransportTip =>
-      'Durumun nereden okunacağı ve bir komutun önce hangi bağlantıyı açacağı. Diğeri kullanılabilir kalır.';
-
-  @override
   String get keepForeground => 'Uygulamayı ön planda tut!';
 
   @override
@@ -781,13 +692,6 @@ class AppLocalizationsTr extends AppLocalizations {
       'Etkinleştirildiğinde giriş normal IME üzerinden yapılır; bu da bazı sistemlerde terminalde güvenli klavye istemlerini önleyebilir.';
 
   @override
-  String get linuxShellTip =>
-      'Terminalin hangi kabukla açılacağı. Boş bırakınca /bin/sh’a döner.';
-
-  @override
-  String get linuxNetTip => 'DNS sunucuları. Boş bırakınca varsayılana döner';
-
-  @override
   String madeWithLove(Object myGithub) {
     return '$myGithub tarafından ❤️ ile yapıldı';
   }
@@ -802,9 +706,6 @@ class AppLocalizationsTr extends AppLocalizations {
   String mismatchSystem(Object system) {
     return 'Eşleşmeyen sistem: $system';
   }
-
-  @override
-  String get mirror => 'Yansı';
 
   @override
   String get needRestart => 'Uygulamanın yeniden başlatılması gerekiyor';
@@ -827,6 +728,9 @@ class AppLocalizationsTr extends AppLocalizations {
 
   @override
   String get noPromptAgain => 'Tekrar sorma';
+
+  @override
+  String get onlyOneLine => 'Yalnızca tek satır olarak göster (kaydırılabilir)';
 
   @override
   String get openLastPath => 'Son yolu aç';
@@ -854,100 +758,8 @@ class AppLocalizationsTr extends AppLocalizations {
   }
 
   @override
-  String get bmcPowerOnAction => 'Aç';
-
-  @override
-  String get bmcShutdown => 'Kapat';
-
-  @override
-  String get bmcForceOff => 'Zorla kapat';
-
-  @override
-  String get restart => 'Yeniden başlat';
-
-  @override
-  String get bmcPowerCycle => 'Güç döngüsü';
-
-  @override
-  String bmcPowerConfirm(String server, String resetType) {
-    return '$server için gönderilsin mi? Servise \"$resetType\" istenecek';
-  }
-
-  @override
-  String get bmcPowerDone => 'Güç durumu değişti';
-
-  @override
-  String get bmcPowerAccepted =>
-      'Kabul edildi ama güç durumu değişmedi. Nazik işlem işletim sistemine bağlı';
-
-  @override
-  String get bmcPowerUnsupported =>
-      'Bu hizmet o eylem için hiçbir şeye izin vermiyor';
-
-  @override
-  String get bmcUnauthorized => 'BMC hesabı reddetti';
-
-  @override
-  String get bmcAccountMissing => 'Bu BMC için hesap ayarlanmamış';
-
-  @override
-  String get bmcPowerOn => 'Açık';
-
-  @override
-  String get bmcPowerOff => 'Kapalı';
-
-  @override
-  String get bmcCertRejected =>
-      'Sertifika reddedildi — sunucu ayarlarından inceleyin';
-
-  @override
-  String get bmcNotAService => 'Bu adreste Redfish hizmeti yok';
-
-  @override
-  String get bmcNoSystem => 'Hizmet herhangi bir sistem bildirmiyor';
-
-  @override
-  String get bmcSensorsTruncated => 'Yalnızca ilk sensörler gösteriliyor';
-
-  @override
-  String get bmcMultipleSystems => 'Yalnızca ilk sistem gösteriliyor';
-
-  @override
-  String get bmcTip =>
-      'BMC, anakart üzerindeki ayrı bir bilgisayardır ve ana makinenin işletim sistemine ulaşılamadığında da erişilebilir. Burada yapılandırıldığında, sunucu kapalıyken ya da takılıyken güç durumunu ve donanım sensörlerini bildirir. Redfish gerektirir; yaklaşık 2016\'dan sonraki kurumsal donanımların çoğunda bulunur.';
-
-  @override
-  String get bmcCert => 'Sertifika';
-
-  @override
-  String get bmcCertPinned => 'İncelendi ve sabitlendi';
-
-  @override
-  String get bmcCertUnreviewed =>
-      'Henüz incelenmedi — sertifikayı görmek için dokun';
-
-  @override
-  String get bmcCertReview =>
-      'Kendinden imzalı bir sertifika. Kabul etmeden önce karşılaştır. Sonrasında yalnızca bu güvenilir.';
-
-  @override
-  String get bmcCertChanged => 'Sertifika eşleşmiyor. Kontrol et.';
-
-  @override
-  String get bmcCertExpired => 'Süresi dolmuş.';
-
-  @override
-  String bmcCertWas(String fingerprint) {
-    return 'Daha önce kabul edilen: $fingerprint';
-  }
-
-  @override
-  String get bmcAddrInvalid =>
-      'BMC adresi bir URL olmalı, örneğin https://10.0.0.9';
-
-  @override
   String get proxyCommandSandboxed =>
-      'Bu sürüm kum havuzunda çalışır: komut boş bir home alır, seninkini değil, bu yüzden ~/.ssh okuyan her şey başarısız olur. DMG sürümünde bu kısıtlama yok.';
+      'Bu sürüm bir kum havuzunda çalışır: komut sizinki yerine boş bir ev dizini görür, bu yüzden ~/.ssh okuyan her şey (ssh -W, cloudflared) başarısız olur ve çoğu zaman yanlış sunucuyu adlandıran bir zaman aşımı olarak görünür. Yalnızca ağı kullanan komutlar çalışmaya devam eder. DMG sürümünde kum havuzu yoktur.';
 
   @override
   String privateKeyFileUnreadable(String path, String reason) {
@@ -1055,26 +867,16 @@ class AppLocalizationsTr extends AppLocalizations {
   String get remotePath => 'Uzak yol';
 
   @override
-  String rootfsUpdateTip(
-    Object distro,
-    Object installed,
-    Object latest,
-    Object pm,
-  ) {
-    return '$distro $installed kurulu, $latest var. Güncelleme tüm konteyneri değiştirir: $pm verisi kaybolur';
-  }
-
-  @override
-  String linuxSystemInUse(Object name) {
-    return 'Silmeden önce $name üzerindeki terminalleri kapat';
+  String rootfsUpdateTip(Object installed, Object latest) {
+    return 'Alpine $installed kurulu ve $latest mevcut. Güncelleme onu yeniden indirir ve konteyneri değiştirir: içine apk ile kurulmuş her şey kaybolur. Bunu atlarsanız mevcut olan çalışmaya devam eder.';
   }
 
   @override
   String get rootfsSubtitle => 'Bu cihazdaki bir Linux kullanıcı alanı';
 
   @override
-  String rootfsInstallTip(Object distro, Object version, Object size) {
-    return '$distro $version (yaklaşık $size MB) indirir ve bu cihaza açar.';
+  String rootfsInstallTip(Object version) {
+    return 'Alpine Linux $version (yaklaşık 3 MB) indirilir ve bu cihazda açılır. Bu uygulamaya paket yöneticisi olan bir kabuk sağlar ve istediğiniz zaman silinebilir.';
   }
 
   @override
@@ -1085,7 +887,7 @@ class AppLocalizationsTr extends AppLocalizations {
 
   @override
   String get serverFilesUnavailableTip =>
-      'Bu sunucuya SSH ya da dosya API’si açık server_box_monitor gerekir.';
+      'Bu sunucunun SSH\'ı üzerinden ya da dosya API\'si açık bir monitor aracısı üzerinden erişilebilir.';
 
   @override
   String get back => 'Geri';
@@ -1095,6 +897,9 @@ class AppLocalizationsTr extends AppLocalizations {
 
   @override
   String get homeDir => 'Ana klasör';
+
+  @override
+  String get selectItem => 'Seç';
 
   @override
   String selected(Object count) {
@@ -1118,14 +923,14 @@ class AppLocalizationsTr extends AppLocalizations {
 
   @override
   String get shareServerRiskTip =>
-      'Bu QR kod bağlantı ayarlarını düz metin olarak taşır. Tarayan ya da fotoğraflayan herkes bağlanabilir.';
+      'Bu QR kod, parolalar dahil olmak üzere sunucunun bağlantı ayarlarını düz metin olarak içerir. Kodu tarayan veya fotoğraflayan herkes bu sunucuya bağlanabilir.';
 
   @override
   String get sftpDlPrepare => 'Bağlantı hazırlanıyor...';
 
   @override
   String get sftpEditorTip =>
-      'Boşsa yerleşik düzenleyici kullanılır. Örneğin `vim` (`EDITOR`’dan okumak önerilir).';
+      'Boşsa, uygulamanın yerleşik dosya düzenleyicisi kullanılır. Bir değer varsa, uzak sunucunun düzenleyicisi kullanılır, örn. `vim` (otomatik olarak `EDITOR`\'a göre algılanması önerilir).';
 
   @override
   String get sftpRmrDirSummary =>
@@ -1135,22 +940,17 @@ class AppLocalizationsTr extends AppLocalizations {
   String get sftpSSHConnected => 'SFTP Bağlandı';
 
   @override
+  String get sftp => 'SFTP';
+
+  @override
   String get sftpShowFoldersFirst => 'Önce klasörleri göster';
-
-  @override
-  String get sftpUnavailableUseScp =>
-      'Birçok gömülü cihazda olduğu gibi bu makinede SFTP alt sistemi yoksa, sunucu ayarlarından dosya aktarımını SCP yapın.';
-
-  @override
-  String get sshFileTransportTip =>
-      'Güncel her cihaz için SFTP uygundur. SSH sunucusunda SFTP alt sistemi bulunmayan eski ya da gömülü bir makine için SCP seçin: `scp` komutunun yanı sıra `find`, `stat`, `mv`, `chmod` gibi olağan dosya araçlarına sahip bir kabuk ortamı gerekir.';
 
   @override
   String get specifyDev => 'Cihazı belirt';
 
   @override
   String get specifyDevTip =>
-      'Ağ trafiği varsayılan olarak tüm aygıtları sayar; burada birini belirt';
+      'Örneğin, ağ trafiği istatistikleri varsayılan olarak tüm cihazlar içindir. Burada belirli bir cihaz belirtebilirsiniz.';
 
   @override
   String get tempIsCelsiusTip =>
@@ -1211,14 +1011,24 @@ class AppLocalizationsTr extends AppLocalizations {
   }
 
   @override
+  String sshHostKeyFingerprintMd5Base64(Object fingerprint) {
+    return 'Parmak izi (MD5 Base64): $fingerprint';
+  }
+
+  @override
+  String sshHostKeyFingerprintMd5Hex(Object fingerprint) {
+    return 'Parmak izi (SHA256): $fingerprint';
+  }
+
+  @override
   String get sshHostKeyType => 'SSH ana bilgisayar anahtarı türü';
 
   @override
-  String get sshKnownHostKeys => 'Bilinen ana makineler';
+  String get sshKnownHostKeys => 'Bilinen ana makine anahtarları';
 
   @override
   String get sshKnownHostKeysTip =>
-      'Bu uygulamanın kabul ettiği host anahtarları';
+      'Bu uygulamanın kabul ettiği ana makine anahtarları. Birini silerseniz bir sonraki bağlantıda tekrar sorulur.';
 
   @override
   String sshHostKeyNewDesc(Object serverName) {
@@ -1277,6 +1087,9 @@ class AppLocalizationsTr extends AppLocalizations {
       'Tema, düzen, düzenleyici, terminal ve diğer cihaz tercihlerini otomatik eşitlemeye dâhil et.';
 
   @override
+  String get system => 'Sistem';
+
+  @override
   String get termFontSizeTip =>
       'Bu ayar terminal boyutunu (genişlik ve yükseklik) etkiler. Terminal sayfasında yakınlaştırarak mevcut oturumun yazı tipi boyutunu ayarlayabilirsiniz.';
 
@@ -1322,50 +1135,6 @@ class AppLocalizationsTr extends AppLocalizations {
   String get virtKeyHelpSFTP => 'Mevcut dizini SFTP\'de aç.';
 
   @override
-  String get virtKeyHelpSnippet =>
-      'Bir parçacık seçip bu terminalde çalıştırır.';
-
-  @override
-  String get virtKeyHelpTmux =>
-      'tmux oturumları ve pencereleri arasında geçiş yapar.';
-
-  @override
-  String get virtKeyIntroActions => 'Kısayollar';
-
-  @override
-  String get virtKeyIntroActionsTip =>
-      'Bu tuşlar yazmaz, bir şey açar. Ne yaptığını okumak için birine basılı tutun.';
-
-  @override
-  String get virtKeyIntroCustomizeTip =>
-      'Terminal ayarlarından sıralarını değiştirebilir, hiç kullanmadıklarınızı gizleyebilirsiniz.';
-
-  @override
-  String get virtKeyIntroModifiers => 'Değiştirici tuşlar';
-
-  @override
-  String get virtKeyIntroModifiersTip =>
-      'Birine dokunup etkinleştirin, sonra klavyeden bir harfe dokunun. Yalnızca o tek tuş için geçerlidir.';
-
-  @override
-  String get virtKeyIntroNav => 'İmleç hareketi';
-
-  @override
-  String get virtKeyIntroNavTip =>
-      'Bu tuşlar imleci hareket ettirir. Yön tuşunu basılı tutarsanız yinelenir.';
-
-  @override
-  String get virtKeyIntroSelect =>
-      'Terminalde kaydırılacak bir şey olduğu sürece, yana sürükleyerek metin seçebilirsiniz.';
-
-  @override
-  String get virtKeyRows => 'Aynı anda gösterilen satır';
-
-  @override
-  String get virtKeyRowsTip =>
-      'Kalanlar yana kaydırılan ayrı bir sayfada yer alır.';
-
-  @override
   String get waitConnection => 'Lütfen bağlantının kurulmasını bekleyin.';
 
   @override
@@ -1403,7 +1172,7 @@ class AppLocalizationsTr extends AppLocalizations {
       'Podman Docker emülasyonu tespit edildi. Lütfen ayarlarda Podman\'a geçin.';
 
   @override
-  String get betaTip =>
+  String get portForwardBeta =>
       'Bu özellik hâlâ beta aşamasında. İşleyişi garanti edilmez.';
 
   @override
@@ -1528,6 +1297,9 @@ class AppLocalizationsTr extends AppLocalizations {
       'Başka bir konteyner işlemi zaten devam ediyor';
 
   @override
+  String get systemd => 'Systemd';
+
+  @override
   String processCount(int count) {
     return '$count işlem';
   }
@@ -1556,18 +1328,17 @@ class AppLocalizationsTr extends AppLocalizations {
 
   @override
   String get watchServersTip =>
-      'Saat veriyi monitor’dan kendisi alır, bu yüzden yalnızca monitor’u olan sunucular seçilebilir.';
+      'Saat bu sunucuları doğrudan monitor aracısından okur, bu yüzden yalnızca monitor yapılandırılmış sunucular seçilebilir.';
 
   @override
   String get watchNoMonitorServer =>
       'monitor aracısı yapılandırılmış sunucu yok';
 
   @override
-  String get legacyStatusGoneTitle => 'Durum URL\'leri artık çalışmıyor';
+  String get watchLegacyUrls => 'Eski durum URL\'leri';
 
   @override
-  String get legacyStatusGoneBody =>
-      'Saat uygulaması ve ana ekran bileşenleri elle yazılan bir `/status` adresini okuyordu. Bu uç nokta kaldırıldı: yalnızca anlık değerleri metin olarak döndürebiliyordu, grafik gösterememelerinin nedeni buydu.\n\nArtık monitor aracısının kimlik doğrulamalı API\'sini okuyorlar; eğilimleri çiziyor ve uygulamayla kendiliğinden eşleşiyorlar. Sunucuyu uygulamada bir kez yapılandırın, her saat ve bileşen onu alsın.';
+  String get accessoryWidgetServer => 'Kilit ekranı bileşeni sunucusu';
 
   @override
   String get systemdMissing => 'Bu sunucuda systemd yok';
@@ -1619,49 +1390,14 @@ class AppLocalizationsTr extends AppLocalizations {
 
   @override
   String get agentLocalExecTip =>
-      'Agent’ın ServerBox’ın çalıştığı makinede çalışmasına izin verir. Salt okunur komutlar da incelenir';
+      'Agent\'ın yalnızca sunucularda değil, ServerBox\'ın çalıştığı makinede de çalışmasına izin verir. Burada hiçbir şey gözetimsiz çalışmaz: her komut inceleme gerektirir.';
 
   @override
   String get agentLocalExecRootfsTip =>
-      'Agent’ın yerelde, ServerBox’ın kurduğu Linux konteynerinin içinde çalışmasına izin verir';
+      'Agent\'ın bu cihazda, ServerBox\'ın kurduğu Alpine Linux konteyneri içinde çalışmasına izin verir. Cihazın kendi dosya sistemini, uygulamanın verilerini veya dosyalarınızı göremez. Her komut yine de inceleme gerektirir.';
 
   @override
   String macDmgImportedPartly(String path) {
     return 'Daha önce yüklü sürümün verileri içe aktarıldı. İndirilen dosyalar $path konumunda kaldı.';
   }
-
-  @override
-  String get bmcAccount => 'Hesap';
-
-  @override
-  String get bmcAccountUnset => 'Seçilmedi — seçmek veya oluşturmak için dokun';
-
-  @override
-  String bmcAccountShared(int count) {
-    return '$count sunucuda kullanılıyor';
-  }
-
-  @override
-  String get bmcAccounts => 'BMC hesapları';
-
-  @override
-  String get bmcAccountSharedTip =>
-      'Burada düzenlemek hepsinin kullandığını değiştirir.';
-
-  @override
-  String bmcAccountInUse(int count) {
-    return '$count sunucu kullanıyor. Adresleri kalır, hesabı kaybederler.';
-  }
-
-  @override
-  String get bmcStaleWrite => 'Yazma sırasında BMC değişti. Tekrar dene.';
-
-  @override
-  String get send => 'Gönder';
-
-  @override
-  String get privacyBlur => 'Arka planda gizlilik';
-
-  @override
-  String get privacyBlurTip => 'Uygulama değiştiricide içeriği gizle';
 }

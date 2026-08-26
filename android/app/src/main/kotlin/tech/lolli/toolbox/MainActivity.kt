@@ -4,7 +4,6 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
-import android.view.WindowManager
 import android.Manifest
 import android.content.BroadcastReceiver
 import android.content.Context
@@ -16,14 +15,12 @@ import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 import android.appwidget.AppWidgetManager
 import tech.lolli.toolbox.widget.HomeWidget
-import tech.lolli.toolbox.widget.WidgetStore
 
 class MainActivity: FlutterFragmentActivity() {
     private lateinit var channel: MethodChannel
     private val ACTION_UPDATE_SESSIONS = "tech.lolli.toolbox.ACTION_UPDATE_SESSIONS"
     private val ACTION_DISCONNECT_SESSION = "tech.lolli.toolbox.ACTION_DISCONNECT_SESSION"
     private val ACTION_STOP_ALL_CONNECTIONS = "tech.lolli.toolbox.STOP_ALL_CONNECTIONS"
-    private val INTERNAL_BROADCAST_PERMISSION = "tech.lolli.toolbox.permission.INTERNAL_BROADCAST"
     private var stopAllReceiver: BroadcastReceiver? = null
     private var disableImpeller = false
     private var ownsFlutterEngine = false
@@ -53,58 +50,6 @@ class MainActivity: FlutterFragmentActivity() {
 
     private companion object {
         const val ARG_DISABLE_IMPELLER = "--enable-impeller=false"
-        const val PRIVACY_PREFS = "privacy_cover"
-        const val KEY_PRIVACY_COVER = "enabled"
-    }
-
-    // --- Privacy cover ------------------------------------------------------
-    //
-    // FLAG_SECURE rather than a view laid over the content: the recents
-    // thumbnail is captured by the system around onPause, and anything that has
-    // to render a frame first may not be up in time. The flag is applied by the
-    // window compositor, so there is no race to lose.
-    //
-    // This is not the same thing the iOS side does. There a blur really covers
-    // the pixels; here the running UI is untouched and only the recents
-    // thumbnail and screenshots are blocked. Flutter renders into a SurfaceView,
-    // whose contents live on a separate surface that RenderEffect does not
-    // reach, so an in-app blur would mean PixelCopy plus an async round trip —
-    // exactly the race this avoids.
-
-    private val privacyPrefs by lazy {
-        getSharedPreferences(PRIVACY_PREFS, Context.MODE_PRIVATE)
-    }
-
-    /// Set from Dart while the biometric lock is pending, so that coming back to
-    /// the foreground does not clear the flag before the lock screen is up.
-    private var privacyLocked = false
-    private var isForeground = false
-
-    private var privacyCoverEnabled: Boolean
-        get() = privacyPrefs.getBoolean(KEY_PRIVACY_COVER, false)
-        set(value) = privacyPrefs.edit().putBoolean(KEY_PRIVACY_COVER, value).apply()
-
-    private fun applyPrivacyCover(on: Boolean) {
-        if (on) {
-            window.setFlags(
-                WindowManager.LayoutParams.FLAG_SECURE,
-                WindowManager.LayoutParams.FLAG_SECURE,
-            )
-        } else {
-            window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
-        }
-    }
-
-    override fun onPause() {
-        super.onPause()
-        isForeground = false
-        if (privacyCoverEnabled) applyPrivacyCover(true)
-    }
-
-    override fun onResume() {
-        super.onResume()
-        isForeground = true
-        if (!privacyLocked) applyPrivacyCover(false)
     }
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
@@ -127,42 +72,6 @@ class MainActivity: FlutterFragmentActivity() {
                     }
                     "isServiceRunning" -> {
                         result.success(ForegroundService.isRunning)
-                    }
-                    // Whether this app may post notifications at all. Without
-                    // it there is no foreground service, and without that the
-                    // system freezes the process the moment it is backgrounded
-                    // — so "run in the background" is a switch that cannot do
-                    // what it says. The settings page reads this to say so.
-                    "notificationsAllowed" -> {
-                        result.success(notificationsAllowed())
-                    }
-                    "openNotificationSettings" -> {
-                        try {
-                            val intent = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                                Intent(android.provider.Settings.ACTION_APP_NOTIFICATION_SETTINGS)
-                                    .putExtra(android.provider.Settings.EXTRA_APP_PACKAGE, packageName)
-                            } else {
-                                Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
-                                    .setData(android.net.Uri.fromParts("package", packageName, null))
-                            }
-                            startActivity(intent)
-                            result.success(null)
-                        } catch (e: Exception) {
-                            android.util.Log.e("MainActivity", "Failed to open notification settings: ${e.message}")
-                            result.error("SETTINGS_ERROR", e.message, null)
-                        }
-                    }
-                    "setPrivacyBlur" -> {
-                        privacyCoverEnabled = method.arguments as? Boolean ?: false
-                        if (!privacyCoverEnabled) applyPrivacyCover(false)
-                        result.success(null)
-                    }
-                    "setPrivacyBlurLocked" -> {
-                        privacyLocked = method.arguments as? Boolean ?: false
-                        // Only while frontmost: clearing it in the background
-                        // would undo the cover on the recents thumbnail itself.
-                        if (!privacyLocked && isForeground) applyPrivacyCover(false)
-                        result.success(null)
                     }
                     "startService" -> {
                         try {
@@ -191,25 +100,10 @@ class MainActivity: FlutterFragmentActivity() {
                         result.success(null)
                     }
                     "updateHomeWidget" -> {
-                        HomeWidget.broadcastUpdate(applicationContext)
+                        val intent = Intent(this@MainActivity, HomeWidget::class.java)
+                        intent.action = AppWidgetManager.ACTION_APPWIDGET_UPDATE
+                        sendBroadcast(intent)
                         result.success(null)
-                    }
-                    "publishWidgetServers" -> {
-                        val payload = method.arguments as? String
-                        if (payload == null) {
-                            result.success(null)
-                            return@setMethodCallHandler
-                        }
-                        WidgetStore.publish(applicationContext, payload)
-                        // Every placed widget of either size, not just one: a
-                        // republish can change a name, an address or a
-                        // credential, and which widget was pointed at which
-                        // server is not known here.
-                        HomeWidget.broadcastUpdate(applicationContext)
-                        result.success(null)
-                    }
-                    "widgetTokenState" -> {
-                        result.success(WidgetStore.tokenState(applicationContext))
                     }
                     "updateSessions" -> {
                         try {
@@ -314,12 +208,7 @@ class MainActivity: FlutterFragmentActivity() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             ContextCompat.registerReceiver(this, stopAllReceiver, filter, ContextCompat.RECEIVER_NOT_EXPORTED)
         } else {
-            // `RECEIVER_NOT_EXPORTED` does not exist before API 33, and a bare
-            // `registerReceiver` leaves this reachable by every app on the
-            // device — for an action whose whole job is to disconnect every SSH
-            // session. The signature-level permission is what restricts the
-            // sender to this build.
-            registerReceiver(stopAllReceiver, filter, INTERNAL_BROADCAST_PERMISSION, null)
+            registerReceiver(stopAllReceiver, filter)
         }
     }
 
@@ -332,20 +221,6 @@ class MainActivity: FlutterFragmentActivity() {
         if (requestCode == 123) {
             if (grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
                 android.util.Log.i("MainActivity", "Notification permission granted")
-                // `reqPerm` is asynchronous and `startService`/`updateSessions`
-                // test the permission the moment after asking for it, so the
-                // first attempt is always refused and nothing retries it. With
-                // a session already open and no further lifecycle change
-                // coming, the service stayed stopped and the process was free
-                // to be frozen — despite the user having just said yes. Telling
-                // Dart is what makes it ask again.
-                if (::channel.isInitialized) {
-                    try {
-                        channel.invokeMethod("notificationPermissionGranted", null)
-                    } catch (e: Exception) {
-                        android.util.Log.e("MainActivity", "Failed to report the grant: ${e.message}")
-                    }
-                }
             } else {
                 android.util.Log.w("MainActivity", "Notification permission denied")
                 // Optionally inform user about the limitation

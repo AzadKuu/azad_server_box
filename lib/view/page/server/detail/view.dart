@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:math' as math;
+
 import 'package:extended_image/extended_image.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:fl_lib/fl_lib.dart';
@@ -8,7 +9,6 @@ import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:icons_plus/icons_plus.dart';
-import 'package:redfish/redfish.dart';
 import 'package:server_box/core/extension/context/locale.dart';
 import 'package:server_box/core/extension/server.dart';
 import 'package:server_box/core/route.dart';
@@ -26,12 +26,12 @@ import 'package:server_box/data/model/server/server.dart' as server_model;
 import 'package:server_box/data/model/server/server_private_info.dart';
 import 'package:server_box/data/model/server/system.dart';
 import 'package:server_box/data/model/server/try_limiter.dart';
-import 'package:server_box/data/provider/bmc/bmc.dart';
 import 'package:server_box/data/provider/server/all.dart';
 import 'package:server_box/data/provider/server/single.dart';
 import 'package:server_box/data/res/store.dart';
 import 'package:server_box/view/page/pve.dart';
 import 'package:server_box/view/page/server/edit/edit.dart';
+import 'package:server_box/view/widget/page_columns.dart';
 import 'package:server_box/view/widget/server_func_btns.dart';
 
 part 'misc.dart';
@@ -83,7 +83,6 @@ class _ServerDetailPageState extends ConsumerState<ServerDetailPage>
         ServerDetailCards.temp: _buildTemperature,
         ServerDetailCards.battery: _buildBatteries,
         ServerDetailCards.pve: _buildPve,
-        ServerDetailCards.bmc: _buildBmc,
         ServerDetailCards.custom: _buildCustomCmd,
       };
 
@@ -171,20 +170,13 @@ class _ServerDetailPageState extends ConsumerState<ServerDetailPage>
       body: ListView(
         padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 20),
         children: [
-          if (err != null) ...[
+          if (err != null)
             CardX(
               child: Padding(
                 padding: const EdgeInsets.all(13),
                 child: SimpleMarkdown(data: _errMarkdown(err)),
               ),
-            ),
-            // Under the error rather than inside it: the card says what went
-            // wrong, this says what to do about it. Only for the one failure
-            // that has a one-tap answer — a plaintext address the connection
-            // has not been allowed to use. Everything else needs the editor.
-            if (si.spi.monitorHttp?.needsInsecureOptIn == true)
-              _buildAllowInsecure(si),
-          ]
+            )
           else
             Padding(
               padding: const EdgeInsets.all(13),
@@ -229,52 +221,6 @@ ${err.solution ?? libL10n.unknown}
 ${err.message ?? 'null'}
 ```
 ''';
-  }
-
-  /// Turns plaintext HTTP on for this one connection, and reconnects.
-  ///
-  /// The switch is on the editor's More section, which is three taps and a
-  /// scroll away from the error that sent you looking for it. What it costs is
-  /// stated under the button rather than behind a dialog: the tip is the same
-  /// sentence the editor shows beside the switch, and the button names the
-  /// setting it changes.
-  Widget _buildAllowInsecure(ServerState si) {
-    return Padding(
-      padding: const EdgeInsets.only(top: 13),
-      child: Column(
-        children: [
-          Btn.elevated(
-            text: l10n.monitorAllowInsecureHttp,
-            icon: const Icon(Icons.lock_open, size: 18),
-            mainAxisSize: MainAxisSize.min,
-            gap: 8,
-            onTap: () => _allowInsecure(si),
-          ),
-          UIs.height7,
-          Text(
-            l10n.monitorAllowInsecureHttpTip,
-            style: UIs.textGrey,
-            textAlign: TextAlign.center,
-          ),
-        ],
-      ),
-    );
-  }
-
-  /// Saving is the whole of it: `Spi.shouldReconnect` counts a changed
-  /// `monitorHttp` — and `MonitorHttpCredential.==` counts `allowInsecure` —
-  /// so `updateServer` clears the retry limiter and refreshes on its own.
-  /// Reconnecting here as well would be a second attempt at the same thing.
-  Future<void> _allowInsecure(ServerState si) async {
-    final monitor = si.spi.monitorHttp;
-    if (monitor == null) return;
-    try {
-      await ref
-          .read(serversProvider.notifier)
-          .updateServer(si.spi, si.spi.copyWith(monitorHttp: monitor.allowingInsecure()));
-    } catch (e, s) {
-      if (mounted) context.showErrDialog(e, s);
-    }
   }
 
   /// Clears the retry limiter first: the user asking again *is* the new
@@ -407,30 +353,17 @@ ${err.message ?? 'null'}
           overflow: TextOverflow.ellipsis,
         ),
         trailing: const Icon(Icons.chevron_right, size: 17),
-        onTap: () => _showErrDetail(si, err),
+        onTap: () => _showErrDetail(err),
       ),
     );
   }
 
-  /// A server that has reported before shows its failure here rather than on
-  /// the empty page, so the same one-tap answer has to be offered in both.
-  void _showErrDetail(ServerState si, Err err) {
+  void _showErrDetail(Err err) {
     final md = _errMarkdown(err);
     context.showRoundDialog(
       title: libL10n.error,
       child: SingleChildScrollView(child: SimpleMarkdown(data: md)),
       actions: [
-        if (si.spi.monitorHttp?.needsInsecureOptIn == true)
-          TextButton(
-            // Closes the dialog itself and leaves the work to the page: an
-            // `onPressed` replaces the navigator the button would have
-            // resolved on its own — see the dialog rules in CLAUDE.md.
-            onPressed: () {
-              context.popDialog();
-              _allowInsecure(si);
-            },
-            child: Text(l10n.monitorAllowInsecureHttp),
-          ),
         TextButton(onPressed: () => Pfs.copy(md), child: Text(libL10n.copy)),
         TextButton(onPressed: () => context.popDialog(), child: Text(libL10n.close)),
       ],
@@ -513,18 +446,6 @@ ${err.message ?? 'null'}
     );
   }
 
-  /// The large image at the top of a server's page, as published.
-  ///
-  /// **Not tinted, and that is the difference from the mark.** The small one
-  /// beside a server's name in a list is drawn in the row's colour, because a
-  /// column of full-colour logos at the size of a line of text reads as noise
-  /// (`DistIconOf`). Here there is one image, at a size where the colours are
-  /// what makes it recognisable, and nothing to be consistent with.
-  ///
-  /// The consequence is worth keeping in mind before unifying the two: what
-  /// may be drawn here is a wider set than what may be drawn there. Recolouring
-  /// is a modification, and at least one project — Rocky Linux — forbids
-  /// altering its mark "in any way", which is why no mark ships for it.
   Widget? _buildLogo(ServerState si) {
     final logoUrl = si.getLogoUrl(context);
     // Null, not an empty placeholder: the wrapping Padding was laid out either
@@ -1473,209 +1394,6 @@ ${err.message ?? 'null'}
       ),
     );
   }
-
-  /// What the BMC says, which is worth showing precisely when the host is not
-  /// saying anything.
-  ///
-  /// Absent unless configured: a card that appeared on every server to say
-  /// "not configured" would be a row of noise on the machines that have no BMC,
-  /// which is most of them.
-  Widget? _buildBmc(ServerState si) {
-    if (si.spi.bmc == null) return null;
-    final bmc = ref.watch(bmcProvider(si.spi));
-
-    final subtitle = switch (bmc) {
-      BmcState(failure: final failure?) => Text(
-        _bmcFailureText(failure, bmc.failureDetail),
-        style: UIs.textGrey,
-      ),
-      BmcState(hasData: false, isBusy: true) => Text(
-        libL10n.loadingEllipsis,
-        style: UIs.textGrey,
-      ),
-      _ => Text(_bmcPowerText(bmc.powerState), style: UIs.textGrey),
-    };
-
-    final children = <Widget>[];
-    final system = bmc.topology?.system;
-    if (system != null) {
-      // The service's own property names, shown as it named them: they are
-      // protocol identifiers, and translating them would invite drift between
-      // what the card says and what the BMC's own interface says
-      for (final (label, value) in [
-        ('Model', system.model),
-        ('BIOS', system.biosVersion),
-        ('Serial', system.serial),
-        ('Health', system.health),
-      ]) {
-        if (value == null || value.isEmpty) continue;
-        children.add(
-          ListTile(
-            dense: true,
-            title: Text(label, style: UIs.text13),
-            trailing: Text(value, style: UIs.text13Grey),
-          ),
-        );
-      }
-    }
-
-    final sensors = bmc.sensors;
-    if (sensors.watts case final watts?) {
-      children.add(
-        ListTile(
-          dense: true,
-          title: Text(l10n.power, style: UIs.text13),
-          trailing: Text('${watts.toStringAsFixed(0)} W', style: UIs.text13Grey),
-        ),
-      );
-    }
-    for (final reading in [...sensors.temperatures, ...sensors.fans]) {
-      children.add(
-        ListTile(
-          dense: true,
-          title: Text(reading.name, style: UIs.text13),
-          trailing: Text(
-            '${reading.value.toStringAsFixed(reading.unit == 'Cel' ? 1 : 0)}'
-            '${reading.unit == 'Cel' ? '°C' : ' ${reading.unit ?? ''}'}',
-            style: UIs.text13Grey,
-          ),
-        ),
-      );
-    }
-    if (bmc.hasData) children.add(_buildBmcPower(si));
-
-    // Said rather than left to look like the whole truth
-    if (bmc.sensorsTruncated) {
-      children.add(
-        ListTile(
-          dense: true,
-          title: Text(l10n.bmcSensorsTruncated, style: UIs.text13Grey),
-        ),
-      );
-    }
-
-    // The same reason, for the same kind of cut: discovery takes the first of
-    // each collection, so a blade enclosure showed node 1's power state with
-    // nothing to say the other nodes existed — and a power action there
-    // targets that node alone.
-    if (bmc.topology?.hasMultipleSystems == true) {
-      children.add(
-        ListTile(
-          dense: true,
-          title: Text(l10n.bmcMultipleSystems, style: UIs.text13Grey),
-        ),
-      );
-    }
-
-    return CardX(
-      child: ExpandTile(
-        leading: const Icon(Icons.developer_board, size: 17),
-        // A suffix here and the full sentence in the editor, which is the
-        // arrangement the Linux pages already use: the list that reaches the
-        // feature carries the marker, and the place where it is turned on
-        // carries the reason. Repeating `betaTip` on a card that is expanded
-        // every time the page opens would make it wallpaper.
-        title: const Text('BMC (Beta)'),
-        subtitle: subtitle,
-        initiallyExpanded: _getInitExpand(children.length),
-        children: children,
-      ),
-    );
-  }
-
-  /// The power actions this particular service allows, and no others.
-  ///
-  /// Asked of `plan`, which resolves an intent against
-  /// `ResetType@Redfish.AllowableValues`. An intent the service allows nothing
-  /// for is not shown: offering a button that fails when pressed is worse than
-  /// never having offered it, and `Nmi` and `PowerCycle` are advertised
-  /// unimplemented often enough that this is not hypothetical.
-  Widget _buildBmcPower(ServerState si) {
-    final notifier = ref.read(bmcProvider(si.spi).notifier);
-    final available = [
-      for (final intent in PowerIntent.values)
-        if (notifier.plan(intent) != null) intent,
-    ];
-    if (available.isEmpty) return UIs.placeholder;
-
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 7),
-      child: Wrap(
-        spacing: 7,
-        runSpacing: 7,
-        children: [
-          for (final intent in available)
-            OutlinedButton(
-              onPressed: () => _onTapBmcPower(si, intent),
-              child: Text(_bmcIntentText(intent)),
-            ),
-        ],
-      ),
-    );
-  }
-
-  Future<void> _onTapBmcPower(ServerState si, PowerIntent intent) async {
-    final notifier = ref.read(bmcProvider(si.spi).notifier);
-    final request = notifier.plan(intent);
-    if (request == null) return;
-
-    // The one thing in this app that can take a running server away from
-    // whoever is on it. The dialog names the ResetType actually chosen, not the
-    // intent, because they differ — a "restart" is ForceRestart on hardware
-    // that has no graceful one, and that is worth seeing before agreeing.
-    final ok = await context.showRoundDialog<bool>(
-      title: _bmcIntentText(intent),
-      child: Text(l10n.bmcPowerConfirm(si.spi.name, request.resetType)),
-      actions: Btnx.cancelRedOk,
-    );
-    if (ok != true) return;
-
-    final result = await notifier.power(intent);
-    switch (result) {
-      case BmcPowerResult.confirmed:
-        Toast.success(l10n.bmcPowerDone);
-      // Accepted is not done, and saying so would be reporting the request
-      // back as though it were the result
-      case BmcPowerResult.accepted:
-        Toast.warn(l10n.bmcPowerAccepted);
-      case BmcPowerResult.notSupported:
-        Toast.error(libL10n.fail, body: l10n.bmcPowerUnsupported);
-      case BmcPowerResult.failed:
-        Toast.error(libL10n.fail);
-    }
-  }
-
-  String _bmcIntentText(PowerIntent intent) => switch (intent) {
-    PowerIntent.on => l10n.bmcPowerOnAction,
-    PowerIntent.gracefulShutdown => l10n.bmcShutdown,
-    PowerIntent.forceOff => l10n.bmcForceOff,
-    PowerIntent.restart => l10n.restart,
-    PowerIntent.powerCycle => l10n.bmcPowerCycle,
-  };
-
-  String _bmcPowerText(PowerState state) => switch (state) {
-    PowerState.on => l10n.bmcPowerOn,
-    PowerState.off => l10n.bmcPowerOff,
-    PowerState.poweringOn || PowerState.poweringOff => libL10n.loadingEllipsis,
-    PowerState.paused => 'Paused',
-    PowerState.unknown => libL10n.unknown,
-  };
-
-  String _bmcFailureText(RedfishFailure failure, String? detail) =>
-      switch (failure) {
-        RedfishFailure.certificateRejected => l10n.bmcCertRejected,
-        RedfishFailure.unauthorized => l10n.bmcUnauthorized,
-        RedfishFailure.noCredential => l10n.bmcAccountMissing,
-        RedfishFailure.notAService => l10n.bmcNotAService,
-        RedfishFailure.noSystem => l10n.bmcNoSystem,
-        // Names the resource, because it is an answer about one resource
-        RedfishFailure.forbidden => '${libL10n.fail}: ${detail ?? ''}',
-        // Retrying after a fresh read is the fix, so it is worth saying that
-        // rather than showing a generic failure — this is what a change made
-        // through the BMC's own web interface in the meantime looks like.
-        RedfishFailure.preconditionRequired => l10n.bmcStaleWrite,
-        RedfishFailure.unreachable => detail ?? libL10n.fail,
-      };
 
   Widget? _buildCustomCmd(ServerState si) {
     final ss = si.status;
