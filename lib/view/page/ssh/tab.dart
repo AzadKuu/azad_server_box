@@ -461,7 +461,7 @@ extension _Actions on _SSHTabPageState {
     final current = _sessions.current;
     if (current == null) return const [];
     final onServer = current.data.page.args.spi != null;
-    return onServer ? [_agentBtn, _snippetBtn] : [_snippetBtn];
+    return onServer ? [_agentBtn, _fileBtn, _snippetBtn] : [_snippetBtn];
   }
 
   /// Opens the agent on the terminal that is on screen, the same way the
@@ -470,6 +470,13 @@ extension _Actions on _SSHTabPageState {
     icon: const Icon(Icons.auto_awesome, size: 18),
     onTap: () =>
         _sessions.current?.data.pageKey.currentState?.openAgentFromToolbar(),
+  );
+
+  /// Opens the SFTP file browser as a side panel, the same way the agent does.
+  Widget get _fileBtn => Btn.icon(text: l10n.sftp,
+    icon: const Icon(Icons.folder_open, size: 18),
+    onTap: () =>
+        _sessions.current?.data.pageKey.currentState?.openSftpFromToolbar(),
   );
 
   Widget get _snippetBtn => Btn.icon(text: libL10n.snippet, 

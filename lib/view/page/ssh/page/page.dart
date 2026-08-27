@@ -215,6 +215,51 @@ class SSHPageState extends ConsumerState<SSHPage>
   Future<void> openAgentFromToolbar() =>
       _showAskAiPanel(_recentTerminalContext, autoStart: false);
 
+  /// 从右侧滑入 SFTP 文件浏览器侧边栏（和 AI agent 面板一样的弹出方式）
+  Future<void> openSftpFromToolbar() async {
+    if (!mounted) return;
+    final spi = widget.args.spi;
+    if (spi == null) return;
+
+    await showGeneralDialog<void>(
+      context: context,
+      barrierDismissible: true,
+      barrierLabel: MaterialLocalizations.of(context).modalBarrierDismissLabel,
+      barrierColor: Colors.black38,
+      transitionDuration: const Duration(milliseconds: 220),
+      pageBuilder: (dialogContext, _, _) {
+        final availableWidth = MediaQuery.sizeOf(dialogContext).width;
+        final dialogWidth = (availableWidth * 0.55)
+            .clamp(480.0, 620.0)
+            .clamp(0.0, availableWidth)
+            .toDouble();
+        return SafeArea(
+          child: Align(
+            alignment: Alignment.centerRight,
+            child: SizedBox(
+              width: dialogWidth,
+              child: SftpPage(args: SftpPageArgs(spi: spi)),
+            ),
+          ),
+        );
+      },
+      transitionBuilder: (_, animation, _, child) {
+        final curved = CurvedAnimation(
+          parent: animation,
+          curve: Curves.easeOutCubic,
+          reverseCurve: Curves.easeInCubic,
+        );
+        return SlideTransition(
+          position: Tween<Offset>(
+            begin: const Offset(1, 0),
+            end: Offset.zero,
+          ).animate(curved),
+          child: FadeTransition(opacity: curved, child: child),
+        );
+      },
+    );
+  }
+
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
@@ -502,11 +547,18 @@ class SSHPageState extends ConsumerState<SSHPage>
       // The agent's tools all name a server, so on this device the button
       // would look tappable and do nothing. Snippets are different: the ones
       // that do not mention a server run here fine — see [_pickSnippet].
-      if (widget.args.spi != null)
+      if (widget.args.spi case final spi?)
         IconButton(
           onPressed: openAgentFromToolbar,
           tooltip: l10n.askAiAgentTitle,
           icon: const Icon(Icons.auto_awesome),
+        ),
+      // SFTP file browser: only for server terminals (spi != null)
+      if (widget.args.spi case final spi?)
+        IconButton(
+          onPressed: openSftpFromToolbar,
+          tooltip: l10n.sftp,
+          icon: const Icon(Icons.folder_open),
         ),
       IconButton(
         onPressed: _pickSnippet,

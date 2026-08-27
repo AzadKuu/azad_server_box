@@ -12,7 +12,6 @@ extension _App on _AppSettingsPageState {
       _buildLocale(),
       _buildThemeMode(),
       _buildAppColor(),
-      _buildCheckUpdate(),
       _buildHomeTabs(),
       PlatformPublicSettings.buildBioAuth,
       ?androidSettings,

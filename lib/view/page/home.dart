@@ -356,18 +356,7 @@ class _HomePageState extends ConsumerState<HomePage>
     _publishCurrentTab();
     _goAuth();
 
-    if (Stores.setting.autoCheckAppUpdate.fetch()) {
-      AppUpdateIface.doUpdate(
-        build: BuildData.build,
-        githubReleasesUrl: Urls.githubReleasesApi,
-        storeUrl: Urls.appStore,
-        context: context,
-        noticeBuilder: (ctx) => DmgNotice.forUpdate(
-          ctx,
-          build: AppUpdateIface.newestBuild.value ?? BuildData.build,
-        ),
-      );
-    }
+    // Update check disabled — this is a fork (AzadHub), not the upstream repo.
 
     // Says so when this launch took over the sandboxed build's data, or when
     // it could not — see [SandboxImport].

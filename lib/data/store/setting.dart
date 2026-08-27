@@ -172,7 +172,7 @@ class SettingStore extends SqliteStore {
     '',
   );
 
-  late final autoCheckAppUpdate = propertyDefault('autoCheckAppUpdate', true);
+  late final autoCheckAppUpdate = propertyDefault('autoCheckAppUpdate', false);
 
   /// Width of the list column, wherever one shares the window with what it
   /// opens: the server list, the terminal and file rails, the agent's
