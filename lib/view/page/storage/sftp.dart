@@ -468,12 +468,13 @@ extension _Actions on _SftpPageState {
       });
       if (ok == true) {
         Loggers.app.info('OHOS download saved to $uri');
+        if (mounted) Toast.success(libL10n.success);
       } else {
-        if (mounted) context.showErrDialog('copyToUri returned false', null);
+        if (mounted) Toast.error(libL10n.fail);
       }
     } catch (e, s) {
       Loggers.app.warning('OHOS copyToUri failed', e, s);
-      if (mounted) context.showErrDialog(e, s);
+      if (mounted) Toast.error(libL10n.fail);
     }
 
     // 5. 删除缓存文件
