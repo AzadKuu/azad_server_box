@@ -933,6 +933,7 @@ class SSHPageState extends ConsumerState<SSHPage>
   @override
   FutureOr<void> afterFirstLayout(BuildContext context) async {
     await _showHelp();
+    await _showImeHint();
     await _initTerminal();
 
     if (Stores.setting.sshWakeLock.fetch()) WakelockPlus.enable();

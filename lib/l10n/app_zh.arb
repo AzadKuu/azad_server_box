@@ -314,6 +314,8 @@
   "sshConnectionModeUseSystem": "使用系统 SSH",
   "sshTermHelp": "在终端可滚动时，横向拖动可以选中文字。点击键盘按钮可以开启/关闭键盘。文件图标会打开当前路径 SFTP。剪切板按钮会在有选中文字时复制内容，在未选中并且剪切板有内容时粘贴内容到终端。代码图标会粘贴代码片段到终端并执行。",
   "sshVirtualKeyAutoOff": "虚拟按键自动切换",
+  "sshTermImeHint": "为获得更好的命令输入体验，请将输入法切换为英文。",
+  "sshTermImeHintMobile": "为获得更好的命令输入体验，请将输入法切换为英文，并在输入法设置中关闭「首字母自动大写」（否则每条命令的第二个字母可能被自动大写）。",
   "supportFmtArgs": "支持以下格式化参数：",
   "suspendTip": "suspend 功能需要 root 权限及 systemd 支持。",
   "switchTo": "切换到 {val}",

@@ -1069,6 +1069,14 @@ class AppLocalizationsRu extends AppLocalizations {
       'Автоматическое переключение виртуальных клавиш';
 
   @override
+  String get sshTermImeHint =>
+      'For a better command input experience, please switch your input method to English.';
+
+  @override
+  String get sshTermImeHintMobile =>
+      'For a better command input experience, please switch your input method to English, and disable \"Auto-capitalize\" in your input method settings (otherwise the second letter of each command may be capitalized).';
+
+  @override
   String get supportFmtArgs => 'Поддерживаются следующие форматы аргументов:';
 
   @override

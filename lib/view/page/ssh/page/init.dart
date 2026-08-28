@@ -147,6 +147,40 @@ extension _Init on SSHPageState {
     );
   }
 
+  /// OHOS only: nudges the user towards an English input method.
+  ///
+  /// The terminal keeps a single space in the editing state so that the
+  /// backspace key can be detected (see `CustomTextEdit`), which puts the
+  /// caret at offset 1 instead of 0. Input methods read that as mid-sentence
+  /// and start auto-capitalizing, so every command's second letter comes out
+  /// uppercase. There is no API to turn that off — `InputAttribute` exposes
+  /// no capitalisation flag and `switchInputMethod` is restricted to the
+  /// current IME — so all that can be done is tell the user.
+  ///
+  /// The 2in1 wording is shorter because a physical keyboard has no
+  /// auto-capitalize setting to disable.
+  Future<void> _showImeHint() async {
+    if (!isOhos) return;
+    if (Stores.setting.sshTermImeHintShown.fetch()) return;
+
+    // 2in1/PC 只提示切英文输入法；手机/平板额外提示关闭首字母大写。
+    final desktop = await OhosIme.isDesktop();
+
+    return await context.showRoundDialog(
+      title: libL10n.doc,
+      child: Text(desktop ? l10n.sshTermImeHint : l10n.sshTermImeHintMobile),
+      actions: [
+        TextButton(
+          onPressed: () {
+            Stores.setting.sshTermImeHintShown.put(true);
+            context.popDialog();
+          },
+          child: Text(l10n.noPromptAgain),
+        ),
+      ],
+    );
+  }
+
   Future<void> _initTerminal() async {
     // A session handed to this page is already connected and already running
     // something — the dialog that started it did all of this. Opening a second

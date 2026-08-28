@@ -34,6 +34,9 @@ class OhosIme {
   }
 
   /// 查询当前设备是否是手机/平板（通过 ArkTS 判断）。
+  ///
+  /// 注意：2in1（鸿蒙 PC）也返回 true——它在触屏/平板模式下同样依赖软键盘
+  /// 退格兜底。如果只想区分设备形态做 UI 决策，请用 [deviceType]。
   static Future<bool> isMobile() async {
     const channel = MethodChannel('azad/device_info');
     try {
@@ -41,6 +44,24 @@ class OhosIme {
     } catch (_) {
       return false;
     }
+  }
+
+  /// 获取鸿蒙设备类型原始字符串（如 "phone"、"tablet"、"2in1"、"pc"、"tv"）。
+  ///
+  /// 这是纯查询，不影响退格 handler 的注册逻辑。
+  static Future<String> deviceType() async {
+    const channel = MethodChannel('azad/device_info');
+    try {
+      return await channel.invokeMethod<String>('deviceType') ?? '';
+    } catch (_) {
+      return '';
+    }
+  }
+
+  /// 是否是带物理键盘的桌面形态设备（2in1 / PC）。
+  static Future<bool> isDesktop() async {
+    final dt = await deviceType();
+    return dt == '2in1' || dt == 'pc';
   }
 
   /// 获取鸿蒙系统偏好语言（如 "zh-Hans-CN"、"en-US"）。

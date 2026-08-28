@@ -1057,6 +1057,14 @@ class AppLocalizationsEn extends AppLocalizations {
   String get sshVirtualKeyAutoOff => 'Auto switching of virtual keys';
 
   @override
+  String get sshTermImeHint =>
+      'For a better command input experience, please switch your input method to English.';
+
+  @override
+  String get sshTermImeHintMobile =>
+      'For a better command input experience, please switch your input method to English, and disable \"Auto-capitalize\" in your input method settings (otherwise the second letter of each command may be capitalized).';
+
+  @override
   String get supportFmtArgs =>
       'The following formatting parameters are supported:';
 

@@ -361,6 +361,9 @@ class SettingStore extends SqliteStore {
 
   late final sshTermHelpShown = propertyDefault('sshTermHelpShown', false);
 
+  late final sshTermImeHintShown =
+      propertyDefault('sshTermImeHintShown', false);
+
   late final horizonVirtKey = propertyDefault('horizonVirtKey', false);
 
   /// general wake lock

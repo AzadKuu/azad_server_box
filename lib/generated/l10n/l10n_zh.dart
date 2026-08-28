@@ -992,6 +992,13 @@ class AppLocalizationsZh extends AppLocalizations {
   String get sshVirtualKeyAutoOff => '虚拟按键自动切换';
 
   @override
+  String get sshTermImeHint => '为获得更好的命令输入体验，请将输入法切换为英文。';
+
+  @override
+  String get sshTermImeHintMobile =>
+      '为获得更好的命令输入体验，请将输入法切换为英文，并在输入法设置中关闭「首字母自动大写」（否则每条命令的第二个字母可能被自动大写）。';
+
+  @override
   String get supportFmtArgs => '支持以下格式化参数：';
 
   @override

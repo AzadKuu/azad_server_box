@@ -1929,6 +1929,18 @@ abstract class AppLocalizations {
   /// **'Auto switching of virtual keys'**
   String get sshVirtualKeyAutoOff;
 
+  /// No description provided for @sshTermImeHint.
+  ///
+  /// In en, this message translates to:
+  /// **'For a better command input experience, please switch your input method to English.'**
+  String get sshTermImeHint;
+
+  /// No description provided for @sshTermImeHintMobile.
+  ///
+  /// In en, this message translates to:
+  /// **'For a better command input experience, please switch your input method to English, and disable \"Auto-capitalize\" in your input method settings (otherwise the second letter of each command may be capitalized).'**
+  String get sshTermImeHintMobile;
+
   /// No description provided for @supportFmtArgs.
   ///
   /// In en, this message translates to:

@@ -41,6 +41,8 @@ export default class EntryAbility extends FlutterAbility {
   private registerImeHandler(flutterEngine: FlutterEngine): void {
     const messenger = flutterEngine.dartExecutor.getBinaryMessenger();
     const dt = deviceInfo.deviceType;
+    // 注意：2in1 必须包含在 isMobile 内——鸿蒙 PC/2in1 在平板模式或触屏使用
+    // 时同样会弹出软键盘，退格键同样依赖本 handler 兜底，不能排除。
     const isMobile = dt === 'phone' || dt === 'tablet' || dt === '2in1';
     Log.i(TAG, "OHOS_DEV deviceType=" + dt + " isMobile=" + isMobile);
 
@@ -50,6 +52,8 @@ export default class EntryAbility extends FlutterAbility {
       onMethodCall(call: MethodCall, result: MethodResult) {
         if (call.method === 'isMobile') {
           result.success(isMobile);
+        } else if (call.method === 'deviceType') {
+          result.success(dt);
         } else {
           result.notImplemented();
         }
