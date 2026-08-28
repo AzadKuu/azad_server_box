@@ -501,8 +501,5 @@
         "type": "String"
       }
     }
-  },
-  "multiLinePasteConfirm": "You are pasting multi-line text. Confirm to paste?",
-  "reconnect": "Reconnect",
-  "reconnectQ": "Do you want to reconnect?"
+  }
 }

@@ -503,57 +503,41 @@ extension _Actions on _SftpPageState {
       ),
     );
     if (!mounted) return;
+    final local = switch (from) {
+      0 => await LocalFilePage.route.go(
+        context,
+        args: const LocalFilePageArgs(isPickFile: true),
+      ),
+      1 => await Pfs.pickFilePath(),
+      _ => null,
+    };
+    if (local == null || !mounted) return;
 
-    // System picker supports multiple files; internal picker returns a single path.
-    final List<String> locals;
-    switch (from) {
-      case 0:
-        final single = await LocalFilePage.route.go(
-          context,
-          args: const LocalFilePageArgs(isPickFile: true),
-        );
-        locals = (single == null) ? const [] : [single];
-      case 1:
-        final multi = await Pfs.pickFilePaths();
-        locals = multi ?? const [];
-      default:
-        locals = const [];
-    }
-    if (locals.isEmpty || !mounted) return;
+    final name = local.split(Platform.pathSeparator).lastOrNull;
+    if (name == null || name.isEmpty) return;
+    final remote = '${handle.path}/$name';
+    Loggers.app.info('SFTP upload local: $local, remote: $remote');
 
-    // Check writability once for all files.
     if (!_sudoMode.value) {
+      // Asked before the transfer starts rather than after it fails: an upload
+      // is a queued job, and a job that dies on the far side reports its
+      // refusal in a list nobody is looking at.
       if (await _canWrite(handle.path)) {
-        for (final local in locals) {
-          final name = local.split(Platform.pathSeparator).lastOrNull;
-          if (name == null || name.isEmpty) continue;
-          final remote = '${handle.path}/$name';
-          Loggers.app.info('SFTP upload local: $local, remote: $remote');
-          ref
-              .read(fileTransferProvider.notifier)
-              .add(
-                FileTransfer(
-                  from: LocalFileRef(local),
-                  to: SftpFileRef.forServer(_spi, remote),
-                ),
-              );
-        }
+        ref
+            .read(fileTransferProvider.notifier)
+            .add(
+              FileTransfer(
+                from: LocalFileRef(local),
+                to: SftpFileRef.forServer(_spi, remote),
+              ),
+            );
         return;
       }
       if (!mounted || !await _escalation.confirmRetry()) return;
     }
 
-    // Sudo mode: upload one by one.
-    var anyOk = false;
-    for (final local in locals) {
-      final name = local.split(Platform.pathSeparator).lastOrNull;
-      if (name == null || name.isEmpty) continue;
-      final remote = '${handle.path}/$name';
-      Loggers.app.info('SFTP upload local: $local, remote: $remote');
-      final ok = await _uploadViaSudo(local: local, remote: remote, name: name);
-      if (ok) anyOk = true;
-    }
-    if (anyOk) await handle.refresh();
+    final ok = await _uploadViaSudo(local: local, remote: remote, name: name);
+    if (ok) await handle.refresh();
   }
 
   Future<bool> _canWrite(String dir) async {

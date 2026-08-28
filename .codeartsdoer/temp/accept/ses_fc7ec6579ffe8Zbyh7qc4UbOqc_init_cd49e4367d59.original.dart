@@ -306,28 +306,25 @@ extension _Init on SSHPageState {
   Future<void> _onConnectionLossSuspected() async {
     if (!mounted || _disconnectDialogOpen) return;
 
+    _disconnectDialogOpen = true;
     _reportedDisconnected = true;
     _discontinuityTimer?.cancel();
     _writeLn('\n\n${libL10n.disconnected}\r\n');
     TermSessionManager.updateStatus(_sessionId, TermSessionStatus.disconnected);
 
     final sessionName = _tmuxCurrentSession;
-    // Without a tmux session there is nothing to restore from the server side.
-    // The foreground session will end on its own and [_onForegroundSessionDone]
-    // will close the tab — don't offer a reconnect that has nothing to recover
-    // and would just spin against an unreachable host.
-    if (sessionName == null || sessionName.isEmpty) return;
-
-    _disconnectDialogOpen = true;
-    final restored = await _tryReconnectTmux(sessionName);
-    if (!mounted) return;
-    if (restored) {
-      _disconnectDialogOpen = false;
-      _reportedDisconnected = false;
-      return;
+    // Check if we have any tmux session to recover
+    if (sessionName != null && sessionName.isNotEmpty) {
+      final restored = await _tryReconnectTmux(sessionName);
+      if (!mounted) return;
+      if (restored) {
+        _disconnectDialogOpen = false;
+        _reportedDisconnected = false;
+        return;
+      }
     }
 
-    // Reconnect failed or was cancelled -> ask whether to leave.
+    // Reconnect failed/cancelled, or no tmux to restore -> ask whether to leave.
     unawaited(_showDisconnectDialog());
   }
 
@@ -346,7 +343,7 @@ extension _Init on SSHPageState {
       _closeFailedReconnectClient();
       return false;
     } finally {
-      if (mounted) contextSafe?.popDialog();
+      if (mounted) contextSafe?.pop();
     }
   }
 
@@ -372,19 +369,16 @@ extension _Init on SSHPageState {
   }
 
   Future<void> _showDisconnectDialog() async {
-    final shouldReconnect = await context.showRoundDialog<bool>(
+    final shouldLeave = await context.showRoundDialog<bool>(
       title: libL10n.attention,
-      child: Text('${libL10n.disconnected}\n${l10n.reconnectQ}'),
+      child: Text('${libL10n.disconnected}\n${libL10n.goBackQ}'),
       barrierDismiss: false,
       actions: [
         TextButton(
           onPressed: () => context.popDialog(false),
-          child: Text(libL10n.close),
+          child: Text(libL10n.cancel),
         ),
-        TextButton(
-          onPressed: () => context.popDialog(true),
-          child: Text(l10n.reconnect),
-        ),
+        TextButton(onPressed: () => context.popDialog(true), child: Text(libL10n.ok)),
       ],
     );
 
@@ -392,101 +386,21 @@ extension _Init on SSHPageState {
 
     _disconnectDialogOpen = false;
 
-    if (shouldReconnect != true) {
+    if (shouldLeave == true) {
       contextSafe?.pop(); // Pop the SSHPage
       return;
     }
 
-    // User chose to reconnect — attempt directly rather than routing
-    // through [_onConnectionLossSuspected], which would re-show this
-    // same dialog when there is no tmux session to restore.
+    // If the client is gone or its transport already closed, "stay" means
+    // "try again" rather than resuming monitoring of a dead connection.
+    if (_backend == null || _backend!.isClosed) {
+      unawaited(_onConnectionLossSuspected());
+      return;
+    }
+
     _reportedDisconnected = false;
-    final sessionName = _tmuxCurrentSession;
-    final restored = (sessionName != null && sessionName.isNotEmpty)
-        ? await _tryReconnectTmux(sessionName)
-        : await _tryReconnectRawShell();
-    if (!mounted) return;
-
-    if (restored) return;
-
-    // Reconnect failed or was cancelled — ask again.
-    _disconnectDialogOpen = true;
-    unawaited(_showDisconnectDialog());
-  }
-
-  /// Reconnect SSH without tmux and open a fresh raw shell, showing a
-  /// cancellable progress dialog while reconnecting. Returns `true` when
-  /// the terminal was restored.
-  Future<bool> _tryReconnectRawShell() async {
-    _reconnectCancelled = false;
-    if (mounted) {
-      _showReconnectingDialog(onCancel: () => _reconnectCancelled = true);
-    }
-    try {
-      _sess.closeBackend();
-      TermSessionManager.updateStatus(
-        _sessionId,
-        TermSessionStatus.connecting,
-      );
-
-      const maxAttempts = 10;
-      const baseInterval = Duration(milliseconds: 200);
-      const maxInterval = Duration(seconds: 3);
-      var connected = false;
-      for (
-        var attempt = 0;
-        attempt < maxAttempts && mounted && !_reconnectCancelled;
-        attempt++
-      ) {
-        if (attempt > 0) {
-          final backoffMs = (baseInterval.inMilliseconds << (attempt - 1))
-              .clamp(0, maxInterval.inMilliseconds)
-              .toInt();
-          await Future.delayed(Duration(milliseconds: backoffMs));
-          if (!mounted || _reconnectCancelled) {
-            _closeFailedReconnectClient();
-            return false;
-          }
-        }
-        try {
-          await _connectBackend();
-          connected = true;
-          break;
-        } catch (_) {
-          Loggers.app.info(
-            'SSH raw reconnect attempt ${attempt + 1}/$maxAttempts failed',
-          );
-        }
-      }
-      if (!mounted || _reconnectCancelled) {
-        _closeFailedReconnectClient();
-        return false;
-      }
-      if (!connected) {
-        Loggers.app.info(
-          'SSH raw reconnect failed after $maxAttempts attempts',
-        );
-        _closeFailedReconnectClient();
-        return false;
-      }
-
-      final shell = await _sess.openShell();
-      if (shell == null || !mounted || _reconnectCancelled) {
-        if (mounted) _writeLn(libL10n.fail);
-        _closeFailedReconnectClient();
-        return false;
-      }
-      _bindForegroundSession(shell);
-      _setupDiscontinuityTimer();
-      widget.args.focusNode?.requestFocus();
-      return true;
-    } catch (e, st) {
-      Loggers.app.warning('SSH raw reconnect threw', e, st);
-      _closeFailedReconnectClient();
-      return false;
-    } finally {
-      if (mounted) contextSafe?.popDialog();
-    }
+    TermSessionManager.updateStatus(_sessionId, TermSessionStatus.connected);
+    _setupDiscontinuityTimer();
   }
 
   /// Reconnect SSH after a connection loss and re-attach the previous tmux

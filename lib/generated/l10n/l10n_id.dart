@@ -1410,4 +1410,14 @@ class AppLocalizationsId extends AppLocalizations {
   String macDmgImportedPartly(String path) {
     return 'Data dari versi yang terpasang sebelumnya telah diimpor. Berkas unduhan tetap berada di $path.';
   }
+
+  @override
+  String get multiLinePasteConfirm =>
+      'You are pasting multi-line text. Confirm to paste?';
+
+  @override
+  String get reconnect => 'Reconnect';
+
+  @override
+  String get reconnectQ => 'Do you want to reconnect?';
 }

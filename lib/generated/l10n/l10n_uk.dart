@@ -1427,4 +1427,14 @@ class AppLocalizationsUk extends AppLocalizations {
   String macDmgImportedPartly(String path) {
     return 'Дані раніше встановленої збірки імпортовано. Завантажені файли залишилися в $path.';
   }
+
+  @override
+  String get multiLinePasteConfirm =>
+      'You are pasting multi-line text. Confirm to paste?';
+
+  @override
+  String get reconnect => 'Reconnect';
+
+  @override
+  String get reconnectQ => 'Do you want to reconnect?';
 }

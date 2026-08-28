@@ -186,8 +186,8 @@ class SSHPageState extends ConsumerState<SSHPage>
   bool _aiCommandCancelled = false;
   Timer? _discontinuityTimer;
   static const _connectionCheckInterval = Duration(seconds: 60);
-  static const _connectionCheckTimeout = Duration(seconds: 30);
-  static const _maxKeepAliveFailures = 5;
+  static const _connectionCheckTimeout = Duration(seconds: 10);
+  static const _maxKeepAliveFailures = 3;
   int _missedKeepAliveCount = 0;
   bool _isCheckingConnection = false;
   bool _hasPendingImmediateCheck = false;
@@ -765,37 +765,8 @@ class SSHPageState extends ConsumerState<SSHPage>
     if (!mounted) return;
     debugPrint('OHOS_PASTE clipboard text=$text');
     if (text == null || text.isEmpty) return;
-
-    // 多行文本粘贴时让用户确认，防止意外粘贴大量内容
-    if (text.contains('\n')) {
-      final shouldPaste = await _showMultiLinePasteConfirm(text);
-      if (!mounted || !shouldPaste) return;
-    }
-
     _terminal.textInput(text);
     _terminalController.clearSelection();
-  }
-
-  /// 多行粘贴确认弹窗，显示前几行预览
-  Future<bool> _showMultiLinePasteConfirm(String text) async {
-    final lines = text.split('\n');
-    final previewLines = lines.take(5).toList();
-    final preview = previewLines.join('\n');
-    final suffix = lines.length > 5 ? '\n... (${lines.length} lines)' : '';
-    return await context.showRoundDialog<bool>(
-      title: libL10n.attention,
-      child: Text('${l10n.multiLinePasteConfirm}\n\n$preview$suffix'),
-      actions: [
-        TextButton(
-          onPressed: () => context.popDialog(false),
-          child: Text(libL10n.cancel),
-        ),
-        TextButton(
-          onPressed: () => context.popDialog(true),
-          child: Text(libL10n.paste),
-        ),
-      ],
-    ) ?? false;
   }
 
   Future<void> _onClipboardAction() async {

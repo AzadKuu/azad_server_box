@@ -375,43 +375,6 @@ export default class EntryAbility extends FlutterAbility {
             });
             break;
           }
-          case 'pickFilePaths': {
-            const documentPicker = new picker.DocumentViewPicker(context);
-            const options = new picker.DocumentSelectOptions();
-            options.maxSelectNumber = 100;
-            documentPicker.select(options).then((uris: Array<string>) => {
-              if (uris == null || uris.length == 0) {
-                result.success(null);
-                return;
-              }
-              try {
-                const paths: Array<string> = [];
-                for (let i = 0; i < uris.length; i++) {
-                  const uri = uris[i];
-                  let name = uri.substring(uri.lastIndexOf('/') + 1);
-                  try {
-                    name = decodeURIComponent(name);
-                  } catch (e) {
-                    // ignore decode error
-                  }
-                  const destPath = context.cacheDir + '/' + name;
-                  const srcFile = fs.openSync(uri, fs.OpenMode.READ_ONLY);
-                  fs.copyFileSync(srcFile.fd, destPath);
-                  fs.closeSync(srcFile);
-                  paths.push(destPath);
-                }
-                Log.i(TAG, "pickFilePaths copied " + paths.length + " files");
-                result.success(paths);
-              } catch (e) {
-                Log.e(TAG, "pickFilePaths copy failed: " + JSON.stringify(e));
-                result.success(null);
-              }
-            }).catch((err: Error) => {
-              Log.i(TAG, "pickFilePaths cancelled: " + JSON.stringify(err));
-              result.success(null);
-            });
-            break;
-          }
           case 'saveFilePath': {
             const fileName: string = call.argument('fileName');
             const documentPicker = new picker.DocumentViewPicker(context);

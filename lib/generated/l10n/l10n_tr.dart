@@ -1408,4 +1408,14 @@ class AppLocalizationsTr extends AppLocalizations {
   String macDmgImportedPartly(String path) {
     return 'Daha önce yüklü sürümün verileri içe aktarıldı. İndirilen dosyalar $path konumunda kaldı.';
   }
+
+  @override
+  String get multiLinePasteConfirm =>
+      'You are pasting multi-line text. Confirm to paste?';
+
+  @override
+  String get reconnect => 'Reconnect';
+
+  @override
+  String get reconnectQ => 'Do you want to reconnect?';
 }

@@ -1338,4 +1338,14 @@ class AppLocalizationsJa extends AppLocalizations {
   String macDmgImportedPartly(String path) {
     return '以前インストールされていたビルドのデータを取り込みました。ダウンロードしたファイルは $path に残っています。';
   }
+
+  @override
+  String get multiLinePasteConfirm =>
+      'You are pasting multi-line text. Confirm to paste?';
+
+  @override
+  String get reconnect => 'Reconnect';
+
+  @override
+  String get reconnectQ => 'Do you want to reconnect?';
 }
