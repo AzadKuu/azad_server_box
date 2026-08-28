@@ -18,13 +18,14 @@
 
 ## 📥 安装
 
-| 平台 | 下载来源 |
-|--|--|
-| 鸿蒙 HarmonyOS | 需自行构建 —— 见下方[鸿蒙构建](#-鸿蒙构建)（暂未提供 HAP 安装包） |
-| Android | [本仓库 Releases](https://github.com/AzadKuu/azad_server_box/releases) / [上游](https://github.com/lollipopkit/flutter_server_box/releases) |
-| iOS | [AppStore](https://apps.apple.com/app/id1586449703) / [上游](https://github.com/lollipopkit/flutter_server_box/releases)（`_NoSign.ipa`，未签名，需自行签名） |
-| macOS | [AppStore](https://apps.apple.com/app/id1586449703) / [上游](https://github.com/lollipopkit/flutter_server_box/releases)（`.dmg`） / `brew install --cask server-box` |
-| Linux / Windows | [本仓库 Releases](https://github.com/AzadKuu/azad_server_box/releases) / [上游](https://github.com/lollipopkit/flutter_server_box/releases) |
+
+| 平台            | 下载来源                                                                                                                                                              |
+| --------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 鸿蒙 HarmonyOS  | 需自行构建 —— 见下方[鸿蒙构建](#-鸿蒙构建)（暂未提供 HAP 安装包）                                                                                                   |
+| Android         | [本仓库 Releases](https://github.com/AzadKuu/azad_server_box/releases) / [上游](https://github.com/lollipopkit/flutter_server_box/releases)                           |
+| iOS             | [AppStore](https://apps.apple.com/app/id1586449703) / [上游](https://github.com/lollipopkit/flutter_server_box/releases)（`_NoSign.ipa`，未签名，需自行签名）         |
+| macOS           | [AppStore](https://apps.apple.com/app/id1586449703) / [上游](https://github.com/lollipopkit/flutter_server_box/releases)（`.dmg`） / `brew install --cask server-box` |
+| Linux / Windows | [本仓库 Releases](https://github.com/AzadKuu/azad_server_box/releases) / [上游](https://github.com/lollipopkit/flutter_server_box/releases)                           |
 
 > Android / Linux / Windows 的预编译包会发布在本仓库的 [Releases](https://github.com/AzadKuu/azad_server_box/releases) 中（如有）；iOS / macOS 使用上游的签名和商店发布。请只从信任的来源下载。
 
@@ -91,16 +92,16 @@
 
 ### 待办事项
 
-- [ ] 鸿蒙手机未识别为移动端，虚拟快捷键栏不显示
-- [x] 文件上传 / 下载
-- [ ] AI 面板调整
-- [ ] 关于页面调整
-- [ ] 终端无法复制文本
-- [ ] 鸿蒙 PC 终端无法右键
-- [ ] Windows 终端无法选择文本
-- [ ] 粘贴多行文本时需让用户确认
-- [ ] 连接断开弹窗无法关闭，应改为询问用户是否重连
-- [ ] 折叠屏半展开状态下虚拟键盘适配
+- [ ]  鸿蒙手机未识别为移动端，虚拟快捷键栏不显示
+- [X]  文件上传 / 下载
+- [ ]  AI 面板调整
+- [ ]  关于页面调整
+- [ ]  终端无法复制文本
+- [ ]  鸿蒙 PC 终端无法右键
+- [ ]  Windows 终端无法选择文本
+- [ ]  粘贴多行文本时需让用户确认
+- [ ]  连接断开弹窗无法关闭，应改为询问用户是否重连
+- [ ]  折叠屏半展开状态下虚拟键盘适配
 
 ### 子模块
 
@@ -149,6 +150,7 @@ git submodule update --init --recursive
 本项目 fork 自 **[@lollipopkit](https://github.com/lollipopkit)** 的 **[flutter_server_box](https://github.com/lollipopkit/flutter_server_box)**，感谢原作者及所有贡献者的工作。
 
 本 fork 同样依赖的上游关键库：
+
 - [dartssh2](https://github.com/TerminalStudio/dartssh2) —— SSH 客户端
 - [xterm.dart](https://github.com/TerminalStudio/xterm.dart) —— 终端模拟器（已 fork 以适配 OHOS IME）
 

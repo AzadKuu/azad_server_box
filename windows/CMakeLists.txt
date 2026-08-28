@@ -88,8 +88,8 @@ endif()
 # because it can't find the native libraries.
 install(DIRECTORY "${PROJECT_BUILD_DIR}/native_assets/windows/"
   DESTINATION "${INSTALL_BUNDLE_LIB_DIR}"
-  FILES_MATCHING PATTERN "*.dll"
-  COMPONENT Runtime)
+  COMPONENT Runtime
+  FILES_MATCHING PATTERN "*.dll")
 
 # Fully re-copy the assets directory on each build to avoid having stale files
 # from a previous install.
