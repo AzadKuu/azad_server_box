@@ -489,7 +489,7 @@ class SSHPageState extends ConsumerState<SSHPage>
           backgroundOpacity: 0,
           theme: theme,
           deleteDetection: isMobile,
-          autofocus: false,
+          autofocus: true,
           keyboardAppearance: _isDark ? Brightness.dark : Brightness.light,
           showToolbar: true,
           viewOffset: Offset(
