@@ -521,6 +521,14 @@ extension _Actions on _SftpPageState {
     }
     if (locals.isEmpty || !mounted) return;
 
+    // Notify the user that the upload has started.
+    Toast.show(
+      locals.length == 1
+          ? '${libL10n.upload}: ${locals.first.split(Platform.pathSeparator).lastOrNull}'
+          : '${libL10n.upload} ${locals.length} ${libL10n.file}',
+      duration: const Duration(seconds: 2),
+    );
+
     // Check writability once for all files.
     if (!_sudoMode.value) {
       if (await _canWrite(handle.path)) {

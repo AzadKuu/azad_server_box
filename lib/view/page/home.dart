@@ -20,6 +20,7 @@ import 'package:server_box/view/page/home_tab.dart';
 import 'package:server_box/view/page/macos_menu_bar.dart';
 import 'package:server_box/view/page/setting/entry.dart';
 import 'package:server_box/view/widget/dmg_notice.dart';
+import 'package:server_box/view/widget/transfer_floating.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 
 class HomePage extends ConsumerStatefulWidget {
@@ -233,6 +234,7 @@ class _HomePageState extends ConsumerState<HomePage>
         children: [
           mainContent,
           AgentFloatingShell(area: constraints.biggest),
+          const TransferFloatingProgress(),
         ],
       ),
     );

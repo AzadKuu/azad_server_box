@@ -47,6 +47,41 @@
   </tr>
 </table>
 
+## 🔀 相比上游的改动
+
+### 鸿蒙平台支持
+- 新增 `Pfs.ohos` 枚举、`isOhos` 检测、`pickFilePath` / `pickFilePaths`（通过自定义 `azad/file_picker` MethodChannel）
+- 在 `EntryAbility.ets` 中注册 `azad/clipboard`、`azad/ime`、`azad/locale`、`azad/device_info`、`azad/file_picker` channel
+- 修复白屏崩溃：`libsqlite3mc.so` 被 build hook 下载的 Linux glibc 版本覆盖 → 在 `flutter-hvigor-plugin.ts` 中替换为鸿蒙 musl 版本
+- 为 `arm64-v8a` 打包原生库（`libflutter_pty.so`、`libsbm_ffi.so`、`libsqlite3mc.so`）
+
+### 终端 & SSH
+- 修复终端文字选择（`HitTestBehavior.deferToChild` → `opaque`）
+- 粘贴多行文本时弹确认弹窗，显示前 5 行预览
+- 断开弹窗改为**重连** / **关闭**选择，修复无限循环 bug
+- 重连进度弹窗正确关闭（`popDialog` 而非 `pop`，root navigator vs page navigator）
+- 无 tmux 的 tab 断开时自动关闭，不再空转重连
+- 心跳检测适配 VPN：ping 超时 10s→30s，失败阈值 3→5
+
+### 文件传输
+- 多文件上传：系统选择器支持一次选多个文件
+- 上传进度浮窗（右上角，紧凑）显示每个文件的进度条、速度，可关闭
+- 上传开始时 Toast 提示
+
+### UI / UX
+- 关于页面精简为仓库地址 + 上游地址
+- 更新检测指向本 fork 的 GitHub Releases
+- 自动更新默认关闭
+- 应用名改为 "AzadHub"
+- SFTP 侧边栏从右侧滑入
+- 终端工具栏加文件按钮
+- AI 对话代码块加单独复制按钮
+- 移除 debug 启动时的测试 toast
+
+### Windows 构建修复
+- 修复 DLL 缺失：`flutter_rust_bridge_hooks` 在 Windows 上把 cargo 输出重定向到 Temp，加了 `_fixMissingWindowsDll()` 后备复制
+- 修复 native assets 未复制到 debug 输出：在 `CMakeLists.txt` 加 `install(DIRECTORY ...)` 规则
+
 ## 🔧 鸿蒙构建
 
 本 fork 新增了鸿蒙（`ohos/`）工程，通过 [`@ohos/flutter_ohos`](https://github.com/flutter/flutter) embedder 嵌入 Flutter 应用。
@@ -81,7 +116,10 @@
 - ✅ 应用启动并渲染完整 Flutter UI
 - ✅ 服务器状态图表（CPU、内存、磁盘、网络）
 - ✅ SSH 终端（含退格键，通过自定义 IME MethodChannel 处理）
-- ✅ SFTP 文件浏览
+- ✅ SFTP 文件浏览 & 多文件上传
+- ✅ 终端文字选择 & 复制
+- ✅ 多行粘贴确认
+- ✅ 断开 / 重连流程
 - ✅ 原生库（`libflutter_pty.so`、`libsbm_ffi.so`、`libsqlite3mc.so`）已为 `arm64-v8a` 打包
 
 已知限制：
@@ -89,23 +127,27 @@
 - ⚠️ 鸿蒙特有功能（推送通知、桌面小部件、生物认证）**尚未**接入
 - ⚠️ `flutter_ohos` embedder 和 `xterm` 子模块均为 fork —— 见下方[子模块](#子模块)说明
 - ⚠️ 仅打包 `arm64-v8a`；`x86_64`（模拟器）可能需要额外构建配置
+- ⚠️ DevEco Studio 运行按钮默认用 debug 模式，release HAP 需通过 Build > Build Hap(s) 构建
 
 ### 待办事项
 
-- [ ]  鸿蒙手机未识别为移动端，虚拟快捷键栏不显示
-- [X]  文件上传 / 下载
-- [ ]  AI 面板调整
-- [ ]  关于页面调整
-- [ ]  终端无法复制文本
-- [ ]  鸿蒙 PC 终端无法右键
-- [ ]  Windows 终端无法选择文本
-- [ ]  粘贴多行文本时需让用户确认
-- [ ]  连接断开弹窗无法关闭，应改为询问用户是否重连
-- [ ]  折叠屏半展开状态下虚拟键盘适配
+- [ ] 鸿蒙手机未识别为移动端，虚拟快捷键栏不显示
+- [ ] 折叠屏半展开状态下虚拟键盘适配
+- [x] 文件上传 / 下载
+- [x] 多文件上传
+- [x] 上传进度浮窗
+- [x] 终端无法复制文本
+- [x] 终端无法选择文本
+- [x] 粘贴多行文本时需让用户确认
+- [x] 连接断开弹窗无法关闭，应改为询问用户是否重连
+- [x] 关于页面调整
+- [x] AI 代码块复制按钮
+- [x] Windows 终端 native assets 复制
+- [x] 更新检测指向本 fork
 
 ### 子模块
 
-本仓库通过 git submodule 在 `packages/` 下引入了若干 fork。其中 `xterm` 子模块指向 [AzadKuu/xterm.dart](https://github.com/AzadKuu/xterm.dart)（`ohos` 分支），携带 OHOS IME 适配。克隆后需执行：
+本仓库通过 git submodule 在 `packages/` 下引入了若干 fork。其中 `xterm` 子模块指向 [AzadKuu/xterm.dart](https://github.com/AzadKuu/xterm.dart)（`ohos` 分支），携带 OHOS IME 适配。`fl_lib` 子模块指向 [AzadKuu/fl_lib](https://github.com/AzadKuu/fl_lib)。克隆后需执行：
 
 ```bash
 git submodule update --init --recursive
@@ -153,6 +195,7 @@ git submodule update --init --recursive
 
 - [dartssh2](https://github.com/TerminalStudio/dartssh2) —— SSH 客户端
 - [xterm.dart](https://github.com/TerminalStudio/xterm.dart) —— 终端模拟器（已 fork 以适配 OHOS IME）
+- [fl_lib](https://github.com/AzadKuu/fl_lib) —— 共享工具库（已 fork）
 
 ## 📝 协议
 

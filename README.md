@@ -46,6 +46,41 @@ Status charts (CPU, mem, disk, net…), SSH terminal, SFTP, Docker & process & s
   </tr>
 </table>
 
+## 🔀 Changes vs upstream
+
+### HarmonyOS platform support
+- Added `Pfs.ohos` enum, `isOhos` detection, and `pickFilePath` / `pickFilePaths` via a custom `azad/file_picker` MethodChannel
+- Registered `azad/clipboard`, `azad/ime`, `azad/locale`, `azad/device_info`, `azad/file_picker` channels in `EntryAbility.ets`
+- Fixed white-screen crash caused by `libsqlite3mc.so` (Linux glibc version overwritten by build hook → replaced with HarmonyOS musl version in `flutter-hvigor-plugin.ts`)
+- Bundled native libs (`libflutter_pty.so`, `libsbm_ffi.so`, `libsqlite3mc.so`) for `arm64-v8a`
+
+### Terminal & SSH
+- Fixed terminal text selection (`HitTestBehavior.deferToChild` → `opaque` in xterm `gesture_handler.dart`)
+- Multi-line paste now shows a confirmation dialog with a 5-line preview
+- Disconnect dialog replaced infinite-loop bug with a **Reconnect** / **Close** choice
+- Reconnect progress dialog now correctly closes (`popDialog` instead of `pop` — root navigator vs page navigator)
+- Tabs without tmux auto-close on disconnect instead of spinning reconnect attempts
+- Connection health check tuned for VPN: ping timeout 10s→30s, failure threshold 3→5
+
+### File transfer
+- Multi-file upload: system picker now supports selecting multiple files at once
+- Upload progress floating window (top-right, compact) with per-file progress bars, speed, and a close button
+- Toast notification when upload starts
+
+### UI / UX
+- About page simplified to repo + upstream links only
+- Update check points to this fork's GitHub releases
+- Auto-update disabled by default
+- App name changed to "AzadHub"
+- SFTP sidebar slides in from the right edge
+- Terminal toolbar file button added
+- AI conversation code blocks now have a per-block copy button
+- Dev toast spam on debug launch removed
+
+### Windows build fixes
+- Fixed missing DLL issue: `flutter_rust_bridge_hooks` redirects cargo output to Temp on Windows; added `_fixMissingWindowsDll()` fallback copy
+- Fixed native assets not copied to debug output: added `install(DIRECTORY ...)` rule in `CMakeLists.txt`
+
 ## 🔧 HarmonyOS build
 
 This fork adds a HarmonyOS (`ohos/`) project that embeds the Flutter app via the [`@ohos/flutter_ohos`](https://github.com/flutter/flutter) embedder.
@@ -80,7 +115,10 @@ The HarmonyOS port is **at an early-usable stage**. What works:
 - ✅ App boots and renders the full Flutter UI
 - ✅ Server status charts (CPU, memory, disk, network)
 - ✅ SSH terminal (including backspace via a custom IME MethodChannel handler)
-- ✅ SFTP file browsing
+- ✅ SFTP file browsing & multi-file upload
+- ✅ Terminal text selection & copy
+- ✅ Multi-line paste confirmation
+- ✅ Disconnect / reconnect flow
 - ✅ Native libs (`libflutter_pty.so`, `libsbm_ffi.so`, `libsqlite3mc.so`) bundled for `arm64-v8a`
 
 Known limitations:
@@ -88,23 +126,27 @@ Known limitations:
 - ⚠️ HarmonyOS-only platform features (push notifications, home widget, bio auth) are **not** wired up yet
 - ⚠️ The `flutter_ohos` embedder and `xterm` submodule are forked — see [Submodules](#-submodules) below
 - ⚠️ Only `arm64-v8a` is shipped; `x86_64` (emulator) may need extra build config
+- ⚠️ DevEco Studio Run button defaults to debug mode; release HAP must be built via Build > Build Hap(s)
 
 ### TODO
 
 - [ ] HarmonyOS phone not detected as mobile — virtual key bar not showing
-- [x] File upload / download
-- [ ] AI panel adjustments
-- [ ] About page adjustments
-- [ ] Cannot copy text in terminal
-- [ ] No right-click menu on HarmonyOS PC terminal
-- [ ] Cannot select text in Windows terminal
-- [ ] Multi-line paste should require user confirmation
-- [ ] Disconnect dialog cannot be dismissed — should ask user whether to reconnect
 - [ ] Foldable screen half-open virtual keyboard layout
+- [x] File upload / download
+- [x] Multi-file upload
+- [x] Upload progress floating window
+- [x] Cannot copy text in terminal
+- [x] Cannot select text in terminal
+- [x] Multi-line paste should require user confirmation
+- [x] Disconnect dialog cannot be dismissed — should ask user whether to reconnect
+- [x] About page adjustments
+- [x] AI code block copy button
+- [x] Windows terminal native assets copy
+- [x] Update check points to this fork
 
 ### Submodules
 
-This repo uses vendored forks as git submodules under `packages/`. The `xterm` submodule points to [AzadKuu/xterm.dart](https://github.com/AzadKuu/xterm.dart) (branch `ohos`) which carries the OHOS IME adaptation. After cloning:
+This repo uses vendored forks as git submodules under `packages/`. The `xterm` submodule points to [AzadKuu/xterm.dart](https://github.com/AzadKuu/xterm.dart) (branch `ohos`) which carries the OHOS IME adaptation. The `fl_lib` submodule points to [AzadKuu/fl_lib](https://github.com/AzadKuu/fl_lib). After cloning:
 
 ```bash
 git submodule update --init --recursive
@@ -151,6 +193,7 @@ This project is a fork of **[flutter_server_box](https://github.com/lollipopkit/
 Key upstream dependencies that this fork also relies on:
 - [dartssh2](https://github.com/TerminalStudio/dartssh2) — SSH client
 - [xterm.dart](https://github.com/TerminalStudio/xterm.dart) — terminal emulator (forked for OHOS IME)
+- [fl_lib](https://github.com/AzadKuu/fl_lib) — shared utilities (forked)
 
 ## 📝 License
 
