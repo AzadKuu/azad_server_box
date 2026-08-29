@@ -36,7 +36,6 @@ Future<void> main() async {
   await _runInZone(() async {
     await _initApp();
     runApp(ProviderScope(child: const MyApp()));
-    _greetDev();
   });
 }
 

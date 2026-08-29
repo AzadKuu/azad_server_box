@@ -20,6 +20,7 @@ import 'package:hooks/hooks.dart';
 /// a pod nor a Swift package, so it produces no `.podspec` and no
 /// `Package.swift`, and the same file covers all five platforms.
 void main(List<String> args) async {
+  _fixPubCacheOhosSwitch();
   await build(args, (input, output) async {
     try {
       await FlutterRustBridgeNativeAssetsBuilder(
@@ -33,6 +34,25 @@ void main(List<String> args) async {
     _replaceSqlite3mcForOhos(input);
     _fixMissingWindowsDll(input);
   });
+}
+
+/// Patches Pub Cache packages that have exhaustive switches over
+/// TargetPlatform but don't handle TargetPlatform.ohos (added by the
+/// HarmonyOS Flutter SDK). Runs the standalone script so the fix is
+/// applied before Dart compilation. Idempotent and silent on failure.
+void _fixPubCacheOhosSwitch() {
+  try {
+    final script = '${Directory.current.path}/scripts/fix_ohos_pub_cache.dart';
+    if (!File(script).existsSync()) return;
+    final dartExe = Platform.executable;
+    final result = Process.runSync(dartExe, [script]);
+    if (result.exitCode == 0) {
+      final out = (result.stdout as String).trim();
+      if (out.isNotEmpty) stderr.writeln('[_fixPubCacheOhosSwitch]\n$out');
+    }
+  } catch (e) {
+    stderr.writeln('[_fixPubCacheOhosSwitch] skipped: $e');
+  }
 }
 
 /// 鸿蒙（OHOS）适配：sqlite3 包的 build hook 会下载预编译的 glibc 二进制
