@@ -1737,4 +1737,17 @@ class AppLocalizationsRu extends AppLocalizations {
 
   @override
   String get termInFloatWindow => 'Этот терминал открыт в плавающем окне';
+
+  @override
+  String get multiLinePasteConfirm =>
+      'You are pasting multi-line text. Confirm to paste?';
+
+  @override
+  String get reconnect => 'Reconnect';
+
+  @override
+  String get reconnectQ => 'Do you want to reconnect?';
+
+  @override
+  String get sftp => 'SFTP';
 }

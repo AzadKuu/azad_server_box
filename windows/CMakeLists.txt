@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.14)
-project(toolbox LANGUAGES CXX)
+project(azadhub LANGUAGES CXX)
 
-set(BINARY_NAME "ServerBox")
+set(BINARY_NAME "AzadHub")
 
 cmake_policy(SET CMP0063 NEW)
 
@@ -81,11 +81,15 @@ if(PLUGIN_BUNDLED_LIBRARIES)
     COMPONENT Runtime)
 endif()
 
-# Copy the native assets provided by build hooks next to the executable.
-set(NATIVE_ASSETS_DIR "${PROJECT_BUILD_DIR}native_assets/windows/")
-install(DIRECTORY "${NATIVE_ASSETS_DIR}"
+# Install native assets (from build hooks, e.g. sbm_ffi.dll, flutter_pty.dll,
+# sqlite3mc.dll) — Flutter's install_code_assets copies them to
+# build/native_assets/windows/ but CMake has no built-in rule to copy them
+# to the runner output directory. Without this, the app crashes at runtime
+# because it can't find the native libraries.
+install(DIRECTORY "${PROJECT_BUILD_DIR}/native_assets/windows/"
   DESTINATION "${INSTALL_BUNDLE_LIB_DIR}"
-  COMPONENT Runtime)
+  COMPONENT Runtime
+  FILES_MATCHING PATTERN "*.dll")
 
 # Fully re-copy the assets directory on each build to avoid having stale files
 # from a previous install.

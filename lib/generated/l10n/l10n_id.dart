@@ -1716,4 +1716,17 @@ class AppLocalizationsId extends AppLocalizations {
 
   @override
   String get termInFloatWindow => 'Terminal ini ada di jendela mengambang';
+
+  @override
+  String get multiLinePasteConfirm =>
+      'You are pasting multi-line text. Confirm to paste?';
+
+  @override
+  String get reconnect => 'Reconnect';
+
+  @override
+  String get reconnectQ => 'Do you want to reconnect?';
+
+  @override
+  String get sftp => 'SFTP';
 }

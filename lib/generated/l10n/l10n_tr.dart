@@ -1714,4 +1714,17 @@ class AppLocalizationsTr extends AppLocalizations {
 
   @override
   String get termInFloatWindow => 'Bu terminal yüzen pencerede';
+
+  @override
+  String get multiLinePasteConfirm =>
+      'You are pasting multi-line text. Confirm to paste?';
+
+  @override
+  String get reconnect => 'Reconnect';
+
+  @override
+  String get reconnectQ => 'Do you want to reconnect?';
+
+  @override
+  String get sftp => 'SFTP';
 }

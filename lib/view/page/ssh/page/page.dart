@@ -11,6 +11,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:server_box/core/extension/context/locale.dart';
+import 'package:server_box/core/utils/ohos_ime.dart';
 import 'package:server_box/core/utils/sudo_password.dart';
 import 'package:server_box/data/model/ai/agent_conversation.dart';
 import 'package:server_box/data/model/ai/ask_ai_models.dart';
@@ -247,8 +248,8 @@ class SSHPageState extends ConsumerState<SSHPage>
   VoidCallback? _releaseAgentHost;
   Timer? _discontinuityTimer;
   static const _connectionCheckInterval = Duration(seconds: 60);
-  static const _connectionCheckTimeout = Duration(seconds: 10);
-  static const _maxKeepAliveFailures = 3;
+  static const _connectionCheckTimeout = Duration(seconds: 30);
+  static const _maxKeepAliveFailures = 5;
 
   /// Between the tries of one check that cannot wait for the next interval —
   /// see `_checkConnectionHealth`. Short enough that a genuinely dead session
@@ -292,6 +293,51 @@ class SSHPageState extends ConsumerState<SSHPage>
 
   Future<void> openAgentFromToolbar() =>
       _showAskAiPanel(autoStart: false);
+
+  /// 从右侧滑入 SFTP 文件浏览器侧边栏（和 AI agent 面板一样的弹出方式）
+  Future<void> openSftpFromToolbar() async {
+    if (!mounted) return;
+    final spi = widget.args.spi;
+    if (spi == null) return;
+
+    await showGeneralDialog<void>(
+      context: context,
+      barrierDismissible: true,
+      barrierLabel: MaterialLocalizations.of(context).modalBarrierDismissLabel,
+      barrierColor: Colors.black38,
+      transitionDuration: const Duration(milliseconds: 220),
+      pageBuilder: (dialogContext, _, _) {
+        final availableWidth = MediaQuery.sizeOf(dialogContext).width;
+        final dialogWidth = (availableWidth * 0.55)
+            .clamp(480.0, 620.0)
+            .clamp(0.0, availableWidth)
+            .toDouble();
+        return SafeArea(
+          child: Align(
+            alignment: Alignment.centerRight,
+            child: SizedBox(
+              width: dialogWidth,
+              child: SftpPage(args: SftpPageArgs(spi: spi)),
+            ),
+          ),
+        );
+      },
+      transitionBuilder: (_, animation, _, child) {
+        final curved = CurvedAnimation(
+          parent: animation,
+          curve: Curves.easeOutCubic,
+          reverseCurve: Curves.easeInCubic,
+        );
+        return SlideTransition(
+          position: Tween<Offset>(
+            begin: const Offset(1, 0),
+            end: Offset.zero,
+          ).animate(curved),
+          child: FadeTransition(opacity: curved, child: child),
+        );
+      },
+    );
+  }
 
   @override
   void dispose() {
@@ -356,6 +402,11 @@ class SSHPageState extends ConsumerState<SSHPage>
   @override
   void initState() {
     super.initState();
+    if (Platform.operatingSystem == 'ohos') {
+      OhosIme.setBackspaceHandler(
+        () => _terminal.keyInput(TerminalKey.backspace),
+      );
+    }
     WidgetsBinding.instance.addObserver(this);
     _terminalShell = ref.read(terminalShellProvider.notifier);
     _attachAgentHost();
@@ -601,7 +652,7 @@ class SSHPageState extends ConsumerState<SSHPage>
           backgroundOpacity: 0,
           theme: theme,
           deleteDetection: isMobile,
-          autofocus: false,
+          autofocus: true,
           keyboardAppearance: _isDark ? Brightness.dark : Brightness.light,
           showToolbar: true,
           viewOffset: Offset(
@@ -934,6 +985,15 @@ class SSHPageState extends ConsumerState<SSHPage>
     if (!mounted) return;
     final text = value?.text;
     if (text == null) return;
+    // Multi-line paste confirmation
+    if (text.contains('\n')) {
+      final confirm = await context.showRoundDialog<bool>(
+        title: libL10n.attention,
+        child: Text(l10n.multiLinePasteConfirm),
+        actions: Btnx.cancelOk,
+      );
+      if (confirm != true) return;
+    }
     // `paste`, not `textInput`: it brackets the text when the program asked for
     // that (DECSET 2004), which is what stops an editor auto-indenting every
     // line of it and a shell running the newlines as commands.

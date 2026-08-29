@@ -1725,4 +1725,17 @@ class AppLocalizationsPt extends AppLocalizations {
 
   @override
   String get termInFloatWindow => 'Este terminal está na janela flutuante';
+
+  @override
+  String get multiLinePasteConfirm =>
+      'You are pasting multi-line text. Confirm to paste?';
+
+  @override
+  String get reconnect => 'Reconnect';
+
+  @override
+  String get reconnectQ => 'Do you want to reconnect?';
+
+  @override
+  String get sftp => 'SFTP';
 }

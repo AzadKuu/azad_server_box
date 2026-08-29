@@ -1738,4 +1738,17 @@ class AppLocalizationsDe extends AppLocalizations {
 
   @override
   String get termInFloatWindow => 'Dieses Terminal ist im schwebenden Fenster';
+
+  @override
+  String get multiLinePasteConfirm =>
+      'You are pasting multi-line text. Confirm to paste?';
+
+  @override
+  String get reconnect => 'Reconnect';
+
+  @override
+  String get reconnectQ => 'Do you want to reconnect?';
+
+  @override
+  String get sftp => 'SFTP';
 }

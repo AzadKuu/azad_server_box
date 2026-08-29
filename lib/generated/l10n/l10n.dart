@@ -3019,6 +3019,30 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'This terminal is in the floating window'**
   String get termInFloatWindow;
+
+  /// No description provided for @multiLinePasteConfirm.
+  ///
+  /// In en, this message translates to:
+  /// **'You are pasting multi-line text. Confirm to paste?'**
+  String get multiLinePasteConfirm;
+
+  /// No description provided for @reconnect.
+  ///
+  /// In en, this message translates to:
+  /// **'Reconnect'**
+  String get reconnect;
+
+  /// No description provided for @reconnectQ.
+  ///
+  /// In en, this message translates to:
+  /// **'Do you want to reconnect?'**
+  String get reconnectQ;
+
+  /// No description provided for @sftp.
+  ///
+  /// In en, this message translates to:
+  /// **'SFTP'**
+  String get sftp;
 }
 
 class _AppLocalizationsDelegate

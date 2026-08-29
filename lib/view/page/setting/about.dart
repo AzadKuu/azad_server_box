@@ -1,7 +1,5 @@
 part of 'entry.dart';
 
-const _sponsorUrl = 'https://cdn.lpkt.cn/donate';
-
 final class _AppAboutPage extends StatefulWidget {
   const _AppAboutPage();
 
@@ -29,49 +27,14 @@ final class _AppAboutPageState extends State<_AppAboutPage>
             style: UIs.text15,
           ),
           UIs.height13,
-          SizedBox(
-            height: 77,
-            child: ListView(
-              padding: const EdgeInsets.symmetric(vertical: 13, horizontal: 7),
-              scrollDirection: Axis.horizontal,
-              children: <Widget>[
-                Btn.elevated(
-                  icon: const Icon(Icons.edit_document),
-                  text: libL10n.menuWiki,
-                  onTap: Urls.appWiki.launchUrl,
-                ),
-                Btn.elevated(
-                  icon: const Icon(Icons.feedback),
-                  text: libL10n.feedback,
-                  onTap: Urls.appHelp.launchUrl,
-                ),
-                Btn.elevated(
-                  icon: const Icon(MingCute.question_fill),
-                  text: libL10n.license,
-                  onTap: () => showLicensePage(context: context),
-                ),
-                Btn.elevated(
-                  icon: const Icon(MingCute.heart_fill),
-                  text: l10n.sponsor,
-                  onTap: () => _sponsorUrl.launchUrl(),
-                ),
-              ].joinWith(UIs.width13),
-            ),
-          ),
-          UIs.height13,
           SimpleMarkdown(
             data:
                 '''
-#### Contributors
-${GithubIds.contributors.map((e) => e.prsMarkdownLink).join(' ')}
+#### ${l10n.menuGitHubRepository}
+[${Urls.thisRepo}](${Urls.thisRepo})
 
-#### Participants
-${GithubIds.participants.map((e) => e.issuesMarkdownLink).join(' ')}
-
-#### My other apps
-[GPT Box](https://github.com/lollipopkit/flutter_gpt_box)
-
-${l10n.madeWithLove('[lollipopkit](${Urls.myGithub})')}
+#### Upstream
+[${Urls.upstreamRepo}](${Urls.upstreamRepo})
 ''',
           ).paddingAll(13).cardx,
         ],

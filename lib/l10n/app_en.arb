@@ -664,5 +664,9 @@
   "privacyBlur": "Background privacy",
   "privacyBlurTip": "Hide app content in the app switcher",
   "floatReturnToTab": "Return to tab",
-  "termInFloatWindow": "This terminal is in the floating window"
+  "termInFloatWindow": "This terminal is in the floating window",
+  "multiLinePasteConfirm": "You are pasting multi-line text. Confirm to paste?",
+  "reconnect": "Reconnect",
+  "reconnectQ": "Do you want to reconnect?",
+  "sftp": "SFTP"
 }

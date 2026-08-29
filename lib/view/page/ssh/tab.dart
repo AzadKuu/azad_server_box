@@ -563,7 +563,7 @@ extension _Actions on _SSHTabPageState {
     if (current == null) return const [];
     final onServer = current.data.page.args.spi != null;
     return onServer
-        ? [_agentBtn, _snippetBtn, _floatBtn]
+        ? [_agentBtn, _fileBtn, _snippetBtn, _floatBtn]
         : [_snippetBtn, _floatBtn];
   }
 
@@ -625,6 +625,13 @@ extension _Actions on _SSHTabPageState {
     icon: const Icon(Icons.auto_awesome, size: 18),
     onTap: () =>
         _sessions.current?.data.pageKey.currentState?.openAgentFromToolbar(),
+  );
+
+  Widget get _fileBtn => Btn.icon(
+    text: l10n.sftp,
+    icon: const Icon(Icons.folder_open, size: 18),
+    onTap: () =>
+        _sessions.current?.data.pageKey.currentState?.openSftpFromToolbar(),
   );
 
   Widget get _snippetBtn => Btn.icon(

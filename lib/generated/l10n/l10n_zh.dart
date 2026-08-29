@@ -1579,6 +1579,18 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get termInFloatWindow => '此终端正在悬浮窗中';
+
+  @override
+  String get multiLinePasteConfirm => '你正在粘贴多行文本，确认粘贴吗？';
+
+  @override
+  String get reconnect => '重连';
+
+  @override
+  String get reconnectQ => '要重新连接吗？';
+
+  @override
+  String get sftp => 'SFTP';
 }
 
 /// The translations for Chinese, as used in Taiwan (`zh_TW`).

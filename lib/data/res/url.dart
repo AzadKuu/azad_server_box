@@ -1,8 +1,8 @@
 abstract final class Urls {
-  static const myGithub = 'https://github.com/lollipopkit';
-  static const githubApi = 'https://api.github.com/repos/lollipopkit';
-  static const thisRepo = '$myGithub/flutter_server_box';
-  static const githubReleasesApi = '$githubApi/flutter_server_box/releases';
+  static const myGithub = 'https://github.com/AzadKuu';
+  static const githubApi = 'https://api.github.com/repos/AzadKuu';
+  static const thisRepo = '$myGithub/azad_server_box';
+  static const githubReleasesApi = '$githubApi/azad_server_box/releases';
   static const appStore = 'https://apps.apple.com/app/id1586449703';
   static const appHelp = '$thisRepo#-help';
   static const appWiki = '$thisRepo/wiki';
@@ -20,4 +20,6 @@ abstract final class Urls {
   /// something has been installed on it, which is not a thing a switch can
   /// convey on its own.
   static const monitorAgentDoc = '$docs/advanced/monitor-agent/';
+
+  static const upstreamRepo = 'https://github.com/lollipopkit/flutter_server_box';
 }

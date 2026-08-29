@@ -514,5 +514,9 @@
   "privacyBlur": "后台隐私保护",
   "privacyBlurTip": "在多任务界面隐藏应用内容",
   "floatReturnToTab": "放回标签页",
-  "termInFloatWindow": "此终端正在悬浮窗中"
+  "termInFloatWindow": "此终端正在悬浮窗中",
+  "multiLinePasteConfirm": "你正在粘贴多行文本，确认粘贴吗？",
+  "reconnect": "重连",
+  "reconnectQ": "要重新连接吗？",
+  "sftp": "SFTP"
 }

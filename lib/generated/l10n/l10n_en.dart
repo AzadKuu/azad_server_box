@@ -1713,4 +1713,17 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get termInFloatWindow => 'This terminal is in the floating window';
+
+  @override
+  String get multiLinePasteConfirm =>
+      'You are pasting multi-line text. Confirm to paste?';
+
+  @override
+  String get reconnect => 'Reconnect';
+
+  @override
+  String get reconnectQ => 'Do you want to reconnect?';
+
+  @override
+  String get sftp => 'SFTP';
 }
